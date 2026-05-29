@@ -1,0 +1,90 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout
+    xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:orientation="vertical"
+    android:background="@color/colorBackground"
+    android:padding="24dp"
+    android:gravity="center_horizontal">
+
+    <ImageView
+        android:layout_width="100dp"
+        android:layout_height="100dp"
+        android:layout_marginTop="48dp"
+        android:layout_marginBottom="24dp"
+        android:src="@drawable/ic_launcher" />
+
+    <TextView
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="Gaming Addiction Detector"
+        android:textSize="22sp"
+        android:textStyle="bold"
+        android:gravity="center"
+        android:layout_marginBottom="8dp" />
+
+    <TextView
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="PES University Capstone Project"
+        android:textSize="13sp"
+        android:textColor="@color/text_secondary"
+        android:gravity="center"
+        android:layout_marginBottom="32dp" />
+
+    <!-- Feature bullets -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:layout_marginBottom="32dp">
+
+        <TextView android:layout_width="match_parent" android:layout_height="wrap_content"
+            android:text="What this app monitors:" android:textStyle="bold"
+            android:textSize="15sp" android:layout_marginBottom="12dp" />
+
+        <TextView android:layout_width="match_parent" android:layout_height="wrap_content"
+            android:text="  • Gaming session duration and frequency"
+            android:textSize="14sp" android:layout_marginBottom="6dp" />
+        <TextView android:layout_width="match_parent" android:layout_height="wrap_content"
+            android:text="  • Voice emotion during gameplay (mic)"
+            android:textSize="14sp" android:layout_marginBottom="6dp" />
+        <TextView android:layout_width="match_parent" android:layout_height="wrap_content"
+            android:text="  • In-game chat messages (screen OCR)"
+            android:textSize="14sp" android:layout_marginBottom="6dp" />
+        <TextView android:layout_width="match_parent" android:layout_height="wrap_content"
+            android:text="  • Behavioral risk indicators (IAT-based)"
+            android:textSize="14sp" android:layout_marginBottom="6dp" />
+
+        <TextView android:layout_width="match_parent" android:layout_height="wrap_content"
+            android:text="\nPrivacy: voice audio is deleted immediately after analysis. Only emotion labels are stored."
+            android:textSize="12sp" android:textColor="@color/text_secondary" android:layout_marginTop="8dp" />
+    </LinearLayout>
+
+    <!-- Permission info -->
+    <androidx.cardview.widget.CardView
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginBottom="32dp"
+        android:backgroundTint="@color/colorPrimary">
+        <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content"
+            android:orientation="vertical" android:padding="16dp">
+            <TextView android:layout_width="wrap_content" android:layout_height="wrap_content"
+                android:text="Required Permissions" android:textStyle="bold"
+                android:textSize="14sp" android:textColor="@android:color/white" />
+            <TextView android:layout_width="wrap_content" android:layout_height="wrap_content"
+                android:text="Microphone • Screen Capture • Usage Stats • Notifications"
+                android:textSize="12sp" android:textColor="@android:color/white"
+                android:layout_marginTop="4dp" />
+        </LinearLayout>
+    </androidx.cardview.widget.CardView>
+
+    <com.google.android.material.button.MaterialButton
+        android:id="@+id/btnGetStarted"
+        android:layout_width="match_parent"
+        android:layout_height="56dp"
+        android:text="Get Started"
+        android:textSize="16sp" />
+
+</LinearLayout>

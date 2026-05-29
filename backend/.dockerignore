@@ -1,0 +1,19 @@
+__pycache__
+*.pyc
+*.pyo
+.pytest_cache
+.coverage
+# Dev SQLite database — production uses Postgres (DATABASE_URL); never ship it
+*.db
+*.db-shm
+*.db-wal
+# Local virtualenvs
+.venv
+venv
+audio_uploads/*
+!audio_uploads/.gitkeep
+tests
+.env
+.env.local
+*.log
+backend_test.log

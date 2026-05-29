@@ -1,0 +1,45 @@
+# ─────────────────────────────────────────────────────────────────────────
+# Render Blueprint — deploys the backend (Docker) + a managed Postgres in one
+# step, with HTTPS and a stable *.onrender.com URL provided automatically.
+#
+# One-time setup:
+#   1. Push this repo to GitHub (the project isn't a git repo yet — `git init`).
+#   2. Render dashboard → New → Blueprint → pick the repo. It reads this file.
+#   3. AUTH_SECRET / PIN_PEPPER are generated automatically; DATABASE_URL is
+#      wired from the Postgres instance below. Nothing to paste by hand.
+#   4. After it's live, point both apps' Server URL at https://<service>.onrender.com/
+#
+# Notes: the free web instance cold-starts after idle (~30–60s the first hit
+# while models load); the free Postgres has a 1 GB / 90-day limit — fine for a
+# capstone, upgrade the plan for anything long-lived.
+# ─────────────────────────────────────────────────────────────────────────
+services:
+  - type: web
+    name: gaming-addiction-api
+    runtime: docker
+    rootDir: backend
+    dockerfilePath: ./Dockerfile
+    plan: free
+    region: singapore            # closest Render region to India; change if preferred
+    healthCheckPath: /api/health
+    autoDeploy: true
+    envVars:
+      - key: AUTH_ENFORCE
+        value: "1"               # production requires valid tokens
+      - key: AUTH_SECRET
+        generateValue: true      # Render generates + stores a strong secret
+      - key: PIN_PEPPER
+        generateValue: true
+      - key: KEEP_AUDIO
+        value: "0"               # never retain raw audio in production
+      - key: DATABASE_URL
+        fromDatabase:
+          name: gaming-addiction-db
+          property: connectionString
+
+databases:
+  - name: gaming-addiction-db
+    plan: free
+    databaseName: gaming_addiction
+    user: gaming_app
+    region: singapore

@@ -1,0 +1,17 @@
+{
+  "trained_at": "2026-05-27T06:16:42.377561",
+  "test_accuracy": 0.929,
+  "cv_mean_accuracy": 0.9292,
+  "cv_std_accuracy": 0.003,
+  "cv_fold_scores": [
+    0.9291,
+    0.9246,
+    0.9326,
+    0.9276,
+    0.9322
+  ],
+  "n_estimators": 200,
+  "max_depth": 6,
+  "train_samples": 23000,
+  "feature_count": 20
+}

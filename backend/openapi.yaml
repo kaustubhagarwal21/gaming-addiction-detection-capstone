@@ -1,0 +1,388 @@
+openapi: 3.0.3
+info:
+  title: Gaming Addiction Detection API
+  description: |
+    Backend REST API for the AI-driven gaming addiction detection system —
+    PES University Capstone PW26_SJ_05.
+
+    Three-modality ML ensemble: behavioral (20 features), chat toxicity
+    (TF-IDF + LinearSVC), voice emotion (MFCC + RandomForest). All inference
+    runs on-device or on this server; no data leaves the family's
+    infrastructure.
+  version: '1.0.0'
+  contact:
+    name: PES Capstone Team
+    email: kaustubh@example.com
+
+servers:
+  - url: http://localhost:5000
+    description: Local development
+  - url: http://192.168.1.100:5000
+    description: LAN deployment
+
+tags:
+  - name: Auth
+  - name: Sessions
+  - name: Data Ingestion
+  - name: Dashboard (Child)
+  - name: Dashboard (Parent)
+  - name: Counselor
+  - name: Reflection
+  - name: Anomaly
+
+paths:
+  /api/health:
+    get:
+      tags: [Auth]
+      summary: Health check
+      responses:
+        '200':
+          description: OK
+
+  /api/user/login:
+    post:
+      tags: [Auth]
+      summary: Login (child or parent role)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [pin, role]
+              properties:
+                pin: { type: string, example: '1234' }
+                role: { type: string, enum: [child, parent] }
+      responses:
+        '200':
+          description: Logged in
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LoginResponse'
+        '401':
+          description: Bad PIN
+
+  /api/games:
+    get:
+      tags: [Sessions]
+      summary: List supported games
+      responses:
+        '200': { description: Games list }
+
+  /api/session/start:
+    post:
+      tags: [Sessions]
+      summary: Start a session
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [user_id, game_name]
+              properties:
+                user_id: { type: integer }
+                game_name: { type: string }
+      responses:
+        '200':
+          description: Session created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean }
+                  session_id: { type: integer }
+
+  /api/session/{id}/end:
+    post:
+      tags: [Sessions]
+      summary: End session and run prediction
+      parameters:
+        - in: path
+          name: id
+          schema: { type: integer }
+          required: true
+      responses:
+        '200':
+          description: Session ended with prediction
+
+  /api/session/{id}/behavioral:
+    post:
+      tags: [Data Ingestion]
+      summary: Submit behavioral features mid-session
+      parameters:
+        - in: path
+          name: id
+          schema: { type: integer }
+          required: true
+      responses:
+        '200': { description: OK }
+
+  /api/session/{id}/predict:
+    post:
+      tags: [Data Ingestion]
+      summary: Run live ensemble prediction during session
+      parameters:
+        - in: path
+          name: id
+          schema: { type: integer }
+          required: true
+      responses:
+        '200': { description: Live prediction }
+
+  /api/session/{id}/voice:
+    post:
+      tags: [Data Ingestion]
+      summary: Upload 10s voice WAV segment
+      parameters:
+        - in: path
+          name: id
+          schema: { type: integer }
+          required: true
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                audio: { type: string, format: binary }
+      responses:
+        '200': { description: Emotion detected }
+
+  /api/session/{id}/chat:
+    post:
+      tags: [Data Ingestion]
+      summary: Upload captured chat text
+      parameters:
+        - in: path
+          name: id
+          schema: { type: integer }
+          required: true
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                text: { type: string }
+                source: { type: string, enum: [keyboard, ocr, voice_stt] }
+      responses:
+        '200': { description: OK }
+
+  /api/child/screen_event:
+    post:
+      tags: [Data Ingestion]
+      summary: Log screen on/off/unlock (zero-permission)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                user_id: { type: string }
+                event_type: { type: string, enum: [screen_on, screen_off, unlocked] }
+                timestamp: { type: string }
+      responses:
+        '200': { description: OK }
+
+  /api/child/notification_event:
+    post:
+      tags: [Data Ingestion]
+      summary: Log gaming app notification (craving signal)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                user_id: { type: string }
+                package_name: { type: string }
+                game_name: { type: string }
+                notification_title: { type: string }
+      responses:
+        '200': { description: OK }
+
+  /api/dashboard/user:
+    get:
+      tags: [Dashboard (Child)]
+      summary: Child-side dashboard
+      parameters:
+        - in: query
+          name: user_id
+          schema: { type: integer }
+          required: true
+      responses:
+        '200': { description: Dashboard data }
+
+  /api/dashboard/child_enriched:
+    get:
+      tags: [Dashboard (Child)]
+      summary: Streak + time limit status for child
+      parameters:
+        - { in: query, name: user_id, schema: { type: integer }, required: true }
+      responses:
+        '200': { description: OK }
+
+  /api/child/streak:
+    get:
+      tags: [Dashboard (Child)]
+      summary: Healthy gaming streak details
+      parameters:
+        - { in: query, name: user_id, schema: { type: integer }, required: true }
+      responses:
+        '200': { description: OK }
+
+  /api/child/get_limit:
+    get:
+      tags: [Dashboard (Child)]
+      summary: Get parent-set daily limit + today's usage
+      parameters:
+        - { in: query, name: user_id, schema: { type: integer }, required: true }
+      responses:
+        '200': { description: OK }
+
+  /api/dashboard/parent:
+    get:
+      tags: [Dashboard (Parent)]
+      summary: Parent dashboard (full insights)
+      parameters:
+        - { in: query, name: user_id, schema: { type: integer }, required: true }
+      responses:
+        '200': { description: Enriched dashboard }
+
+  /api/dashboard/weekly_report/pdf:
+    get:
+      tags: [Dashboard (Parent)]
+      summary: Generate weekly PDF report
+      parameters:
+        - { in: query, name: user_id, schema: { type: integer }, required: true }
+      responses:
+        '200':
+          description: PDF binary
+          content:
+            application/pdf:
+              schema: { type: string, format: binary }
+
+  /api/parent/set_limit:
+    post:
+      tags: [Dashboard (Parent)]
+      summary: Parent-set daily time limit
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                user_id: { type: integer }
+                daily_limit_hours: { type: number }
+      responses:
+        '200': { description: OK }
+
+  /api/alerts:
+    get:
+      tags: [Dashboard (Parent)]
+      summary: Recent alerts
+      parameters:
+        - { in: query, name: user_id, schema: { type: integer }, required: true }
+      responses:
+        '200': { description: Alerts list }
+
+  /api/counselor/chat:
+    post:
+      tags: [Counselor]
+      summary: Chat with Mira, the AI wellness counselor
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [user_id, message]
+              properties:
+                user_id: { type: integer }
+                message: { type: string }
+      responses:
+        '200':
+          description: Reply
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean }
+                  reply: { type: string }
+                  intent: { type: string }
+
+  /api/counselor/history:
+    get:
+      tags: [Counselor]
+      summary: Full chat history
+      parameters:
+        - { in: query, name: user_id, schema: { type: integer }, required: true }
+      responses:
+        '200': { description: Messages array }
+
+  /api/child/reflection:
+    post:
+      tags: [Reflection]
+      summary: Submit daily mood/sleep/energy check-in
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [user_id]
+              properties:
+                user_id: { type: integer }
+                mood_rating: { type: integer, minimum: 1, maximum: 5 }
+                sleep_quality: { type: integer, minimum: 1, maximum: 5 }
+                energy_level: { type: integer, minimum: 1, maximum: 5 }
+                note: { type: string }
+      responses:
+        '200': { description: OK }
+
+  /api/child/reflections:
+    get:
+      tags: [Reflection]
+      summary: Recent reflections
+      parameters:
+        - { in: query, name: user_id, schema: { type: integer }, required: true }
+        - { in: query, name: days, schema: { type: integer, default: 14 } }
+      responses:
+        '200': { description: OK }
+
+  /api/anomalies:
+    get:
+      tags: [Anomaly]
+      summary: Statistically unusual activity for a child
+      parameters:
+        - { in: query, name: user_id, schema: { type: integer }, required: true }
+      responses:
+        '200': { description: Fresh + persisted anomalies }
+
+  /api/anomalies/{aid}/resolve:
+    post:
+      tags: [Anomaly]
+      summary: Mark an anomaly as acknowledged
+      parameters:
+        - { in: path, name: aid, schema: { type: integer }, required: true }
+      responses:
+        '200': { description: OK }
+
+components:
+  schemas:
+    LoginResponse:
+      type: object
+      properties:
+        success: { type: boolean }
+        user_id: { type: integer }
+        name: { type: string }
+        role: { type: string }

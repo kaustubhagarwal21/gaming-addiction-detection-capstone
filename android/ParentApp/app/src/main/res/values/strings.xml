@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Guardian</string>
+    <string name="login_title">Parent Login</string>
+    <string name="enter_pin">Enter Parent PIN</string>
+    <string name="btn_login">Login</string>
+    <string name="dashboard_title">Parent Dashboard</string>
+    <string name="alerts">Alerts</string>
+    <string name="recommendations">Recommendations</string>
+    <string name="settings">Settings</string>
+    <string name="logout">Logout</string>
+    <string name="server_url">Server URL</string>
+    <string name="child_user_id">Child User ID</string>
+    <string name="save">Save</string>
+    <string name="test_connection">Test Connection</string>
+    <string name="no_alerts">No alerts right now</string>
+    <string name="no_recommendations">No recommendations available</string>
+    <string name="current_risk">Current Risk</string>
+    <string name="weekly_hours">Hours This Week</string>
+</resources>

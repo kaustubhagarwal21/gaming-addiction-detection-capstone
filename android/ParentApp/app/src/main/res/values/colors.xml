@@ -1,0 +1,49 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Brand palette: trustworthy indigo + amber accent -->
+    <color name="colorPrimary">#1E3A8A</color>
+    <color name="colorPrimaryDark">#172554</color>
+    <color name="colorPrimaryVariant">#3B5BDB</color>
+    <color name="colorPrimaryContainer">#DBE4FF</color>
+    <color name="colorOnPrimary">#FFFFFF</color>
+    <color name="colorOnPrimaryContainer">#0A1A4F</color>
+
+    <color name="colorAccent">#F59E0B</color>
+    <color name="colorSecondary">#F59E0B</color>
+    <color name="colorSecondaryContainer">#FEF3C7</color>
+    <color name="colorOnSecondary">#FFFFFF</color>
+
+    <color name="colorTertiary">#06B6D4</color>
+    <color name="colorTertiaryContainer">#CFFAFE</color>
+
+    <!-- Surfaces -->
+    <color name="colorBackground">#F8FAFC</color>
+    <color name="colorSurface">#FFFFFF</color>
+    <color name="colorSurfaceVariant">#F1F5F9</color>
+    <color name="colorOutline">#E2E8F0</color>
+    <color name="cardStroke">#E2E8F0</color>
+
+    <!-- Risk indicators -->
+    <color name="risk_low">#16A34A</color>
+    <color name="risk_low_bg">#DCFCE7</color>
+    <color name="risk_medium">#D97706</color>
+    <color name="risk_medium_bg">#FEF3C7</color>
+    <color name="risk_high">#DC2626</color>
+    <color name="risk_high_bg">#FEE2E2</color>
+
+    <!-- Typography -->
+    <color name="text_primary">#0F172A</color>
+    <color name="text_secondary">#475569</color>
+    <color name="text_tertiary">#94A3B8</color>
+    <color name="divider">#E2E8F0</color>
+
+    <!-- Status -->
+    <color name="success">#16A34A</color>
+    <color name="warning">#D97706</color>
+    <color name="error">#DC2626</color>
+    <color name="info">#0284C7</color>
+
+    <!-- Gradient stops -->
+    <color name="gradient_start">#1E3A8A</color>
+    <color name="gradient_end">#3B5BDB</color>
+</resources>

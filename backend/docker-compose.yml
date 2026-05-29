@@ -1,0 +1,39 @@
+# ─────────────────────────────────────────────────────────────────────────
+# Local full-stack with Postgres — mirrors the Render setup so the Postgres
+# code path can be exercised before deploying.
+#   Run from backend/:   docker compose up --build
+#   API at http://localhost:5000  (health: /api/health)
+# ─────────────────────────────────────────────────────────────────────────
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: gaming_addiction
+      POSTGRES_USER: gaming_app
+      POSTGRES_PASSWORD: devpassword
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U gaming_app -d gaming_addiction"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  api:
+    build: .
+    environment:
+      DATABASE_URL: postgresql://gaming_app:devpassword@db:5432/gaming_addiction
+      AUTH_SECRET: dev-compose-secret-change-me
+      PIN_PEPPER: dev-compose-secret-change-me
+      AUTH_ENFORCE: "1"
+      PORT: "5000"
+    ports:
+      - "5000:5000"
+    depends_on:
+      db:
+        condition: service_healthy
+
+volumes:
+  pgdata:

@@ -1,0 +1,154 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
+
+    <!-- Network -->
+    <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+
+    <!-- Audio recording for voice emotion analysis -->
+    <uses-permission android:name="android.permission.RECORD_AUDIO" />
+
+    <!-- Game detection via UsageStats -->
+    <uses-permission
+        android:name="android.permission.PACKAGE_USAGE_STATS"
+        tools:ignore="ProtectedPermissions" />
+
+    <!-- Foreground services -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MICROPHONE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
+
+    <!-- Notification listener for gaming app craving signals -->
+    <uses-permission android:name="android.permission.BIND_NOTIFICATION_LISTENER_SERVICE"
+        tools:ignore="ProtectedPermissions" />
+
+    <!-- Notifications (Android 13+) -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+
+    <!-- Keep CPU awake during monitoring -->
+    <uses-permission android:name="android.permission.WAKE_LOCK" />
+
+    <!-- Auto-restart on boot -->
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+
+    <application
+        android:name=".ChildApp"
+        android:allowBackup="true"
+        android:icon="@drawable/ic_launcher"
+        android:label="@string/app_name"
+        android:roundIcon="@drawable/ic_launcher"
+        android:supportsRtl="true"
+        android:theme="@style/Theme.ChildApp"
+        android:usesCleartextTraffic="true">
+
+        <activity
+            android:name=".activities.SplashActivity"
+            android:exported="true"
+            android:theme="@style/Theme.ChildApp.Splash">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+
+        <activity
+            android:name=".activities.LoginActivity"
+            android:exported="false"
+            android:theme="@style/Theme.ChildApp.NoActionBar" />
+
+        <activity
+            android:name=".activities.HomeActivity"
+            android:exported="false"
+            android:theme="@style/Theme.ChildApp.NoActionBar" />
+
+        <activity
+            android:name=".activities.SessionActivity"
+            android:exported="false"
+            android:launchMode="singleTop"
+            android:theme="@style/Theme.ChildApp.NoActionBar" />
+
+        <activity
+            android:name=".activities.ChildDashboardActivity"
+            android:exported="false"
+            android:theme="@style/Theme.ChildApp.NoActionBar" />
+
+        <activity
+            android:name=".activities.SettingsActivity"
+            android:exported="false"
+            android:theme="@style/Theme.ChildApp.NoActionBar" />
+
+        <activity
+            android:name=".activities.OnboardingActivity"
+            android:exported="false"
+            android:theme="@style/Theme.ChildApp.NoActionBar" />
+
+        <activity
+            android:name=".activities.SessionHistoryActivity"
+            android:exported="false"
+            android:theme="@style/Theme.ChildApp.NoActionBar" />
+
+        <activity
+            android:name=".activities.CounselorActivity"
+            android:exported="false"
+            android:windowSoftInputMode="adjustResize"
+            android:theme="@style/Theme.ChildApp.NoActionBar" />
+
+        <activity
+            android:name=".activities.ReflectionActivity"
+            android:exported="false"
+            android:theme="@style/Theme.ChildApp.NoActionBar" />
+
+        <!-- Game monitoring foreground service -->
+        <service
+            android:name=".services.GameMonitorService"
+            android:exported="false"
+            android:foregroundServiceType="dataSync" />
+
+        <!-- Voice recording foreground service -->
+        <service
+            android:name=".services.VoiceRecorderService"
+            android:exported="false"
+            android:foregroundServiceType="microphone" />
+
+        <!-- Accessibility service for keyboard chat capture -->
+        <service
+            android:name=".services.ChatAccessibilityService"
+            android:exported="true"
+            android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE">
+            <intent-filter>
+                <action android:name="android.accessibilityservice.AccessibilityService" />
+            </intent-filter>
+            <meta-data
+                android:name="android.accessibilityservice"
+                android:resource="@xml/accessibility_service_config" />
+        </service>
+
+        <!-- Always-on passive monitor: auto-session detection + screen events -->
+        <service
+            android:name=".services.PassiveMonitorService"
+            android:exported="false"
+            android:foregroundServiceType="dataSync" />
+
+        <!-- Notification listener: captures gaming app notifications as craving signals -->
+        <service
+            android:name=".services.GameNotificationService"
+            android:exported="true"
+            android:permission="android.permission.BIND_NOTIFICATION_LISTENER_SERVICE">
+            <intent-filter>
+                <action android:name="android.service.notification.NotificationListenerService" />
+            </intent-filter>
+        </service>
+
+        <!-- Boot receiver to resume monitoring -->
+        <receiver
+            android:name=".services.BootReceiver"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+            </intent-filter>
+        </receiver>
+
+    </application>
+
+</manifest>

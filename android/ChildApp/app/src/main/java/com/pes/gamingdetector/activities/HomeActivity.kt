@@ -1,0 +1,235 @@
+package com.pes.gamingdetector.activities
+
+import android.app.AppOpsManager
+import android.content.ComponentName
+import android.content.Context
+import android.content.Intent
+import android.os.Build
+import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
+import android.provider.Settings
+import android.view.Menu
+import android.view.MenuItem
+import android.view.View
+import android.view.ViewGroup
+import android.widget.TextView
+import android.widget.Toast
+import androidx.appcompat.app.AlertDialog
+import androidx.appcompat.app.AppCompatActivity
+import androidx.core.content.ContextCompat
+import androidx.lifecycle.lifecycleScope
+import androidx.recyclerview.widget.GridLayoutManager
+import androidx.recyclerview.widget.RecyclerView
+import com.pes.gamingdetector.R
+import com.pes.gamingdetector.api.ApiClient
+import com.pes.gamingdetector.api.Game
+import com.pes.gamingdetector.databinding.ActivityHomeBinding
+import com.pes.gamingdetector.services.GameNotificationService
+import com.pes.gamingdetector.services.PassiveMonitorService
+import com.pes.gamingdetector.util.PrefsManager
+import kotlinx.coroutines.launch
+
+class HomeActivity : AppCompatActivity() {
+    private lateinit var binding: ActivityHomeBinding
+    private lateinit var prefs: PrefsManager
+
+    private val uiHandler = Handler(Looper.getMainLooper())
+    private val bannerRefresh = object : Runnable {
+        override fun run() {
+            refreshBanner()
+            uiHandler.postDelayed(this, 3_000L)
+        }
+    }
+
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        binding = ActivityHomeBinding.inflate(layoutInflater)
+        setContentView(binding.root)
+        prefs = PrefsManager(this)
+
+        setSupportActionBar(binding.toolbar)
+        supportActionBar?.title = "Hi, ${prefs.userName}"
+
+        // Start always-on passive monitor (auto-session detection + screen events)
+        ContextCompat.startForegroundService(
+            this,
+            Intent(this, PassiveMonitorService::class.java)
+        )
+
+        checkRequiredPermissions()
+
+        binding.rvGames.layoutManager = GridLayoutManager(this, 2)
+
+        binding.btnResume.setOnClickListener {
+            if (prefs.hasActiveSession()) {
+                startActivity(Intent(this, SessionActivity::class.java))
+            }
+        }
+
+        binding.btnDashboard.setOnClickListener {
+            startActivity(Intent(this, ChildDashboardActivity::class.java))
+        }
+
+        loadGames()
+    }
+
+    override fun onResume() {
+        super.onResume()
+        refreshBanner()
+        uiHandler.postDelayed(bannerRefresh, 3_000L)
+        checkRequiredPermissions()
+    }
+
+    override fun onPause() {
+        super.onPause()
+        uiHandler.removeCallbacks(bannerRefresh)
+    }
+
+    private fun refreshBanner() {
+        if (prefs.hasActiveSession()) {
+            binding.resumeBanner.visibility = View.VISIBLE
+            binding.tvResumegame.text = "Session active: ${prefs.activeSessionGame}"
+        } else {
+            binding.resumeBanner.visibility = View.GONE
+        }
+    }
+
+    private fun loadGames() {
+        lifecycleScope.launch {
+            try {
+                val api = ApiClient.getInstance(prefs.serverUrl)
+                val resp = api.getGames()
+                if (resp.isSuccessful && resp.body()?.success == true) {
+                    val games = resp.body()!!.games
+                    // Read-only list of monitored games — sessions start automatically
+                    // when a game is opened, so tapping a tile does nothing.
+                    binding.rvGames.adapter = GameAdapter(games)
+                }
+            } catch (e: Exception) {
+                val msg = if (e is java.io.IOException)
+                    "Cannot reach server at ${prefs.serverUrl} — go to Settings and update the server address."
+                else "Failed to load games: ${e.message}"
+                Toast.makeText(this@HomeActivity, msg, Toast.LENGTH_LONG).show()
+            }
+        }
+    }
+
+    override fun onCreateOptionsMenu(menu: Menu): Boolean {
+        menuInflater.inflate(R.menu.menu_home, menu)
+        return true
+    }
+
+    override fun onOptionsItemSelected(item: MenuItem): Boolean = when (item.itemId) {
+        R.id.action_settings -> {
+            startActivity(Intent(this, SettingsActivity::class.java))
+            true
+        }
+        R.id.action_logout -> {
+            prefs.logout()
+            startActivity(Intent(this, LoginActivity::class.java))
+            finishAffinity()
+            true
+        }
+        else -> super.onOptionsItemSelected(item)
+    }
+
+    // --- Permission helpers ---
+
+    private fun checkRequiredPermissions() {
+        // Show dialogs one at a time in priority order; each "Skip" moves to the next.
+        when {
+            !hasUsageStatsPermission() -> showPermissionDialog(
+                title = "Allow Usage Access",
+                message = "This lets the app detect which game you're playing and start tracking automatically — no manual tapping needed.\n\nTap 'Open Settings', find this app in the list, and toggle it ON.",
+                settingsIntent = Intent(Settings.ACTION_USAGE_ACCESS_SETTINGS),
+                onSkip = { if (!isNotificationListenerEnabled()) showNotifListenerDialog() else showAccessibilityDialog() }
+            )
+            !isNotificationListenerEnabled() -> showNotifListenerDialog()
+            !isAccessibilityEnabled() -> showAccessibilityDialog()
+        }
+    }
+
+    private fun showNotifListenerDialog() {
+        showPermissionDialog(
+            title = "Allow Notification Access",
+            message = "Tracks gaming app notifications so the app can detect cravings and urges.\n\nTap 'Open Settings', find this app, and toggle it ON.",
+            settingsIntent = Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS),
+            onSkip = { if (!isAccessibilityEnabled()) showAccessibilityDialog() }
+        )
+    }
+
+    private fun showAccessibilityDialog() {
+        showPermissionDialog(
+            title = "Allow Accessibility Access",
+            message = "Captures chat messages sent during gaming sessions to detect toxic language and emotional stress.\n\nTap 'Open Settings', find 'GamingDetector', and toggle it ON.",
+            settingsIntent = Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS),
+            onSkip = null
+        )
+    }
+
+    private fun showPermissionDialog(
+        title: String,
+        message: String,
+        settingsIntent: Intent,
+        onSkip: (() -> Unit)?
+    ) {
+        AlertDialog.Builder(this)
+            .setTitle(title)
+            .setMessage(message)
+            .setCancelable(false)
+            .setPositiveButton("Open Settings") { _, _ -> startActivity(settingsIntent) }
+            .setNegativeButton("Skip") { _, _ -> onSkip?.invoke() }
+            .show()
+    }
+
+    private fun hasUsageStatsPermission(): Boolean {
+        val ops = getSystemService(Context.APP_OPS_SERVICE) as AppOpsManager
+        val mode = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            ops.unsafeCheckOpNoThrow(
+                AppOpsManager.OPSTR_GET_USAGE_STATS, android.os.Process.myUid(), packageName
+            )
+        } else {
+            @Suppress("DEPRECATION")
+            ops.checkOpNoThrow(
+                AppOpsManager.OPSTR_GET_USAGE_STATS, android.os.Process.myUid(), packageName
+            )
+        }
+        return mode == AppOpsManager.MODE_ALLOWED
+    }
+
+    private fun isNotificationListenerEnabled(): Boolean {
+        val flat = Settings.Secure.getString(contentResolver, "enabled_notification_listeners")
+            ?: return false
+        val myComponent = ComponentName(this, GameNotificationService::class.java).flattenToString()
+        return flat.split(":").any { it == myComponent }
+    }
+
+    private fun isAccessibilityEnabled(): Boolean {
+        val flat = Settings.Secure.getString(
+            contentResolver,
+            Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES
+        ) ?: return false
+        return flat.contains(packageName, ignoreCase = true)
+    }
+
+    private inner class GameAdapter(
+        private val games: List<Game>
+    ) : RecyclerView.Adapter<GameAdapter.VH>() {
+
+        inner class VH(v: View) : RecyclerView.ViewHolder(v) {
+            val tvName: TextView = v.findViewById(R.id.tvGameName)
+        }
+
+        override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): VH {
+            val v = layoutInflater.inflate(R.layout.item_game, parent, false)
+            return VH(v)
+        }
+
+        override fun onBindViewHolder(holder: VH, position: Int) {
+            holder.tvName.text = games[position].name
+        }
+
+        override fun getItemCount() = games.size
+    }
+}

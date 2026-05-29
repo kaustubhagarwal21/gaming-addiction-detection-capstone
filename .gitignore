@@ -1,0 +1,58 @@
+# ── Android / Gradle build output ──
+**/build/
+.gradle/
+*.apk
+*.aab
+*.ap_
+*.dex
+captures/
+
+# ── Python ──
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.coverage
+htmlcov/
+
+# ── Virtual environments ──
+.venv/
+venv/
+venv_new/
+env/
+**/.venv/
+**/venv/
+
+# ── Databases (dev only — production uses Postgres via DATABASE_URL) ──
+*.db
+*.db-shm
+*.db-wal
+*.sqlite
+*.sqlite3
+
+# ── Secrets / machine-local config (never publish) ──
+.env
+.env.local
+*.keystore
+*.jks
+firebase_key.json
+local.properties
+
+# ── Audio capture scratch ──
+backend/audio_uploads/*
+!backend/audio_uploads/.gitkeep
+
+# ── Logs ──
+*.log
+
+# ── OS / IDE junk ──
+.DS_Store
+._*
+__MACOSX/
+.idea/
+*.iml
+*.swp
+
+# ── Old duplicate project copies (kept on disk, intentionally not in the repo) ──
+/capstone-main/
+/capstone_full_integrated/

@@ -1,0 +1,254 @@
+<?xml version="1.0" encoding="utf-8"?>
+<androidx.coordinatorlayout.widget.CoordinatorLayout
+    xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@color/colorBackground">
+
+    <com.google.android.material.appbar.AppBarLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:background="@color/colorBackground"
+        app:elevation="0dp">
+        <androidx.appcompat.widget.Toolbar
+            android:id="@+id/toolbar"
+            android:layout_width="match_parent"
+            android:layout_height="?attr/actionBarSize"
+            android:background="@color/colorBackground"
+            app:titleTextColor="@color/text_primary"
+            app:titleTextAppearance="@style/TextAppearance.App.Title" />
+    </com.google.android.material.appbar.AppBarLayout>
+
+    <androidx.core.widget.NestedScrollView
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:clipToPadding="false"
+        app:layout_behavior="@string/appbar_scrolling_view_behavior">
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:padding="16dp"
+            android:paddingBottom="32dp">
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Daily check-in"
+                android:textAppearance="@style/TextAppearance.App.Display" />
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Quick reflection to help us understand you better"
+                android:textAppearance="@style/TextAppearance.App.BodySmall"
+                android:layout_marginTop="6dp" />
+
+            <!-- MOOD -->
+            <com.google.android.material.card.MaterialCardView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="24dp"
+                app:cardCornerRadius="20dp"
+                app:cardElevation="0dp"
+                app:strokeColor="@color/cardStroke"
+                app:strokeWidth="1dp"
+                app:contentPadding="20dp">
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="vertical">
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="HOW'S YOUR MOOD?"
+                        android:textAppearance="@style/TextAppearance.App.Label" />
+
+                    <LinearLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:orientation="horizontal"
+                        android:layout_marginTop="16dp">
+
+                        <TextView android:id="@+id/mood1"
+                            android:layout_width="0dp" android:layout_height="60dp"
+                            android:layout_weight="1" android:gravity="center"
+                            android:text="😞" android:textSize="32sp"
+                            android:clickable="true" android:focusable="true"
+                            android:background="?attr/selectableItemBackgroundBorderless"
+                            android:tag="1" />
+                        <TextView android:id="@+id/mood2"
+                            android:layout_width="0dp" android:layout_height="60dp"
+                            android:layout_weight="1" android:gravity="center"
+                            android:text="😐" android:textSize="32sp"
+                            android:clickable="true" android:focusable="true"
+                            android:background="?attr/selectableItemBackgroundBorderless"
+                            android:tag="2" />
+                        <TextView android:id="@+id/mood3"
+                            android:layout_width="0dp" android:layout_height="60dp"
+                            android:layout_weight="1" android:gravity="center"
+                            android:text="🙂" android:textSize="32sp"
+                            android:clickable="true" android:focusable="true"
+                            android:background="?attr/selectableItemBackgroundBorderless"
+                            android:tag="3" />
+                        <TextView android:id="@+id/mood4"
+                            android:layout_width="0dp" android:layout_height="60dp"
+                            android:layout_weight="1" android:gravity="center"
+                            android:text="😄" android:textSize="32sp"
+                            android:clickable="true" android:focusable="true"
+                            android:background="?attr/selectableItemBackgroundBorderless"
+                            android:tag="4" />
+                        <TextView android:id="@+id/mood5"
+                            android:layout_width="0dp" android:layout_height="60dp"
+                            android:layout_weight="1" android:gravity="center"
+                            android:text="🤩" android:textSize="32sp"
+                            android:clickable="true" android:focusable="true"
+                            android:background="?attr/selectableItemBackgroundBorderless"
+                            android:tag="5" />
+                    </LinearLayout>
+                </LinearLayout>
+            </com.google.android.material.card.MaterialCardView>
+
+            <!-- SLEEP -->
+            <com.google.android.material.card.MaterialCardView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="16dp"
+                app:cardCornerRadius="20dp"
+                app:cardElevation="0dp"
+                app:strokeColor="@color/cardStroke"
+                app:strokeWidth="1dp"
+                app:contentPadding="20dp">
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="vertical">
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="HOW DID YOU SLEEP?"
+                        android:textAppearance="@style/TextAppearance.App.Label" />
+
+                    <com.google.android.material.slider.Slider
+                        android:id="@+id/sliderSleep"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="8dp"
+                        android:valueFrom="1"
+                        android:valueTo="5"
+                        android:stepSize="1"
+                        android:value="3" />
+
+                    <LinearLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:orientation="horizontal">
+                        <TextView android:layout_width="0dp" android:layout_height="wrap_content"
+                            android:layout_weight="1" android:text="Terrible"
+                            android:textAppearance="@style/TextAppearance.App.Caption" />
+                        <TextView android:layout_width="wrap_content" android:layout_height="wrap_content"
+                            android:text="Great" android:textAppearance="@style/TextAppearance.App.Caption" />
+                    </LinearLayout>
+                </LinearLayout>
+            </com.google.android.material.card.MaterialCardView>
+
+            <!-- ENERGY -->
+            <com.google.android.material.card.MaterialCardView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="16dp"
+                app:cardCornerRadius="20dp"
+                app:cardElevation="0dp"
+                app:strokeColor="@color/cardStroke"
+                app:strokeWidth="1dp"
+                app:contentPadding="20dp">
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="vertical">
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="ENERGY LEVEL"
+                        android:textAppearance="@style/TextAppearance.App.Label" />
+
+                    <com.google.android.material.slider.Slider
+                        android:id="@+id/sliderEnergy"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="8dp"
+                        android:valueFrom="1"
+                        android:valueTo="5"
+                        android:stepSize="1"
+                        android:value="3" />
+
+                    <LinearLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:orientation="horizontal">
+                        <TextView android:layout_width="0dp" android:layout_height="wrap_content"
+                            android:layout_weight="1" android:text="Drained"
+                            android:textAppearance="@style/TextAppearance.App.Caption" />
+                        <TextView android:layout_width="wrap_content" android:layout_height="wrap_content"
+                            android:text="Energized" android:textAppearance="@style/TextAppearance.App.Caption" />
+                    </LinearLayout>
+                </LinearLayout>
+            </com.google.android.material.card.MaterialCardView>
+
+            <!-- NOTES -->
+            <com.google.android.material.card.MaterialCardView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="16dp"
+                app:cardCornerRadius="20dp"
+                app:cardElevation="0dp"
+                app:strokeColor="@color/cardStroke"
+                app:strokeWidth="1dp"
+                app:contentPadding="20dp">
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="vertical">
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="ANYTHING ON YOUR MIND? (OPTIONAL)"
+                        android:textAppearance="@style/TextAppearance.App.Label" />
+
+                    <com.google.android.material.textfield.TextInputLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="10dp"
+                        android:hint="A quick note">
+
+                        <com.google.android.material.textfield.TextInputEditText
+                            android:id="@+id/etNote"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:maxLines="4"
+                            android:inputType="textCapSentences|textMultiLine" />
+                    </com.google.android.material.textfield.TextInputLayout>
+                </LinearLayout>
+            </com.google.android.material.card.MaterialCardView>
+
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/btnSubmit"
+                android:layout_width="match_parent"
+                android:layout_height="56dp"
+                android:layout_marginTop="24dp"
+                android:text="Save check-in" />
+
+        </LinearLayout>
+    </androidx.core.widget.NestedScrollView>
+
+</androidx.coordinatorlayout.widget.CoordinatorLayout>

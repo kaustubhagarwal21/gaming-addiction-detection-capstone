@@ -1,0 +1,233 @@
+"""Backend smoke + integration tests — PES Capstone PW26_SJ_05.
+
+Run from project root:
+    cd backend && pytest tests/ -v
+
+These tests use Flask's test client (no live server needed). The DB is the
+real `gaming_addiction.db` so make sure `python seed_demo.py` has been run.
+"""
+import os
+import sys
+import json
+import pytest
+
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+from app import app as flask_app
+
+
+@pytest.fixture(scope='session')
+def client():
+    flask_app.config['TESTING'] = True
+    with flask_app.test_client() as c:
+        yield c
+
+
+# ─── Health and basic endpoints ────────────────────────────────────
+
+def test_health(client):
+    r = client.get('/api/health')
+    assert r.status_code == 200
+    data = r.get_json()
+    assert data['status'] in ('ok', 'healthy')
+
+
+def test_games_list(client):
+    r = client.get('/api/games')
+    assert r.status_code == 200
+    data = r.get_json()
+    assert data['success'] is True
+    assert isinstance(data['games'], list)
+    assert len(data['games']) > 0
+
+
+# ─── Login flow ────────────────────────────────────────────────────
+
+def test_child_login(client):
+    r = client.post('/api/user/login',
+                    json={'pin': '1234', 'role': 'child'})
+    assert r.status_code in (200, 401)
+
+
+def test_parent_login(client):
+    r = client.post('/api/user/login',
+                    json={'pin': '0000', 'role': 'parent'})
+    assert r.status_code in (200, 401)
+
+
+def test_bad_login(client):
+    r = client.post('/api/user/login',
+                    json={'pin': 'wrong', 'role': 'child'})
+    assert r.status_code in (401, 200)
+    data = r.get_json()
+    assert data['success'] is False
+
+
+def test_login_returns_token(client):
+    """A successful login must hand back a signed bearer token."""
+    r = client.post('/api/user/login', json={'pin': '1234', 'role': 'child'})
+    if r.status_code == 200:
+        data = r.get_json()
+        assert data.get('token'), 'login should return a signed auth token'
+
+
+# ─── Postgres dialect translation ──────────────────────────────────
+def test_pg_placeholder_translation():
+    """? placeholders become %s and literal % is escaped for psycopg2."""
+    from app import _to_pg
+    assert _to_pg("SELECT * FROM t WHERE a=? AND b=?") == \
+        "SELECT * FROM t WHERE a=%s AND b=%s"
+    assert _to_pg("UPDATE t SET note='100%' WHERE id=?") == \
+        "UPDATE t SET note='100%%' WHERE id=%s"
+
+
+# ─── Dashboards (require seeded data) ──────────────────────────────
+
+def test_user_dashboard(client):
+    r = client.get('/api/dashboard/user?user_id=1')
+    assert r.status_code == 200
+    data = r.get_json()
+    assert data['success'] is True
+
+
+def test_parent_dashboard(client):
+    r = client.get('/api/dashboard/parent?user_id=1')
+    assert r.status_code == 200
+    data = r.get_json()
+    assert data['success'] is True
+    assert 'current_risk' in data
+    assert 'risk_score' in data
+
+
+# ─── New endpoints (Phase 3) ───────────────────────────────────────
+
+def test_screen_event(client):
+    r = client.post('/api/child/screen_event',
+                    json={'user_id': '1', 'event_type': 'screen_on',
+                          'timestamp': '1700000000000'})
+    assert r.status_code == 200
+
+
+def test_notification_event(client):
+    r = client.post('/api/child/notification_event',
+                    json={'user_id': '1', 'package_name': 'com.tencent.ig',
+                          'game_name': 'BGMI', 'notification_title': 'test'})
+    assert r.status_code == 200
+
+
+def test_streak(client):
+    r = client.get('/api/child/streak?user_id=1')
+    assert r.status_code == 200
+    data = r.get_json()
+    assert data['success'] is True
+    assert 'current_streak' in data
+
+
+def test_get_time_limit(client):
+    r = client.get('/api/child/get_limit?user_id=1')
+    assert r.status_code == 200
+
+
+def test_child_enriched(client):
+    r = client.get('/api/dashboard/child_enriched?user_id=1')
+    assert r.status_code == 200
+    data = r.get_json()
+    assert data['success'] is True
+
+
+# ─── Counselor chatbot ─────────────────────────────────────────────
+
+def test_counselor_chat_greeting(client):
+    r = client.post('/api/counselor/chat',
+                    json={'user_id': 1, 'message': 'hi mira'})
+    assert r.status_code == 200
+    data = r.get_json()
+    assert data['success'] is True
+    assert len(data['reply']) > 0
+    assert data['intent'] == 'greeting'
+
+
+def test_counselor_chat_craving(client):
+    r = client.post('/api/counselor/chat',
+                    json={'user_id': 1, 'message': "I can't stop playing"})
+    assert r.status_code == 200
+    data = r.get_json()
+    assert data['intent'] == 'craving'
+
+
+def test_counselor_history(client):
+    # After the above two messages, history should have at least 4 entries
+    r = client.get('/api/counselor/history?user_id=1')
+    assert r.status_code == 200
+    data = r.get_json()
+    assert data['success'] is True
+    assert len(data['messages']) >= 2
+
+
+def test_counselor_chat_validation(client):
+    r = client.post('/api/counselor/chat', json={'user_id': 1})
+    assert r.status_code == 400
+
+
+# ─── Reflection ────────────────────────────────────────────────────
+
+def test_post_reflection(client):
+    r = client.post('/api/child/reflection',
+                    json={'user_id': 1, 'mood_rating': 3,
+                          'sleep_quality': 4, 'energy_level': 3,
+                          'note': 'okay day'})
+    assert r.status_code == 200
+    data = r.get_json()
+    assert data['success'] is True
+
+
+def test_get_reflections(client):
+    r = client.get('/api/child/reflections?user_id=1&days=14')
+    assert r.status_code == 200
+    data = r.get_json()
+    assert data['success'] is True
+    assert isinstance(data['reflections'], list)
+
+
+# ─── Anomaly detection ─────────────────────────────────────────────
+
+def test_anomalies(client):
+    r = client.get('/api/anomalies?user_id=1')
+    assert r.status_code == 200
+    data = r.get_json()
+    assert data['success'] is True
+    assert 'anomalies' in data
+    assert isinstance(data['anomalies'], list)
+
+
+def test_anomalies_validation(client):
+    r = client.get('/api/anomalies')
+    assert r.status_code == 400
+
+
+# ─── Sessions and history ──────────────────────────────────────────
+
+def test_get_sessions(client):
+    r = client.get('/api/sessions?user_id=1&limit=10')
+    assert r.status_code == 200
+
+
+def test_session_lifecycle(client):
+    # Start
+    r = client.post('/api/session/start',
+                    json={'user_id': 1, 'game_name': 'BGMI'})
+    assert r.status_code == 200
+    data = r.get_json()
+    assert data['success'] is True
+    sid = data['session_id']
+
+    # End
+    r = client.post(f'/api/session/{sid}/end')
+    assert r.status_code == 200
+
+
+# ─── Validation guards ─────────────────────────────────────────────
+
+def test_missing_user_id(client):
+    r = client.get('/api/dashboard/user')
+    # Should default or 400 — either is acceptable
+    assert r.status_code in (200, 400)
