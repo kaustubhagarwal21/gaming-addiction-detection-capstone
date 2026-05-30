@@ -18,6 +18,10 @@ warnings.filterwarnings('ignore')
 MODELS_DIR = os.path.join(os.path.dirname(__file__), '..', 'backend', 'models')
 DATA_DIR   = os.path.join(os.path.dirname(__file__), '..', 'data')
 
+# Share the EXACT preprocessing the backend serves with (no train/serve skew).
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'backend'))
+from text_utils import clean_text
+
 
 # ──────────────────────────────────────────────────────────────────────────────
 # 1. BEHAVIOR MODEL
@@ -243,8 +247,10 @@ def train_chat_model():
 
     df = pd.read_csv(os.path.join(DATA_DIR, 'chat_dataset.csv'))
     df = df[['text', 'toxicity_score']].dropna()
-    df['text'] = df['text'].astype(str).str.strip()
-    df = df[df['text'].str.len() > 3]
+    # Apply the SAME clean_text the backend uses at serving (fixes train/serve skew:
+    # the model was previously fit on raw text but served on clean_text()).
+    df['text'] = df['text'].astype(str).map(clean_text)
+    df = df[df['text'].str.len() > 2]
 
     # Binary label: toxic if toxicity_score > 0
     df['toxic'] = (df['toxicity_score'] > 0.0).astype(int)
@@ -261,6 +267,9 @@ def train_chat_model():
         df_bal['text'], df_bal['toxic'], test_size=0.2, random_state=42, stratify=df_bal['toxic']
     )
 
+    # Word n-grams on cleaned text. (Char n-grams were tried but over-fired on clean
+    # gaming phrases like "nice shot ... clutch" via spurious substrings; the slang
+    # map in clean_text already canonicalises the common obfuscations we care about.)
     vectorizer = TfidfVectorizer(
         max_features=20000, ngram_range=(1, 2), min_df=2,
         sublinear_tf=True, strip_accents='unicode'
@@ -290,7 +299,7 @@ def train_chat_model():
     ]
     print("\nSanity checks (predict_proba[1] = toxicity score):")
     for msg, expected in test_messages:
-        vec   = vectorizer.transform([msg])
+        vec   = vectorizer.transform([clean_text(msg)])
         score = clf.predict_proba(vec)[0][1]
         print(f"  [{score:.3f}] ({expected:5s}) {msg[:55]}")
 
