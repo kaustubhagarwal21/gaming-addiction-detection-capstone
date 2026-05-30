@@ -61,6 +61,28 @@ app = Flask(__name__)
 CORS(app, resources={r"/api/*": {"origins": "*"}})
 app.config['MAX_CONTENT_LENGTH'] = 100 * 1024 * 1024  # 100 MB
 
+# Postgres aggregates (AVG, ROUND, …) come back as Decimal, which Flask's default
+# JSON encoder can't serialize. Teach jsonify to emit Decimal/numpy scalars as
+# plain numbers so the same handlers work on both SQLite (float) and Postgres.
+from decimal import Decimal as _Decimal
+from flask.json.provider import DefaultJSONProvider as _DefaultJSONProvider
+
+
+class _NumericJSONProvider(_DefaultJSONProvider):
+    def default(self, o):
+        if isinstance(o, _Decimal):
+            return float(o)
+        if isinstance(o, np.integer):
+            return int(o)
+        if isinstance(o, np.floating):
+            return float(o)
+        if isinstance(o, np.ndarray):
+            return o.tolist()
+        return super().default(o)
+
+
+app.json = _NumericJSONProvider(app)
+
 # Rate limiter — no-op wrapper when flask_limiter isn't installed
 if _limiter_real:
     limiter = Limiter(app=app, key_func=_get_ip, default_limits=["120 per minute"])
@@ -561,6 +583,17 @@ def init_db():
         _ddl = _ddl.replace('INTEGER PRIMARY KEY AUTOINCREMENT', 'SERIAL PRIMARY KEY') \
                    .replace('CURRENT_TIMESTAMP', '(now())::text')
     c.executescript(_ddl)
+
+    if USE_POSTGRES:
+        # Our score columns are REAL (double precision), but Postgres only ships
+        # ROUND(numeric, int) — not ROUND(double precision, int). Add that overload
+        # once (returning float, not Decimal) so every ROUND(...) call site just works.
+        c.executescript('''
+            CREATE OR REPLACE FUNCTION round(double precision, integer)
+            RETURNS double precision AS $fn$
+                SELECT round($1::numeric, $2)::double precision
+            $fn$ LANGUAGE sql IMMUTABLE;
+        ''')
 
     # Columns added after the original schema shipped — idempotent on both engines.
     add_column(c, 'users', 'child_user_id',   'INTEGER DEFAULT NULL')   # legacy multi-child field
