@@ -46,7 +46,9 @@ data class RiskFactor(
     val feature: String,
     val label: String,
     val value: Double,
-    @SerializedName("contribution_pct") val contributionPct: Double
+    @SerializedName("contribution_pct") val contributionPct: Double,
+    val impact: Double? = null,           // signed SHAP value
+    val direction: String? = null         // "raises" | "lowers"
 )
 
 data class StreakData(
@@ -65,6 +67,8 @@ data class ParentalDashboard(
     val success: Boolean,
     @SerializedName("child_name") val childName: String?,
     @SerializedName("current_risk") val currentRisk: String?,
+    @SerializedName("risk_label") val riskLabel: String?,
+    val disclaimer: String?,
     @SerializedName("risk_score") val riskScore: Double?,
     val alerts: List<Alert>?,
     @SerializedName("trend_data") val trendData: List<TrendPoint>?,

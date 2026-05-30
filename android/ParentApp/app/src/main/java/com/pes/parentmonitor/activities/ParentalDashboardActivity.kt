@@ -149,7 +149,9 @@ class ParentalDashboardActivity : AppCompatActivity() {
 
         val risk  = dash.currentRisk ?: "unknown"
         val score = dash.riskScore ?: 0.0
-        binding.tvCurrentRisk.text  = risk.uppercase().replace("_", " ")
+        // Screening label (e.g. "High concern") rather than the clinical category key.
+        binding.tvCurrentRisk.text  = (dash.riskLabel ?: risk.replace("_", " ")
+            .replaceFirstChar { it.uppercase() })
         binding.tvRiskScore.text    = "${"%.0f".format(score * 100)}%"
 
         val color = when (risk.lowercase()) {
@@ -238,9 +240,12 @@ class ParentalDashboardActivity : AppCompatActivity() {
         if (factors.isNotEmpty()) {
             binding.cardRiskExplanation.visibility = View.VISIBLE
             val sb = StringBuilder()
-            factors.forEachIndexed { i, f ->
-                sb.append("${i + 1}. ${f.label}:  ${"%.1f".format(f.value)}  (${f.contributionPct.toInt()}% of risk)\n")
+            factors.forEach { f ->
+                // SHAP direction: ▲ raises the score, ▼ lowers it.
+                val arrow = when (f.direction) { "raises" -> "▲"; "lowers" -> "▼"; else -> "•" }
+                sb.append("$arrow ${f.label}:  ${"%.1f".format(f.value)}  (${f.contributionPct.toInt()}%)\n")
             }
+            dash.disclaimer?.let { sb.append("\nℹ ${it}") }
             binding.tvRiskExplanation.text = sb.toString().trimEnd()
         }
 

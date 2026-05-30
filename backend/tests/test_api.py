@@ -97,6 +97,23 @@ def test_delete_data_endpoint(client):
     assert r.status_code == 200 and r.get_json()['success'] is True
 
 
+# ─── SHAP explanation: version-shape normalization ─────────────────
+def test_shap_per_class_shapes():
+    import numpy as np
+    from app import _shap_per_class
+    # shap < 0.46 multiclass: list of (n_samples, n_features)
+    lst = [np.array([[1., 2., 3.]]), np.array([[4., 5., 6.]]), np.array([[7., 8., 9.]])]
+    out = _shap_per_class(lst)
+    assert len(out) == 3 and list(out[2]) == [7., 8., 9.]
+    # shap >= 0.46: (n_samples, n_features, n_classes)
+    arr = np.zeros((1, 3, 3)); arr[0, :, 2] = [7., 8., 9.]
+    out2 = _shap_per_class(arr)
+    assert len(out2) == 3 and list(out2[2]) == [7., 8., 9.]
+    # binary/regression: (n_samples, n_features)
+    out3 = _shap_per_class(np.array([[1., 2., 3.]]))
+    assert len(out3) == 1 and list(out3[0]) == [1., 2., 3.]
+
+
 # ─── Dashboards (require seeded data) ──────────────────────────────
 
 def test_user_dashboard(client):

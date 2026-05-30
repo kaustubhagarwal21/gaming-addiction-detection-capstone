@@ -38,6 +38,16 @@ try:
 except ImportError:
     FPDF_AVAILABLE = False
 
+# Optional SHAP for per-prediction feature attribution (falls back to importances).
+# Catch broad Exception, not just ImportError: a version-mismatched shap (e.g. built
+# for NumPy 1.x running under NumPy 2.x) raises AttributeError on import — we must
+# degrade gracefully rather than crash the whole API at startup.
+try:
+    import shap
+    SHAP_AVAILABLE = True
+except Exception:
+    SHAP_AVAILABLE = False
+
 # Optional rate-limiting — gracefully disabled if Flask-Limiter not installed
 try:
     from flask_limiter import Limiter
@@ -370,6 +380,17 @@ FEATURE_LABELS = {
     'neglect_responsibilities_score':  'Neglecting duties',
     'gaming_priority_score':           'Gaming over priorities',
 }
+
+# This is a wellbeing SCREENING tool, NOT a clinical diagnosis. Internal category
+# keys (casual/at_risk/addicted) are kept for storage/compat; these are the
+# non-clinical words shown to families, plus a disclaimer carried in responses.
+RISK_DISPLAY = {
+    'casual':   'Low concern',
+    'at_risk':  'Some concern',
+    'addicted': 'High concern',
+}
+SCREENING_DISCLAIMER = ("Wellbeing screening indicator based on gaming patterns — "
+                        "not a medical or clinical diagnosis.")
 
 
 def load_models():
@@ -755,6 +776,73 @@ def _explain_behavior(feat_dict: dict) -> list:
         logger.debug(f"Explain error: {e}")
         return []
 
+
+_behavior_explainer = None
+
+
+def _get_behavior_explainer():
+    """Lazily build (and cache) a SHAP TreeExplainer for the behaviour model."""
+    global _behavior_explainer
+    if _behavior_explainer is None and SHAP_AVAILABLE and behavior_model is not None:
+        try:
+            _behavior_explainer = shap.TreeExplainer(behavior_model)
+        except Exception as e:
+            logger.warning(f"SHAP explainer init failed: {e}")
+            _behavior_explainer = False   # sentinel: don't retry every call
+    return _behavior_explainer or None
+
+
+def _shap_per_class(sv):
+    """Normalise shap_values output (varies by SHAP version) to a list of
+       per-class (n_features,) arrays for the single sample we passed in."""
+    if isinstance(sv, list):                       # old multiclass: list[(n_samples, n_features)]
+        return [np.asarray(a)[0] for a in sv]
+    arr = np.asarray(sv)
+    if arr.ndim == 3:                              # (n_samples, n_features, n_classes)
+        return [arr[0, :, k] for k in range(arr.shape[2])]
+    if arr.ndim == 2:                              # (n_samples, n_features) — binary/regression
+        return [arr[0]]
+    return [arr]
+
+
+def _shap_explain_behavior(feat_dict: dict, top_n: int = 4) -> list:
+    """Per-prediction SHAP attribution: which behaviours pushed the risk up or down.
+       Signed and local (unlike global feature importances). Falls back gracefully."""
+    explainer = _get_behavior_explainer()
+    if explainer is None or feature_scaler is None:
+        return _explain_behavior(feat_dict)
+    try:
+        X_df     = pd.DataFrame([feat_dict])[BEHAVIORAL_FEATURES]
+        X_scaled = feature_scaler.transform(X_df)
+        arrs     = _shap_per_class(explainer.shap_values(X_scaled))
+        n        = len(arrs)
+        # Combine class contributions to mirror the b_score weighting
+        # (at_risk × 0.5 + addicted × 1.0); for binary, the positive class.
+        if n >= 3:
+            contrib = arrs[1] * 0.5 + arrs[2] * 1.0
+        elif n == 2:
+            contrib = arrs[1]
+        else:
+            contrib = arrs[0]
+        contrib = np.asarray(contrib, dtype=float)
+        total   = float(np.abs(contrib).sum()) or 1.0
+        order   = np.argsort(np.abs(contrib))[::-1][:top_n]
+        return [
+            {
+                'feature':          BEHAVIORAL_FEATURES[i],
+                'label':            FEATURE_LABELS.get(BEHAVIORAL_FEATURES[i], BEHAVIORAL_FEATURES[i]),
+                'value':            round(float(feat_dict.get(BEHAVIORAL_FEATURES[i], 0)), 2),
+                'impact':           round(float(contrib[i]), 4),
+                'direction':        'raises' if contrib[i] > 0 else 'lowers',
+                # backward-compatible magnitude (% of total absolute attribution)
+                'contribution_pct': round(abs(float(contrib[i])) / total * 100, 1),
+            }
+            for i in order
+        ]
+    except Exception as e:
+        logger.debug(f"SHAP explain error: {e}")
+        return _explain_behavior(feat_dict)
+
 # ──────────────────────── AUDIO HELPERS ──────────────────────────
 
 VOICE_RISK = {'angry': 0.9, 'frustrated': 0.7, 'excited': 0.4, 'neutral': 0.1}
@@ -1088,7 +1176,7 @@ def run_prediction(session_id: int) -> dict:
             probs     = behavior_model.predict_proba(X_arr)[0]
             b_score   = float(probs[1] * 0.5 + probs[2] * 1.0) if len(probs) > 2 else float(probs[-1])
             b_conf    = float(max(probs))
-            top_factors = _explain_behavior(feat_dict)
+            top_factors = _shap_explain_behavior(feat_dict)
             b_present = True
         except Exception as e:
             logger.error(f"Behaviour prediction error: {e}")
@@ -1178,6 +1266,10 @@ def run_prediction(session_id: int) -> dict:
         conf      = 0.3
     final = float(np.clip(raw_final * genre_weight, 0, 1))
     cat   = 'casual' if final < 0.33 else ('at_risk' if final < 0.67 else 'addicted')
+    # Don't assert the highest-concern band on sparse data — a few sessions are
+    # needed before a confident screening signal. Caps at "Some concern" early on.
+    if observation_mode and cat == 'addicted':
+        cat = 'at_risk'
 
     result = {
         'behavior_score':    round(b_score, 4),
@@ -1185,6 +1277,8 @@ def run_prediction(session_id: int) -> dict:
         'voice_score':       round(v_score, 4),
         'final_risk_score':  round(final,   4),
         'risk_category':     cat,
+        'risk_label':        RISK_DISPLAY.get(cat, cat),
+        'disclaimer':        SCREENING_DISCLAIMER,
         'confidence':        conf,
         'observation_mode':  observation_mode,
         'sessions_analyzed': total_sessions,
@@ -2179,7 +2273,7 @@ def parent_dashboard():
                   (latest_pred_sess['session_id'],))
         brow = c.fetchone()
         if brow:
-            risk_explanation = _explain_behavior({f: float(brow[f] or 0) for f in BEHAVIORAL_FEATURES})
+            risk_explanation = _shap_explain_behavior({f: float(brow[f] or 0) for f in BEHAVIORAL_FEATURES})
 
     # Latest prediction's game genre
     c.execute('''SELECT p.final_risk_score FROM predictions p JOIN sessions s ON s.session_id=p.session_id
@@ -2222,6 +2316,8 @@ def parent_dashboard():
         'success':             True,
         'child_name':          profile.get('name', 'Your Child'),
         'current_risk':        risk_level,
+        'risk_label':          RISK_DISPLAY.get(risk_level, risk_level),
+        'disclaimer':          SCREENING_DISCLAIMER,
         'risk_score':          latest.get('final_risk_score', 0.0),
         'alerts':              formatted_alerts,
         'trend_data':          trend,

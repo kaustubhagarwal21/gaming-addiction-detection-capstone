@@ -17,5 +17,5 @@
     <string name="no_sessions_yet">No sessions yet. Start playing!</string>
     <string name="live_risk">Live Risk</string>
     <string name="timer">00:00:00</string>
-    <string name="accessibility_service_description">Captures in-game chat messages for addiction risk analysis</string>
+    <string name="accessibility_service_description">Captures in-game chat messages for gaming wellbeing analysis</string>
 </resources>
