@@ -126,6 +126,8 @@ def test_fuse_emotion_va():
     assert fuse_emotion('neutral', -1.0, probs=calm, valence_conf=1.0) == 'frustrated'
     # positive words -> excited
     assert fuse_emotion('neutral', 1.0, probs=happy, valence_conf=1.0) == 'excited'
+    # trained toxicity pulls valence negative even with no lexicon words + calm tone
+    assert fuse_emotion('neutral', 0.0, probs=calm, valence_conf=0.0, toxicity=0.9) == 'frustrated'
     # fallback path (no distribution) still behaves
     assert fuse_emotion('angry', -0.6) == 'angry'
     assert fuse_emotion('neutral', 0.5) == 'excited'

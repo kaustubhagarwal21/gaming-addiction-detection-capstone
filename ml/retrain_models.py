@@ -42,6 +42,27 @@ def generate_behavior_dataset(n=25000, seed=42):
     def clip(arr, lo, hi):
         return np.clip(arr, lo, hi)
 
+    def derive_psychometrics(obj):
+        """Derive the 10 psychometric scores from the 10 objective features using the
+        SAME formulas the live backend's compute_behavioral_features() uses at serving
+        (with notification/screen terms at their 'no extra signal' defaults). This
+        removes the train/serve skew that came from generating them independently."""
+        daily, weekly, spd, dur, lnr, dpw, streak, binge, brk, rlr = (obj[:, i] for i in range(10))
+        m = obj.shape[0]
+        nz = lambda s: rng.normal(0.0, s, m)        # small spread so it's not a pure function
+        urge      = clip(rlr * 3 + spd * 1.0 + nz(0.6),            0, 10)
+        loss_time = clip(dur / 18.0 + nz(0.6),                     0, 10)
+        control   = clip(binge * 1.5 + dpw * 0.7 + nz(0.6),        0, 10)
+        craving   = clip(rlr * 3 + lnr * 3 + nz(0.6),              0, 10)
+        tolerance = clip(dur / 25.0 + binge * 0.4 + nz(0.6),       0, 10)
+        missed    = clip(lnr * 7 + nz(0.5),                        0, 7)
+        fatigue   = clip((dur / 60.0) * 1.5 + lnr * 3 + nz(0.6),   0, 10)
+        routine   = clip(binge * 0.8 + daily / 4.0 + nz(0.6),      0, 10)
+        neglect   = clip(daily * 0.5 + binge * 0.5 + nz(0.6),      0, 10)
+        gaming_pr = clip(daily / 16.0 * 10 + nz(0.6),              0, 10)
+        return np.column_stack([urge, loss_time, control, craving, tolerance,
+                                missed, fatigue, routine, neglect, gaming_pr])
+
     def make_class(size, label):
         # Wider distributions + realistic class overlap → target ~87% accuracy
         if label == 0:
@@ -55,7 +76,6 @@ def generate_behavior_dataset(n=25000, seed=42):
             binge  = clip(rng.normal(0.3,  0.6,  size), 0, 3)
             brk    = clip(rng.normal(180,  80,   size), 30, 600)
             rlr    = clip(rng.normal(0.05, 0.08, size), 0, 0.40)
-            psy    = [clip(rng.normal(2.5,  2.0,  size), 0, 7.5) for _ in range(10)]
         elif label == 1:
             daily  = clip(rng.normal(4.5,  1.6,  size), 1.5, 10.0)
             weekly = clip(daily * 7 * rng.uniform(0.5, 0.90, size), 8, 65)
@@ -67,7 +87,6 @@ def generate_behavior_dataset(n=25000, seed=42):
             binge  = clip(rng.normal(2.0,  1.1,  size), 0, 6.0)
             brk    = clip(rng.normal(90,   55,   size), 10, 300)
             rlr    = clip(rng.normal(0.25, 0.14, size), 0.0, 0.70)
-            psy    = [clip(rng.normal(5.5,  2.0,  size), 1, 9.5) for _ in range(10)]
         else:
             daily  = clip(rng.normal(9.0,  2.5,  size), 4.0, 16.0)
             weekly = clip(daily * 7 * rng.uniform(0.65, 0.95, size), 25, 112)
@@ -79,10 +98,9 @@ def generate_behavior_dataset(n=25000, seed=42):
             binge  = clip(rng.normal(5.0,  1.5,  size), 1.5, 10.0)
             brk    = clip(rng.normal(30,   25,   size), 2, 120)
             rlr    = clip(rng.normal(0.55, 0.18, size), 0.1,  1.0)
-            psy    = [clip(rng.normal(8.0,  2.0,  size), 3, 10) for _ in range(10)]
 
-        return np.column_stack([daily, weekly, spd, dur, lnr, dpw, streak,
-                                binge, brk, rlr] + psy)
+        obj = np.column_stack([daily, weekly, spd, dur, lnr, dpw, streak, binge, brk, rlr])
+        return np.column_stack([obj, derive_psychometrics(obj)])
 
     X = np.vstack([make_class(n_casual, 0), make_class(n_at_risk, 1), make_class(n_addicted, 2)])
     y = np.concatenate([np.zeros(n_casual), np.ones(n_at_risk), np.full(n_addicted, 2)]).astype(int)
@@ -116,6 +134,12 @@ def train_behavior_model():
     print("Class distribution:")
     print(df['addiction_label'].value_counts().sort_index().to_string())
 
+    # Persist the actual training data so the committed CSV matches what the model
+    # learned (the old committed CSV was a stale, imbalanced artifact).
+    os.makedirs(DATA_DIR, exist_ok=True)
+    df.to_csv(os.path.join(DATA_DIR, 'behavior_dataset.csv'), index=False)
+    print(f"Saved balanced training data -> data/behavior_dataset.csv")
+
     X = df[feature_names].values
     y = df['addiction_label'].values
 
@@ -137,6 +161,8 @@ def train_behavior_model():
     test_accuracy = float((y_pred == y_test).mean())
     print("\nClassification Report:")
     print(classification_report(y_test, y_pred, target_names=['casual', 'at_risk', 'addicted']))
+    rep = classification_report(y_test, y_pred, target_names=['casual', 'at_risk', 'addicted'],
+                                output_dict=True, zero_division=0)
 
     print("5-Fold Cross-Validation (on training set):")
     cv_scores = cross_val_score(clf, X_train_s, y_train, cv=5, scoring='accuracy', n_jobs=-1)
@@ -181,6 +207,17 @@ def train_behavior_model():
     metadata = {
         'trained_at':        datetime.now().isoformat(),
         'test_accuracy':     round(test_accuracy, 4),
+        'macro_f1':          round(float(rep['macro avg']['f1-score']), 4),
+        'per_class_f1': {
+            'casual':   round(float(rep['casual']['f1-score']), 4),
+            'at_risk':  round(float(rep['at_risk']['f1-score']), 4),
+            'addicted': round(float(rep['addicted']['f1-score']), 4),
+        },
+        'per_class_recall': {
+            'casual':   round(float(rep['casual']['recall']), 4),
+            'at_risk':  round(float(rep['at_risk']['recall']), 4),
+            'addicted': round(float(rep['addicted']['recall']), 4),
+        },
         'cv_mean_accuracy':  round(float(cv_scores.mean()), 4),
         'cv_std_accuracy':   round(float(cv_scores.std()), 4),
         'cv_fold_scores':    [round(float(s), 4) for s in cv_scores],
@@ -188,6 +225,7 @@ def train_behavior_model():
         'max_depth':         clf.max_depth,
         'train_samples':     len(X_train),
         'feature_count':     len(feature_names),
+        'class_balance':     'balanced (35/40/25) + class_weight; psychometrics derived from behaviour (train/serve aligned)',
     }
     with open(os.path.join(MODELS_DIR, 'model_metadata.json'), 'w') as f:
         json.dump(metadata, f, indent=2)

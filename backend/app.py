@@ -981,25 +981,45 @@ def _label_from_va(v, a):
     return min(_EMO_VA, key=lambda l: (v - _EMO_VA[l][0]) ** 2 + (a - _EMO_VA[l][1]) ** 2)
 
 
-def fuse_emotion(acoustic_label, valence, probs=None, valence_conf=0.0):
+def _chat_toxicity(text):
+    """Toxicity in [0,1] from the trained chat model (+ keyword fallback). Used as an
+       extra, trained negative-valence signal in voice fusion — generalises beyond the
+       hand-built lexicon for hostile speech the word list would miss."""
+    if not text or not text.strip():
+        return 0.0
+    kw = keyword_toxicity(text)
+    ml = 0.0
+    if chat_model is not None and tfidf_vectorizer is not None:
+        try:
+            proba = chat_model.predict_proba(tfidf_vectorizer.transform([clean_text(text)]))[0]
+            ml    = float(proba[1]) if len(proba) > 1 else float(proba[0])
+        except Exception:
+            pass
+    return float(np.clip(max(kw, ml), 0, 1))
+
+
+def fuse_emotion(acoustic_label, valence, probs=None, valence_conf=0.0, toxicity=0.0):
     """Fuse acoustic tone with lexical valence into an emotion label.
 
     Preferred path (probs given) — dimensional valence–arousal fusion:
       • Arousal comes from the acoustic distribution (what tone judges reliably).
-      • Valence is a confidence-weighted blend of the spoken words (primary signal)
-        and the acoustic distribution (a weak prior). Using the full distribution —
-        not just the argmax class — means an *uncertain* acoustic read is pulled
-        toward neutral instead of over-committing to "angry".
-    Fallback (no probs) — the original lexical-threshold rule, kept for callers and
-    for wordless cases without a probability distribution.
+      • Valence blends three signals: the spoken words via the lexicon (positive AND
+        negative), the TRAINED chat-toxicity model (robust hostility detection beyond
+        the word list → strong negative valence), and the acoustic distribution as a
+        weak prior. Using the full acoustic distribution — not just the argmax class —
+        keeps an *uncertain* read from over-committing to "angry".
+    Fallback (no probs) — the original lexical-threshold rule, for wordless cases.
     """
     va = _acoustic_va(probs)
     if va is not None:
         v_ac, a_ac = va
-        w_text = float(valence_conf)   # 0..1 — how strongly the words vote on valence
-        w_ac   = 0.4                    # acoustic always adds a moderate valence prior
-        denom  = w_text + w_ac
-        v = (w_text * valence + w_ac * v_ac) / denom if denom > 0 else v_ac
+        terms = [(0.4, v_ac)]                                   # acoustic valence prior
+        if valence_conf > 0:
+            terms.append((float(valence_conf), float(valence)))  # lexicon (pos + neg)
+        if toxicity and toxicity > 0.15:
+            terms.append((float(toxicity), -float(toxicity)))    # trained toxicity → negative
+        wsum = sum(w for w, _ in terms)
+        v = sum(w * x for w, x in terms) / wsum if wsum > 0 else v_ac
         return _label_from_va(v, a_ac)
     # ── fallback rule (no distribution available) ──
     arousal_high = bool(acoustic_label) and acoustic_label.lower() != "neutral"
@@ -2069,8 +2089,10 @@ def save_voice(sid):
             conn0.close()
             recent_text = " ".join(r["message"] for r in rows if r["message"])
             v_text, v_conf = _lexical_valence(recent_text)
-            # Even without words, use the acoustic distribution for a steadier label.
-            emotion = fuse_emotion(acoustic, v_text, probs=probs, valence_conf=v_conf)
+            tox = _chat_toxicity(recent_text)   # trained model: robust hostility signal
+            # Even without words, the acoustic distribution still gives a steady label.
+            emotion = fuse_emotion(acoustic, v_text, probs=probs,
+                                   valence_conf=v_conf, toxicity=tox)
         except Exception:
             pass
         # Privacy default: delete raw audio after feature extraction.

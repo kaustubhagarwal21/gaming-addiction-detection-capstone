@@ -1,17 +1,29 @@
 {
-  "trained_at": "2026-05-27T06:16:42.377561",
-  "test_accuracy": 0.929,
-  "cv_mean_accuracy": 0.9292,
-  "cv_std_accuracy": 0.003,
+  "trained_at": "2026-05-30T18:16:18.672851",
+  "test_accuracy": 0.9223,
+  "macro_f1": 0.9243,
+  "per_class_f1": {
+    "casual": 0.9362,
+    "at_risk": 0.9049,
+    "addicted": 0.9316
+  },
+  "per_class_recall": {
+    "casual": 0.937,
+    "at_risk": 0.8941,
+    "addicted": 0.9492
+  },
+  "cv_mean_accuracy": 0.9231,
+  "cv_std_accuracy": 0.0026,
   "cv_fold_scores": [
-    0.9291,
-    0.9246,
-    0.9326,
-    0.9276,
-    0.9322
+    0.9228,
+    0.9204,
+    0.9274,
+    0.9204,
+    0.9243
   ],
   "n_estimators": 200,
   "max_depth": 6,
   "train_samples": 23000,
-  "feature_count": 20
+  "feature_count": 20,
+  "class_balance": "balanced (35/40/25) + class_weight; psychometrics derived from behaviour (train/serve aligned)"
 }
