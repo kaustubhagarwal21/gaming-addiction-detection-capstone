@@ -252,8 +252,11 @@ def train_chat_model():
     df['text'] = df['text'].astype(str).map(clean_text)
     df = df[df['text'].str.len() > 2]
 
-    # Binary label: toxic if toxicity_score > 0
-    df['toxic'] = (df['toxicity_score'] > 0.0).astype(int)
+    # Binary label: toxic only if CLEARLY toxic (>=0.5). The source data is general
+    # hate-speech, not gaming chat, and labelling every mildly-flagged line (>0) as
+    # toxic taught the model to over-fire on benign gaming terms ("shot", "clutch").
+    # A sharper boundary trades a little recall for far fewer false positives.
+    df['toxic'] = (df['toxicity_score'] >= 0.5).astype(int)
     print(f"Dataset: {df.shape}")
     print(f"Toxic: {df['toxic'].sum():,} ({df['toxic'].mean()*100:.1f}%)  Non-toxic: {(df['toxic']==0).sum():,}")
 
