@@ -80,6 +80,23 @@ def test_pg_placeholder_translation():
         "UPDATE t SET note='100%%' WHERE id=%s"
 
 
+# ─── Privacy: consent + data deletion ──────────────────────────────
+def test_consent_flow(client):
+    r = client.post('/api/consent', json={'user_id': 1})
+    assert r.status_code == 200 and r.get_json()['success'] is True
+    r = client.get('/api/consent?user_id=1')
+    j = r.get_json()
+    assert r.status_code == 200
+    assert j['consent_given'] is True
+    assert j['needs_consent'] is False
+
+
+def test_delete_data_endpoint(client):
+    # Use a throwaway user id so the seeded demo data is never touched.
+    r = client.post('/api/user/delete_data', json={'user_id': 999999, 'scope': 'data'})
+    assert r.status_code == 200 and r.get_json()['success'] is True
+
+
 # ─── Dashboards (require seeded data) ──────────────────────────────
 
 def test_user_dashboard(client):

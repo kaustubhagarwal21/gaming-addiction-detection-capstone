@@ -1,0 +1,77 @@
+# Privacy Policy — Gaming Wellbeing Monitor (PW26_SJ_05)
+
+_Last updated: 2026-05-30 · Consent version: 2026-05-30_
+
+This is a **parental wellbeing tool**: a parent installs the Child app on their
+child's device to understand the child's gaming patterns and emotional wellbeing,
+and views insights in the Parent app. It is a **research prototype for a university
+capstone** — a screening/awareness aid, **not** a medical or diagnostic device.
+
+This policy explains, in plain language, what the app collects, why, who can see
+it, how long it is kept, and how to delete it.
+
+## What is collected (only on the monitored child's device, only during gaming)
+
+- **Gaming activity** — which known game is in the foreground, and session
+  start/end times.
+- **In-game chat the child types** — text the child enters in supported games,
+  used for tone/toxicity signals. We capture what the child types, not the
+  messages of other players.
+- **Short voice clips during a gaming session** — used to estimate emotional
+  arousal/tone. **Raw audio is processed into numeric features and then deleted**
+  immediately (it is not stored or sent anywhere) unless a developer explicitly
+  enables retention for testing.
+- **Screen on/off and game-notification events** — timing signals only.
+- **Daily check-ins** the child voluntarily submits (mood/sleep/energy).
+
+The app does **not** collect: messages outside supported games, web browsing,
+contacts, photos, location, or keystrokes outside in-game chat fields.
+
+## Why it is collected
+
+To compute wellbeing/risk indicators (time spent, late-night play, tone of
+chat/voice) that help a parent notice problematic gaming patterns early. These
+indicators are **screening signals, not a diagnosis.**
+
+## Who can see it
+
+Only the **parent linked to that child** (via the shared family PIN). The server
+authenticates every request with a signed token and authorizes by ownership — a
+parent can only access **their own** children's data, never another family's.
+PINs are stored as keyed hashes, never in plaintext. In production all traffic is
+over HTTPS.
+
+## How long it is kept (retention)
+
+Raw events (chat, voice features, screen/notification events) can be automatically
+deleted after a configurable window (`DATA_RETENTION_DAYS`). Raw audio is always
+deleted right after feature extraction.
+
+## Your rights — view and delete
+
+A parent (or the child on their own account) can, from the app's Settings:
+- **Delete collected data** — erases all sessions, chats, voice features,
+  predictions, alerts and events for that child, keeping the account.
+- **Delete the account** — the above, plus the account record itself.
+
+Both call `POST /api/user/delete_data` and take effect immediately and permanently.
+
+## Consent
+
+Setting up monitoring requires the parent to **review and accept** this policy on
+first launch (recorded with a timestamp and version). Monitoring does not begin
+until consent is given. If the policy changes, consent is requested again.
+
+## Important limitations (stated honestly)
+
+- The ML models are **demo-grade**, trained on limited/illustrative data; the risk
+  weighting is a clinically-motivated prior, not a validated clinical instrument.
+- The voice model estimates **arousal/tone**, not specific diagnosed emotions, and
+  is adult-trained.
+- This tool is intended for a **parent monitoring their own minor child** with that
+  child's awareness, as a wellbeing aid — not covert surveillance.
+
+## Contact
+
+PES University Capstone PW26_SJ_05 — Kaustubh Agarwal, Kanak Goyal,
+Khushee P Kiran, Vidisha Murali.

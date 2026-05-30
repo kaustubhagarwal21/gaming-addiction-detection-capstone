@@ -28,6 +28,7 @@ import com.pes.gamingdetector.databinding.ActivityHomeBinding
 import com.pes.gamingdetector.services.GameNotificationService
 import com.pes.gamingdetector.services.PassiveMonitorService
 import com.pes.gamingdetector.util.PrefsManager
+import com.pes.gamingdetector.util.PrivacyText
 import kotlinx.coroutines.launch
 
 class HomeActivity : AppCompatActivity() {
@@ -51,13 +52,12 @@ class HomeActivity : AppCompatActivity() {
         setSupportActionBar(binding.toolbar)
         supportActionBar?.title = "Hi, ${prefs.userName}"
 
-        // Start always-on passive monitor (auto-session detection + screen events)
-        ContextCompat.startForegroundService(
-            this,
-            Intent(this, PassiveMonitorService::class.java)
-        )
-
-        checkRequiredPermissions()
+        // Monitoring only starts after parental consent has been recorded.
+        if (prefs.consentDone) {
+            startMonitoring()
+        } else {
+            ensureConsent()
+        }
 
         binding.rvGames.layoutManager = GridLayoutManager(this, 2)
 
@@ -78,7 +78,59 @@ class HomeActivity : AppCompatActivity() {
         super.onResume()
         refreshBanner()
         uiHandler.postDelayed(bannerRefresh, 3_000L)
+        if (prefs.consentDone) checkRequiredPermissions()
+    }
+
+    /** Start always-on passive monitoring (auto-session detection + screen events). */
+    private fun startMonitoring() {
+        ContextCompat.startForegroundService(
+            this, Intent(this, PassiveMonitorService::class.java)
+        )
         checkRequiredPermissions()
+    }
+
+    /** Gate monitoring behind parental consent. Honours consent already recorded
+        server-side (e.g. after a reinstall); otherwise shows a blocking dialog. */
+    private fun ensureConsent() {
+        val uid = prefs.userId
+        lifecycleScope.launch {
+            var needs = true
+            try {
+                val resp = ApiClient.getInstance(prefs.serverUrl).getConsent(uid)
+                if (resp.isSuccessful) needs = resp.body()?.needsConsent ?: true
+            } catch (_: Exception) { /* offline — show consent to be safe */ }
+            if (!needs) {
+                prefs.consentDone = true
+                startMonitoring()
+            } else {
+                showConsentDialog()
+            }
+        }
+    }
+
+    private fun showConsentDialog() {
+        AlertDialog.Builder(this)
+            .setTitle("Parental Monitoring Consent")
+            .setMessage(PrivacyText.CONSENT_SUMMARY)
+            .setCancelable(false)
+            .setNegativeButton("Decline") { _, _ ->
+                Toast.makeText(this, "Monitoring requires consent. Exiting.", Toast.LENGTH_LONG).show()
+                finishAffinity()
+            }
+            .setPositiveButton("I Agree") { _, _ -> grantConsent() }
+            .show()
+    }
+
+    private fun grantConsent() {
+        val uid = prefs.userId
+        lifecycleScope.launch {
+            try {
+                ApiClient.getInstance(prefs.serverUrl)
+                    .postConsent(mapOf("user_id" to uid, "version" to PrivacyText.CONSENT_VERSION))
+            } catch (_: Exception) { /* recorded locally; will retry on next launch */ }
+            prefs.consentDone = true
+            startMonitoring()
+        }
     }
 
     override fun onPause() {

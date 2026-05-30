@@ -3,11 +3,13 @@ package com.pes.parentmonitor.activities
 import android.os.Bundle
 import android.view.View
 import android.widget.Toast
+import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import androidx.lifecycle.lifecycleScope
 import com.pes.parentmonitor.api.ApiClient
 import com.pes.parentmonitor.databinding.ActivitySettingsBinding
 import com.pes.parentmonitor.util.PrefsManager
+import com.pes.parentmonitor.util.PrivacyText
 import kotlinx.coroutines.launch
 
 class SettingsActivity : AppCompatActivity() {
@@ -43,6 +45,45 @@ class SettingsActivity : AppCompatActivity() {
         }
 
         binding.btnTestConnection.setOnClickListener { testConnection() }
+
+        binding.btnPrivacyPolicy.setOnClickListener {
+            AlertDialog.Builder(this)
+                .setTitle("Privacy Policy")
+                .setMessage(PrivacyText.POLICY)
+                .setPositiveButton("Close", null)
+                .show()
+        }
+
+        binding.btnDeleteChildData.setOnClickListener { confirmDeleteChildData() }
+    }
+
+    private fun confirmDeleteChildData() {
+        val childId = prefs.childUserId
+        if (childId == -1) {
+            Toast.makeText(this, "No child selected", Toast.LENGTH_SHORT).show()
+            return
+        }
+        AlertDialog.Builder(this)
+            .setTitle("Delete This Child's Data?")
+            .setMessage("This permanently erases all collected sessions, chats, voice analysis, " +
+                "predictions and alerts for this child. This cannot be undone.")
+            .setNegativeButton("Cancel", null)
+            .setPositiveButton("Delete") { _, _ -> deleteChildData(childId) }
+            .show()
+    }
+
+    private fun deleteChildData(childId: Int) {
+        lifecycleScope.launch {
+            try {
+                val api = ApiClient.getInstance(prefs.serverUrl)
+                val resp = api.deleteData(mapOf("user_id" to childId.toString(), "scope" to "data"))
+                val msg = if (resp.isSuccessful) "Child's data has been deleted"
+                          else "Delete failed (${resp.code()})"
+                Toast.makeText(this@SettingsActivity, msg, Toast.LENGTH_LONG).show()
+            } catch (e: Exception) {
+                Toast.makeText(this@SettingsActivity, "Delete failed: ${e.message}", Toast.LENGTH_LONG).show()
+            }
+        }
     }
 
     private fun attemptPairing(childId: Int) {

@@ -12,6 +12,13 @@ data class LoginResponse(
     val message: String?
 )
 
+data class ConsentStatus(
+    val success: Boolean = false,
+    @SerializedName("consent_given") val consentGiven: Boolean = false,
+    @SerializedName("needs_consent") val needsConsent: Boolean = true,
+    @SerializedName("current_version") val currentVersion: String? = null
+)
+
 data class StartSessionRequest(
     @SerializedName("user_id") val userId: Int,
     @SerializedName("game_name") val gameName: String

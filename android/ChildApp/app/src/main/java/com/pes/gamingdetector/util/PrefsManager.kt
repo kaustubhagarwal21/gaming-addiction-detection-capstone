@@ -54,6 +54,10 @@ class PrefsManager(context: Context) {
         get() = prefs.getBoolean("onboarding_done", false)
         set(v) = prefs.edit().putBoolean("onboarding_done", v).apply()
 
+    var consentDone: Boolean
+        get() = prefs.getBoolean("consent_done", false)
+        set(v) = prefs.edit().putBoolean("consent_done", v).apply()
+
     fun isLoggedIn() = userId != -1
 
     fun hasActiveSession() = activeSessionId != -1

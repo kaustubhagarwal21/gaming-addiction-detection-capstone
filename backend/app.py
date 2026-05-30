@@ -601,6 +601,8 @@ def init_db():
     add_column(c, 'users', 'parent_id',       'INTEGER DEFAULT NULL')   # multi-child support
     add_column(c, 'users', 'pin_hash',        'TEXT DEFAULT NULL')      # keyed-hash credentials
     add_column(c, 'users', 'parent_pin_hash', 'TEXT DEFAULT NULL')
+    add_column(c, 'users', 'consent_given_at',  'TEXT DEFAULT NULL')    # parental monitoring consent
+    add_column(c, 'users', 'consent_version',   'TEXT DEFAULT NULL')
 
     # Seed default user if none exists
     c.execute("SELECT COUNT(*) AS n FROM users")
@@ -1554,6 +1556,107 @@ def update_profile():
     conn.commit()
     conn.close()
     return jsonify({'success': True})
+
+
+# ─────────────── PRIVACY: CONSENT + DATA DELETION + RETENTION ──────────────
+
+CONSENT_VERSION = os.environ.get('CONSENT_VERSION', '2026-05-30')
+# Raw event data older than this many days is purged on startup (0 = keep forever).
+DATA_RETENTION_DAYS = int(os.environ.get('DATA_RETENTION_DAYS', '0'))
+
+# Every table holding a child's collected data, so "delete my data" is complete.
+_USER_TABLES    = ['alerts', 'screen_events', 'notification_events', 'streaks',
+                   'time_limits', 'reflections', 'counselor_messages', 'anomalies']
+_SESSION_TABLES = ['behavioral_data', 'chat_messages', 'voice_events', 'predictions']
+
+
+def _delete_user_data(conn, user_id):
+    """Delete all collected monitoring data for a user (keeps the account row)."""
+    c = conn.cursor()
+    for t in _SESSION_TABLES:
+        c.execute(f"DELETE FROM {t} WHERE session_id IN "
+                  f"(SELECT session_id FROM sessions WHERE user_id=?)", (user_id,))
+    c.execute("DELETE FROM sessions WHERE user_id=?", (user_id,))
+    for t in _USER_TABLES:
+        c.execute(f"DELETE FROM {t} WHERE user_id=?", (user_id,))
+    conn.commit()
+
+
+def purge_old_data():
+    """Enforce the data-retention window by deleting stale raw events on startup."""
+    if DATA_RETENTION_DAYS <= 0:
+        return
+    cutoff = (datetime.now() - timedelta(days=DATA_RETENTION_DAYS)).isoformat()
+    conn = get_db()
+    c = conn.cursor()
+    for t in ('chat_messages', 'voice_events', 'screen_events', 'notification_events'):
+        c.execute(f"DELETE FROM {t} WHERE timestamp < ?", (cutoff,))
+    conn.commit()
+    conn.close()
+    logger.info(f"Retention purge: removed raw events older than {DATA_RETENTION_DAYS} days")
+
+
+@app.route('/api/consent', methods=['POST'])
+def record_consent():
+    """Record parental consent to monitoring for a child account."""
+    data    = request.get_json() or {}
+    user_id = data.get('user_id')
+    deny = guard(user_id)
+    if deny: return deny
+    if not user_id:
+        return jsonify({'success': False, 'message': 'user_id required'}), 400
+    version = str(data.get('version', CONSENT_VERSION))
+    conn = get_db()
+    conn.cursor().execute("UPDATE users SET consent_given_at=?, consent_version=? WHERE user_id=?",
+                          (datetime.now().isoformat(), version, int(user_id)))
+    conn.commit()
+    conn.close()
+    return jsonify({'success': True, 'consent_version': version})
+
+
+@app.route('/api/consent', methods=['GET'])
+def get_consent():
+    user_id = request.args.get('user_id', type=int)
+    deny = guard(user_id)
+    if deny: return deny
+    if not user_id:
+        return jsonify({'success': False, 'message': 'user_id required'}), 400
+    conn = get_db()
+    row = conn.execute("SELECT consent_given_at, consent_version FROM users WHERE user_id=?",
+                       (user_id,)).fetchone()
+    conn.close()
+    given = bool(row and row['consent_given_at'])
+    stale = bool(row and row['consent_version'] and row['consent_version'] != CONSENT_VERSION)
+    return jsonify({
+        'success': True,
+        'consent_given':    given,
+        'consent_given_at': row['consent_given_at'] if row else None,
+        'consent_version':  row['consent_version'] if row else None,
+        'current_version':  CONSENT_VERSION,
+        'needs_consent':    (not given) or stale,
+    })
+
+
+@app.route('/api/user/delete_data', methods=['POST'])
+def delete_user_data():
+    """Erase a child's collected data ('data'), or the whole account ('account').
+       Authorized to the parent or the user themselves."""
+    data    = request.get_json() or {}
+    user_id = data.get('user_id')
+    deny = guard(user_id)
+    if deny: return deny
+    if not user_id:
+        return jsonify({'success': False, 'message': 'user_id required'}), 400
+    scope = str(data.get('scope', 'data')).lower()
+    conn = get_db()
+    _delete_user_data(conn, int(user_id))
+    if scope == 'account':
+        conn.cursor().execute("DELETE FROM users WHERE user_id=?", (int(user_id),))
+        conn.commit()
+    conn.close()
+    logger.info(f"Data deletion (scope={scope}) for user {user_id}")
+    return jsonify({'success': True, 'scope': scope})
+
 
 # ─────────────── SESSION MANAGEMENT ─────────────────────────────
 
@@ -3093,6 +3196,9 @@ def get_reflections():
 
 
 # ─────────────────────────────────────────────────────────────────
+
+# Enforce the retention window once at import (covers gunicorn workers too).
+purge_old_data()   # no-op unless DATA_RETENTION_DAYS is set
 
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 5000))
