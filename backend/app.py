@@ -4,7 +4,7 @@ Clean REST API Backend — PES University Capstone PW26_SJ_05
 Team: Kaustubh Agarwal, Kanak Goyal, Khushee P Kiran, Vidisha Murali
 """
 
-from flask import Flask, request, jsonify, g
+from flask import Flask, request, jsonify, g, has_request_context
 from flask_cors import CORS
 import sqlite3
 from datetime import datetime, timedelta
@@ -430,7 +430,7 @@ if os.path.exists(_meta_path):
 
 # ─────────────────────────── DATABASE ────────────────────────────
 
-def get_db():
+def _open_db():
     if USE_POSTGRES:
         raw = psycopg2.connect(DATABASE_URL, cursor_factory=psycopg2.extras.RealDictCursor)
         return _PgConnection(raw)
@@ -439,6 +439,43 @@ def get_db():
     conn.execute("PRAGMA journal_mode=WAL")
     conn.execute("PRAGMA foreign_keys=ON")
     return conn
+
+
+def get_db():
+    """Open a DB connection. Within a request, register it so it's ALWAYS closed at
+    request teardown — even if a handler raises before its explicit conn.close().
+    Prevents connection leaks that would exhaust Postgres's limited connection pool."""
+    conn = _open_db()
+    if has_request_context():
+        try:
+            if not hasattr(g, '_db_conns'):
+                g._db_conns = []
+            g._db_conns.append(conn)
+        except Exception:
+            pass
+    return conn
+
+
+@app.teardown_appcontext
+def _close_request_dbs(exc):
+    """Close any connections opened during the request (idempotent — handlers may
+    have already closed them explicitly)."""
+    for conn in getattr(g, '_db_conns', []):
+        try:
+            conn.close()
+        except Exception:
+            pass
+
+
+@app.errorhandler(Exception)
+def _json_errors(e):
+    """Always return JSON (never an HTML error page) so the mobile clients can parse
+    every response. HTTP errors keep their status; anything else is a logged 500."""
+    from werkzeug.exceptions import HTTPException
+    if isinstance(e, HTTPException):
+        return jsonify({'success': False, 'message': e.description}), e.code
+    logger.exception("Unhandled error on %s", request.path)
+    return jsonify({'success': False, 'message': 'Internal server error'}), 500
 
 
 def init_db():
