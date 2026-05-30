@@ -893,25 +893,28 @@ def extract_audio_features(audio_path):
 
 
 def analyse_audio(audio_path):
+    """Return (emotion_label, confidence, duration, probs_dict). probs_dict maps
+       each acoustic class → probability (None when the model isn't used), so the
+       caller can do distribution-aware fusion instead of relying on the argmax."""
     features, duration = extract_audio_features(audio_path)
     if features is not None and voice_model is not None:
         X      = np.array([features])
         pred   = voice_model.predict(X)[0]
         probs  = voice_model.predict_proba(X)[0]
+        probs_dict = {str(c): float(p) for c, p in zip(voice_model.classes_, probs)}
         if os.environ.get('VOICE_DEBUG', '').lower() in ('1', 'true', 'yes'):
-            pairs = dict(zip(voice_model.classes_, np.round(probs, 3)))
-            logger.info(f"[VOICE_DEBUG] -> {pred}  probs={pairs}")
-        return str(pred), round(float(max(probs)), 3), duration
+            logger.info(f"[VOICE_DEBUG] -> {pred}  probs={ {k: round(v,3) for k,v in probs_dict.items()} }")
+        return str(pred), round(float(max(probs)), 3), duration, probs_dict
     if features is not None:
         e_mean = features[15]
         p_mean = features[13]
         if e_mean > 0.04 and p_mean > 250:
-            return 'excited',    round(min(e_mean * 12, 0.95), 3), duration
+            return 'excited',    round(min(e_mean * 12, 0.95), 3), duration, None
         elif e_mean > 0.025:
-            return 'frustrated', round(min(e_mean * 10, 0.85), 3), duration
+            return 'frustrated', round(min(e_mean * 10, 0.85), 3), duration, None
         elif e_mean > 0.01:
-            return 'neutral',    round(min(e_mean *  6, 0.70), 3), duration
-    return 'neutral', 0.2, duration
+            return 'neutral',    round(min(e_mean *  6, 0.70), 3), duration, None
+    return 'neutral', 0.2, duration, None
 
 
 # ── Multimodal emotion fusion (acoustic arousal × text valence) ───────────────
@@ -936,32 +939,77 @@ _POS_WORDS = {
 }
 
 def text_valence(text):
-    """Return valence in [-1, 1] from a short utterance; 0 when unknown/empty."""
+    """Valence in [-1, 1] from a short utterance; 0 when unknown/empty."""
+    return _lexical_valence(text)[0]
+
+
+def _lexical_valence(text):
+    """Return (valence in [-1, 1], confidence in [0, 1]).
+       Confidence rises with how many sentiment words matched (saturates ~3)."""
     if not text:
-        return 0.0
-    t = " " + text.lower().strip() + " "
+        return 0.0, 0.0
+    t   = " " + text.lower().strip() + " "
     pos = sum(1 for w in _POS_WORDS if (" " + w + " ") in t or (" " + w) in t)
     neg = sum(1 for w in _NEG_WORDS if (" " + w + " ") in t or (" " + w) in t)
-    if pos == 0 and neg == 0:
-        return 0.0
-    return (pos - neg) / float(pos + neg)
+    total = pos + neg
+    if total == 0:
+        return 0.0, 0.0
+    return (pos - neg) / float(total), min(1.0, total / 3.0)
 
-def fuse_emotion(acoustic_label, valence):
-    """Combine acoustic AROUSAL with text VALENCE into a final emotion label.
 
-    Words drive valence; acoustic arousal only escalates strong-negative speech
-    from 'frustrated' to 'angry'. Neutral words → neutral even if loud, so a calm
-    "hello how are you" isn't mislabelled as anger. Only called when a transcript
-    exists; otherwise save_voice keeps the acoustic label (handles wordless shouts).
+# Circumplex (valence, arousal) coordinates for the acoustic emotion classes.
+# valence ∈ [-1, 1] (negative→positive), arousal ∈ [0, 1] (calm→animated).
+_EMO_VA = {
+    'angry':      (-0.8, 0.85),
+    'frustrated': (-0.5, 0.45),
+    'excited':    ( 0.6, 0.75),
+    'neutral':    ( 0.0, 0.10),
+}
+
+
+def _acoustic_va(probs):
+    """Expected (valence, arousal) from the acoustic class-probability dict."""
+    if not probs:
+        return None
+    v = sum(p * _EMO_VA.get(c, (0.0, 0.0))[0] for c, p in probs.items())
+    a = sum(p * _EMO_VA.get(c, (0.0, 0.0))[1] for c, p in probs.items())
+    return v, a
+
+
+def _label_from_va(v, a):
+    """Nearest circumplex prototype to a (valence, arousal) point."""
+    return min(_EMO_VA, key=lambda l: (v - _EMO_VA[l][0]) ** 2 + (a - _EMO_VA[l][1]) ** 2)
+
+
+def fuse_emotion(acoustic_label, valence, probs=None, valence_conf=0.0):
+    """Fuse acoustic tone with lexical valence into an emotion label.
+
+    Preferred path (probs given) — dimensional valence–arousal fusion:
+      • Arousal comes from the acoustic distribution (what tone judges reliably).
+      • Valence is a confidence-weighted blend of the spoken words (primary signal)
+        and the acoustic distribution (a weak prior). Using the full distribution —
+        not just the argmax class — means an *uncertain* acoustic read is pulled
+        toward neutral instead of over-committing to "angry".
+    Fallback (no probs) — the original lexical-threshold rule, kept for callers and
+    for wordless cases without a probability distribution.
     """
+    va = _acoustic_va(probs)
+    if va is not None:
+        v_ac, a_ac = va
+        w_text = float(valence_conf)   # 0..1 — how strongly the words vote on valence
+        w_ac   = 0.4                    # acoustic always adds a moderate valence prior
+        denom  = w_text + w_ac
+        v = (w_text * valence + w_ac * v_ac) / denom if denom > 0 else v_ac
+        return _label_from_va(v, a_ac)
+    # ── fallback rule (no distribution available) ──
     arousal_high = bool(acoustic_label) and acoustic_label.lower() != "neutral"
     if valence <= -0.5:
-        return "angry" if arousal_high else "frustrated"   # strong negative words
+        return "angry" if arousal_high else "frustrated"
     if valence <= -0.2:
-        return "frustrated"                                # mild negative
+        return "frustrated"
     if valence >= 0.2:
-        return "excited"                                   # positive
-    return "neutral"                                       # neutral words
+        return "excited"
+    return "neutral"
 
 # ──────────────────────── PREDICTION ENGINE ──────────────────────
 
@@ -1153,8 +1201,12 @@ def run_prediction(session_id: int) -> dict:
     c.execute('SELECT * FROM behavioral_data WHERE session_id=? ORDER BY id DESC LIMIT 1', (session_id,))
     brow = c.fetchone()
 
-    # Fetch all chat text (join in Python — dialect-neutral vs GROUP_CONCAT/STRING_AGG)
-    c.execute("SELECT message FROM chat_messages WHERE session_id=?", (session_id,))
+    # Typed chat only for the chat-toxicity channel. Spoken words (source='voice_stt')
+    # already feed the voice channel via valence fusion, so excluding them here avoids
+    # double-counting the same utterance across two modalities. (Join in Python —
+    # dialect-neutral vs GROUP_CONCAT/STRING_AGG.)
+    c.execute("SELECT message FROM chat_messages WHERE session_id=? "
+              "AND (source IS NULL OR source <> 'voice_stt')", (session_id,))
     chat_text = ' '.join(r['message'] for r in c.fetchall() if r['message'])
 
     # Fetch voice events
@@ -2001,11 +2053,11 @@ def save_voice(sid):
         fname  = f"voice_{sid}_{int(time.time())}.wav"
         fpath  = os.path.join(AUDIO_DIR, fname)
         audio_file.save(fpath)
-        acoustic, intensity, duration = analyse_audio(fpath)
+        acoustic, intensity, duration, probs = analyse_audio(fpath)
         # Multimodal fusion: pull the words spoken in this segment (Vosk STT, uploaded
-        # as voice_stt chat in the last ~20s) and use their valence to refine the
-        # acoustic arousal into a final emotion. Falls back to the acoustic label when
-        # no transcript is available.
+        # as voice_stt chat in the last ~20s) and fuse their valence with the acoustic
+        # distribution (valence–arousal). Falls back to the acoustic label when no
+        # transcript is available.
         emotion = acoustic
         try:
             conn0 = get_db()
@@ -2016,8 +2068,9 @@ def save_voice(sid):
             ).fetchall()
             conn0.close()
             recent_text = " ".join(r["message"] for r in rows if r["message"])
-            if recent_text.strip():
-                emotion = fuse_emotion(acoustic, text_valence(recent_text))
+            v_text, v_conf = _lexical_valence(recent_text)
+            # Even without words, use the acoustic distribution for a steadier label.
+            emotion = fuse_emotion(acoustic, v_text, probs=probs, valence_conf=v_conf)
         except Exception:
             pass
         # Privacy default: delete raw audio after feature extraction.

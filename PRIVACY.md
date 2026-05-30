@@ -66,8 +66,11 @@ until consent is given. If the policy changes, consent is requested again.
 
 - The ML models are **demo-grade**, trained on limited/illustrative data; the risk
   weighting is a clinically-motivated prior, not a validated clinical instrument.
-- The voice model estimates **arousal/tone**, not specific diagnosed emotions, and
-  is adult-trained.
+- Emotion labels (e.g. *frustrated, angry, excited, neutral*) **are** shown, but they
+  are **rough, best-effort estimates**: derived from the voice's tone (which mainly
+  captures how animated the speech is) combined with a simple keyword reading of the
+  transcribed words. They are not accurate emotion recognition or a diagnosis, and the
+  tone model is adult-trained.
 - This tool is intended for a **parent monitoring their own minor child** with that
   child's awareness, as a wellbeing aid — not covert surveillance.
 

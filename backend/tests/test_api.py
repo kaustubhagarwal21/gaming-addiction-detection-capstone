@@ -114,6 +114,23 @@ def test_shap_per_class_shapes():
     assert len(out3) == 1 and list(out3[0]) == [1., 2., 3.]
 
 
+# ─── Voice emotion: valence-arousal fusion ─────────────────────────
+def test_fuse_emotion_va():
+    from app import fuse_emotion
+    angry = {'angry': 0.7, 'frustrated': 0.2, 'excited': 0.05, 'neutral': 0.05}
+    calm  = {'neutral': 0.6, 'frustrated': 0.25, 'angry': 0.1, 'excited': 0.05}
+    happy = {'neutral': 0.5, 'excited': 0.3, 'angry': 0.1, 'frustrated': 0.1}
+    # confident animated tone + negative words -> angry
+    assert fuse_emotion('angry', -1.0, probs=angry, valence_conf=1.0) == 'angry'
+    # negative words but CALM tone -> frustrated, not angry (the key win)
+    assert fuse_emotion('neutral', -1.0, probs=calm, valence_conf=1.0) == 'frustrated'
+    # positive words -> excited
+    assert fuse_emotion('neutral', 1.0, probs=happy, valence_conf=1.0) == 'excited'
+    # fallback path (no distribution) still behaves
+    assert fuse_emotion('angry', -0.6) == 'angry'
+    assert fuse_emotion('neutral', 0.5) == 'excited'
+
+
 # ─── Dashboards (require seeded data) ──────────────────────────────
 
 def test_user_dashboard(client):

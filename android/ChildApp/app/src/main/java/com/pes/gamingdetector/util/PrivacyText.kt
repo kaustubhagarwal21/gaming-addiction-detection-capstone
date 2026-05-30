@@ -48,7 +48,9 @@ From Settings you can Delete My Data (erase everything collected) at any time.
 
 LIMITATIONS (stated honestly)
 The models are demo-grade and the risk score is a screening signal, not a medical
-diagnosis. The voice model estimates tone/arousal, not specific emotions.
+diagnosis. Emotion labels (e.g. frustrated, angry, excited) are rough estimates from
+the voice's tone plus a keyword reading of the words — indicative only, not accurate
+emotion recognition. The tone model is adult-trained.
 
 This tool is for a parent monitoring their own child as a wellbeing aid, with the
 child's awareness — not covert surveillance.
