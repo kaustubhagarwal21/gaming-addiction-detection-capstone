@@ -190,9 +190,22 @@ class PassiveMonitorService : Service() {
             // grace timer. The 20s grace still absorbs a quick glance at ChildApp and a
             // return to the game; sitting in ChildApp (or any non-game app) ends it.
             val stillPlaying = !screenLocked && foregroundPkg == trackedPackage
+            // Switched straight to a DIFFERENT game (not a glance at home/our app)?
+            val switchedToAnotherGame = !screenLocked &&
+                foregroundPkg != null &&
+                foregroundPkg != packageName &&
+                foregroundPkg != trackedPackage &&
+                GameDetector.isGame(this, foregroundPkg)
             if (stillPlaying) {
                 gameLeftAt = 0L  // reset grace — game still running
+            } else if (switchedToAnotherGame) {
+                // Clean hand-off: end this game's session now so the next tick starts a
+                // fresh session for the new game. Each game's time is attributed to it
+                // instead of the first game silently absorbing the second's playtime.
+                launchAutoEnd()
             } else {
+                // Glanced at home / our app / a non-game — short grace absorbs a quick
+                // look and a return; sitting elsewhere past the grace ends the session.
                 if (gameLeftAt == 0L) {
                     gameLeftAt = System.currentTimeMillis()
                 } else if (System.currentTimeMillis() - gameLeftAt > GRACE_MS) {
