@@ -68,7 +68,13 @@ class GameMonitorService : Service() {
             putExtra("session_id", sessionId)
             putExtra("server_url", serverUrl)
         }
-        startService(intent)
+        // Voice capture is best-effort: Android 14+ may refuse a mic foreground
+        // service started from the background. Never let that take down monitoring.
+        try {
+            startService(intent)
+        } catch (e: Exception) {
+            android.util.Log.w("GameMonitor", "Voice service start skipped: ${e.message}")
+        }
     }
 
     override fun onDestroy() {

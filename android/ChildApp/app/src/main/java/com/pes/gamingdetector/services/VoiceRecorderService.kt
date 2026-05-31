@@ -1,14 +1,18 @@
 package com.pes.gamingdetector.services
 
+import android.Manifest
 import android.app.Service
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.content.pm.ServiceInfo
 import android.media.AudioFormat
 import android.media.AudioRecord
 import android.media.MediaRecorder
 import android.os.Build
 import android.os.IBinder
+import android.util.Log
 import androidx.core.app.NotificationCompat
+import androidx.core.content.ContextCompat
 import com.pes.gamingdetector.R
 import com.pes.gamingdetector.api.ApiClient
 import com.pes.gamingdetector.util.Constants
@@ -41,16 +45,35 @@ class VoiceRecorderService : Service() {
         sessionId = intent?.getIntExtra("session_id", -1) ?: -1
         serverUrl = intent?.getStringExtra("server_url") ?: Constants.BASE_URL
 
+        // Can't capture audio without the runtime mic permission — bail cleanly.
+        if (ContextCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO)
+                != PackageManager.PERMISSION_GRANTED) {
+            Log.w("VoiceRecorder", "RECORD_AUDIO not granted — skipping voice capture")
+            stopSelf()
+            return START_NOT_STICKY
+        }
+
         val notif = NotificationCompat.Builder(this, Constants.CHANNEL_MONITORING)
             .setContentTitle("Voice Analysis Active")
             .setSmallIcon(R.drawable.ic_mic)
             .setOngoing(true)
             .build()
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-            startForeground(Constants.NOTIF_MONITORING + 10, notif,
-                ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE)
-        } else {
-            startForeground(Constants.NOTIF_MONITORING + 10, notif)
+
+        // Android 14+ blocks STARTING a microphone foreground service from the
+        // background (the game is foreground, not us). A denial throws here — catch
+        // it and degrade gracefully (skip voice for this session) instead of crashing
+        // the whole app with an unhandled SecurityException.
+        try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                startForeground(Constants.NOTIF_MONITORING + 10, notif,
+                    ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE)
+            } else {
+                startForeground(Constants.NOTIF_MONITORING + 10, notif)
+            }
+        } catch (e: Exception) {
+            Log.w("VoiceRecorder", "Mic foreground service blocked (likely background-start on Android 14+): ${e.message}")
+            stopSelf()
+            return START_NOT_STICKY
         }
 
         scope.launch { recordLoop() }
