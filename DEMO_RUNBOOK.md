@@ -4,41 +4,45 @@ A reliable, repeatable script for demoing both apps live. Follow top to bottom.
 
 ---
 
-## 0. One-time setup (before the demo)
+## 0. Two ways to run — pick one
 
-- Phone connected to the laptop via **USB**, USB debugging ON.
-- Both apps installed (ChildApp + ParentApp).
+### Option A — Cloud (Render) — RECOMMENDED, always-on
+Nothing to start. The backend runs 24/7 at **https://gaming-addiction-api.onrender.com**
+(Docker + managed Postgres + HTTPS, auth enforced).
+- Both apps **already default to this URL** (Settings → Server URL).
+- The phone just needs **internet** (WiFi or mobile data) — no laptop, no USB, no adb.
+- **Pre-warm before presenting:** the free tier sleeps after ~15 min idle, so the first
+  request takes ~30–60s to wake. A minute before the demo, open
+  `https://gaming-addiction-api.onrender.com/api/health` in a browser and wait until it
+  shows `"models_loaded": true`. Then it's fast.
+
+### Option B — Local (laptop backend over USB) — offline fallback
+- Phone connected via **USB**, USB debugging ON; both apps installed.
 - In **each app → Settings → Server URL = `http://127.0.0.1:5000/`** → Save.
-  (This works through the adb tunnel and is immune to WiFi/IP changes.)
+- Quit Docker Desktop (frees port 5000), then from `backend/`:
+  ```powershell
+  .\demo_setup.ps1 -Seed        # adb tunnel + reseed + start backend (leave window open)
+  ```
 
-## 1. Start everything (one command)
-
-From the `backend` folder:
-
-```powershell
-.\demo_setup.ps1 -Seed
-```
-
-This opens the adb tunnel, reloads the demo narrative, and starts the backend.
-Leave that window open. You should see "all models loaded".
-
-**Demo PINs:**
+## 1. Demo PINs (same for cloud or local)
 | Who | PIN |
 |-----|-----|
 | Child — Arjun (the addiction story) | **1234** |
 | Child — Priya (milder Roblox story) | **5678** |
 | Parent (sees both children) | **0000** |
 
-> If you DON'T want to reset data (e.g. to show a session you just played live),
-> run `.\demo_setup.ps1` without `-Seed`.
-
-## 2. Quick health check (10 seconds)
-
-In a second terminal:
-```powershell
-curl http://127.0.0.1:5000/api/health
-```
-Expect `"models_loaded": true`. If the phone can't reach it, re-run `adb reverse tcp:5000 tcp:5000`.
+## 2. Health check + (re)seed
+- **Health** — Cloud: open `https://gaming-addiction-api.onrender.com/api/health` →
+  `"models_loaded": true`.  Local: `curl http://127.0.0.1:5000/api/health`
+  (re-run `adb reverse tcp:5000 tcp:5000` if the phone can't reach it).
+- **Reseed the Arjun/Priya demo data** if it's missing or you wiped it:
+  - Local: `python seed_demo.py`
+  - Cloud: from `backend/`, set the Render external DB URL + pepper, then seed:
+    ```powershell
+    $env:DATABASE_URL="<render external DB url>"; $env:PIN_PEPPER="<render PIN_PEPPER>"
+    python3.11 seed_demo.py
+    $env:DATABASE_URL=""; $env:PIN_PEPPER=""
+    ```
 
 ---
 
@@ -73,11 +77,14 @@ Expect `"models_loaded": true`. If the phone can't reach it, re-run `adb reverse
 
 | Symptom | Fix |
 |---------|-----|
-| App shows network error | Re-run `adb reverse tcp:5000 tcp:5000` (USB tunnel dropped) |
-| Backend not responding | Restart it: `python3.11 app.py` |
-| Phone unplugged / reconnected | Re-run the `adb reverse` line |
-| Data looks wrong / want a clean slate | `python3.11 seed_demo.py` then refresh the app |
+| **Cloud:** first request slow / times out | Free tier woke from sleep — wait ~30–60s and retry; pre-warm via the health URL |
+| **Cloud:** network error on phone | Confirm the phone has WiFi/mobile data; open the health URL in the phone's browser |
+| **Cloud:** login fails after reseed | The seed used the wrong `PIN_PEPPER` — reseed with Render's exact `PIN_PEPPER` value |
+| **Local:** app shows network error | Re-run `adb reverse tcp:5000 tcp:5000` (USB tunnel dropped) |
+| **Local:** backend not responding | Restart it (`.\demo_setup.ps1`) — and quit Docker Desktop so port 5000 is free |
+| Data looks wrong / want a clean slate | Re-seed (see §2) then pull-to-refresh the app |
 | Session won't auto-start | Confirm UsageStats + Accessibility permissions are ON in ChildApp |
+| ChildApp "keeps stopping" | Fixed — voice mic service now degrades gracefully on Android 14; reinstall the latest APK |
 
 ---
 

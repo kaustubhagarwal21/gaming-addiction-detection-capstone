@@ -1,7 +1,9 @@
 package com.pes.parentmonitor.util
 
 object Constants {
-    const val BASE_URL = "http://127.0.0.1:5000/"
+    // Cloud backend (Render). Override in Settings → Server URL for local dev
+    // (e.g. http://127.0.0.1:5000/ with `adb reverse tcp:5000 tcp:5000`).
+    const val BASE_URL = "https://gaming-addiction-api.onrender.com/"
 
     // SharedPreferences keys
     const val PREFS_NAME = "parent_app_prefs"
