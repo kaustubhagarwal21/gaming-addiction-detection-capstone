@@ -50,8 +50,9 @@ class PassiveMonitorService : Service() {
     // session can't start while the password screen is up and the game is still the
     // last-resumed app behind it.
     @Volatile private var screenLocked = false
-    private val GRACE_MS = 20_000L   // 20s grace — short enough to feel responsive
-    private val POLL_MS  = 5_000L    // poll every 5s for near-instant detection
+    private val GRACE_MS    = 20_000L   // 20s grace — short enough to feel responsive
+    private val POLL_MS     = 5_000L    // 5s when it matters: near-instant detection
+    private val IDLE_POLL_MS = 30_000L  // device locked + no session → nothing to detect, save battery
 
     private var screenReceiver: BroadcastReceiver? = null
 
@@ -152,7 +153,11 @@ class PassiveMonitorService : Service() {
             if (prefs.isLoggedIn()) {
                 checkForegroundGame()
             }
-            delay(POLL_MS)
+            // Poll fast (5s) only when it matters — the screen is on, or a session is
+            // running (so its grace-end stays prompt). While locked AND idle (phone in
+            // a pocket, no game) there's nothing to detect, so back off to save battery.
+            val fast = !screenLocked || prefs.hasActiveSession()
+            delay(if (fast) POLL_MS else IDLE_POLL_MS)
         }
     }
 
