@@ -9,6 +9,7 @@ import com.pes.gamingdetector.api.ApiClient
 import com.pes.gamingdetector.util.Constants
 import com.pes.gamingdetector.util.ForegroundResolver
 import com.pes.gamingdetector.util.ForegroundTracker
+import com.pes.gamingdetector.util.GameDetector
 import com.pes.gamingdetector.util.KeystrokeBuffer
 import com.pes.gamingdetector.util.PrefsManager
 import kotlinx.coroutines.CoroutineScope
@@ -93,7 +94,7 @@ class ChatAccessibilityService : AccessibilityService() {
             // Reliable foreground check (UsageStats-backed, cached) so keystrokes are
             // captured while genuinely in a game and never while in another app.
             val foreground = ForegroundResolver.current(this)
-            if (foreground in Constants.KNOWN_GAMING_PACKAGES) {
+            if (GameDetector.isGame(this, foreground)) {
                 val label = event.contentDescription?.toString()
                     ?: event.text.joinToString("").takeIf { it.isNotEmpty() }
                 keystrokeBuffer.handleKey(label)

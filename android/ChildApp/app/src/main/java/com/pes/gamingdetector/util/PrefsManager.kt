@@ -42,6 +42,10 @@ class PrefsManager(context: Context) {
         get() = prefs.getString(Constants.KEY_ACTIVE_SESSION_GAME, "") ?: ""
         set(v) = prefs.edit().putString(Constants.KEY_ACTIVE_SESSION_GAME, v).apply()
 
+    var activeSessionPackage: String
+        get() = prefs.getString(Constants.KEY_ACTIVE_SESSION_PKG, "") ?: ""
+        set(v) = prefs.edit().putString(Constants.KEY_ACTIVE_SESSION_PKG, v).apply()
+
     var activeSessionStart: Long
         get() = prefs.getLong(Constants.KEY_ACTIVE_SESSION_START, 0L)
         set(v) = prefs.edit().putLong(Constants.KEY_ACTIVE_SESSION_START, v).apply()
@@ -65,6 +69,7 @@ class PrefsManager(context: Context) {
     fun clearSession() {
         activeSessionId = -1
         activeSessionGame = ""
+        activeSessionPackage = ""
         activeSessionStart = 0L
     }
 

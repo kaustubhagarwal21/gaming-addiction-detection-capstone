@@ -12,6 +12,7 @@ object Constants {
     const val KEY_SERVER_URL = "server_url"
     const val KEY_ACTIVE_SESSION_ID = "active_session_id"
     const val KEY_ACTIVE_SESSION_GAME = "active_session_game"
+    const val KEY_ACTIVE_SESSION_PKG = "active_session_pkg"
     const val KEY_ACTIVE_SESSION_START = "active_session_start"
     const val KEY_CHILD_CODE = "child_code"
     const val KEY_AUTH_TOKEN = "auth_token"

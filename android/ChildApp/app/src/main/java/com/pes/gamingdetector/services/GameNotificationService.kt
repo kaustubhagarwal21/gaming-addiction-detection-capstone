@@ -3,7 +3,7 @@ package com.pes.gamingdetector.services
 import android.service.notification.NotificationListenerService
 import android.service.notification.StatusBarNotification
 import com.pes.gamingdetector.api.ApiClient
-import com.pes.gamingdetector.util.Constants
+import com.pes.gamingdetector.util.GameDetector
 import com.pes.gamingdetector.util.PrefsManager
 import kotlinx.coroutines.*
 
@@ -13,14 +13,14 @@ class GameNotificationService : NotificationListenerService() {
 
     override fun onNotificationPosted(sbn: StatusBarNotification) {
         val pkg = sbn.packageName
-        if (pkg !in Constants.KNOWN_GAMING_PACKAGES) return
+        if (!GameDetector.isGame(this, pkg)) return   // any game, not just the curated list
 
         val prefs = PrefsManager(this)
         if (!prefs.isLoggedIn()) return
 
         val title = sbn.notification.extras
             .getString(android.app.Notification.EXTRA_TITLE) ?: ""
-        val gameName = Constants.PACKAGE_TO_GAME[pkg] ?: pkg.substringAfterLast('.')
+        val gameName = GameDetector.displayName(this, pkg)
 
         scope.launch {
             try {

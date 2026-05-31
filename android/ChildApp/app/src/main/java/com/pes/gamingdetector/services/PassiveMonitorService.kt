@@ -16,6 +16,7 @@ import com.pes.gamingdetector.api.StartSessionRequest
 import com.pes.gamingdetector.util.Constants
 import com.pes.gamingdetector.util.ForegroundResolver
 import com.pes.gamingdetector.util.ForegroundTracker
+import com.pes.gamingdetector.util.GameDetector
 import com.pes.gamingdetector.util.PrefsManager
 import kotlinx.coroutines.*
 
@@ -168,9 +169,13 @@ class PassiveMonitorService : Service() {
         // holds the active session. Recover the package from the saved game name so
         // maintenance mode resumes; if it can't be mapped, end the stale session.
         if (sessionActive && trackedPackage.isEmpty()) {
-            val pkg = Constants.PACKAGE_TO_GAME.entries
-                .firstOrNull { it.value == prefs.activeSessionGame }?.key
-            if (pkg != null) {
+            // Prefer the stored package (works for any game); fall back to mapping the
+            // saved name for sessions started before the package was persisted.
+            val pkg = prefs.activeSessionPackage.ifEmpty {
+                Constants.PACKAGE_TO_GAME.entries
+                    .firstOrNull { it.value == prefs.activeSessionGame }?.key ?: ""
+            }
+            if (pkg.isNotEmpty()) {
                 trackedPackage = pkg
             } else {
                 launchAutoEnd()
@@ -203,15 +208,14 @@ class PassiveMonitorService : Service() {
                 !startingSession &&
                 foregroundPkg != null &&
                 foregroundPkg != packageName &&
-                foregroundPkg in Constants.KNOWN_GAMING_PACKAGES
+                GameDetector.isGame(this, foregroundPkg)
             ) {
                 // startingSession stays true across the whole async startSession call
                 // so subsequent 5s ticks can't fire a second start before the first
                 // session is registered.
                 startingSession = true
                 val pkg = foregroundPkg
-                val gameName = Constants.PACKAGE_TO_GAME[pkg]
-                    ?: pkg.substringAfterLast('.')
+                val gameName = GameDetector.displayName(this, pkg)
                 scope.launch {
                     try { performAutoStart(gameName, pkg) }
                     finally { startingSession = false }
@@ -227,9 +231,10 @@ class PassiveMonitorService : Service() {
             val resp = api.startSession(StartSessionRequest(prefs.userId, gameName))
             if (resp.isSuccessful && resp.body()?.success == true) {
                 val sessionId = resp.body()!!.sessionId
-                prefs.activeSessionId    = sessionId
-                prefs.activeSessionGame  = gameName
-                prefs.activeSessionStart = System.currentTimeMillis()
+                prefs.activeSessionId      = sessionId
+                prefs.activeSessionGame    = gameName
+                prefs.activeSessionPackage = pkg   // for orphan recovery of any game
+                prefs.activeSessionStart   = System.currentTimeMillis()
                 // Tie trackedPackage to an actually-created session so a failed start
                 // doesn't leave a phantom tracked package behind.
                 trackedPackage = pkg
