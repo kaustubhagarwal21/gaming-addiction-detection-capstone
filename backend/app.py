@@ -255,6 +255,15 @@ USE_POSTGRES = DATABASE_URL.startswith('postgresql')
 if USE_POSTGRES:
     import psycopg2
     import psycopg2.extras
+    from psycopg2 import extensions as _pg_ext
+    # Return SQL NUMERIC/DECIMAL as Python float (not Decimal), so arithmetic and JSON
+    # behave exactly like SQLite's REAL. Without this, Postgres aggregates (SUM/AVG/…)
+    # come back as Decimal and mixing them with floats raises TypeError (e.g. the
+    # anomaly z-score: Decimal - float).
+    _DEC2FLOAT = _pg_ext.new_type(
+        _pg_ext.DECIMAL.values, 'DEC2FLOAT',
+        lambda v, _cur: float(v) if v is not None else None)
+    _pg_ext.register_type(_DEC2FLOAT)
 
 
 def _to_pg(sql: str) -> str:
