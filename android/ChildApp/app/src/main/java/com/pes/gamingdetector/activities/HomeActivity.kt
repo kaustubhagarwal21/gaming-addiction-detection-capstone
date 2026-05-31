@@ -35,6 +35,10 @@ class HomeActivity : AppCompatActivity() {
     private lateinit var binding: ActivityHomeBinding
     private lateinit var prefs: PrefsManager
 
+    // The single in-flight permission dialog, so prompts never stack on top of each
+    // other and the box closes itself the moment everything is granted.
+    private var permDialog: AlertDialog? = null
+
     private val uiHandler = Handler(Looper.getMainLooper())
     private val bannerRefresh = object : Runnable {
         override fun run() {
@@ -138,6 +142,12 @@ class HomeActivity : AppCompatActivity() {
         uiHandler.removeCallbacks(bannerRefresh)
     }
 
+    override fun onDestroy() {
+        super.onDestroy()
+        permDialog?.dismiss()
+        permDialog = null
+    }
+
     private fun refreshBanner() {
         if (prefs.hasActiveSession()) {
             binding.resumeBanner.visibility = View.VISIBLE
@@ -190,6 +200,8 @@ class HomeActivity : AppCompatActivity() {
 
     private fun checkRequiredPermissions() {
         // Show dialogs one at a time in priority order; each "Skip" moves to the next.
+        // Re-run on every resume, so returning from Settings advances to the next
+        // missing permission — or closes the box entirely once all are granted.
         when {
             !hasUsageStatsPermission() -> showPermissionDialog(
                 title = "Allow Usage Access",
@@ -199,7 +211,13 @@ class HomeActivity : AppCompatActivity() {
             )
             !isNotificationListenerEnabled() -> showNotifListenerDialog()
             !isAccessibilityEnabled() -> showAccessibilityDialog()
+            else -> dismissPermDialog()   // everything granted → close any lingering box
         }
+    }
+
+    private fun dismissPermDialog() {
+        permDialog?.dismiss()
+        permDialog = null
     }
 
     private fun showNotifListenerDialog() {
@@ -226,11 +244,16 @@ class HomeActivity : AppCompatActivity() {
         settingsIntent: Intent,
         onSkip: (() -> Unit)?
     ) {
-        AlertDialog.Builder(this)
+        if (isFinishing || isDestroyed) return
+        // Replace any existing dialog so prompts never stack.
+        permDialog?.dismiss()
+        permDialog = AlertDialog.Builder(this)
             .setTitle(title)
             .setMessage(message)
             .setCancelable(false)
-            .setPositiveButton("Open Settings") { _, _ -> startActivity(settingsIntent) }
+            .setPositiveButton("Open Settings") { _, _ ->
+                try { startActivity(settingsIntent) } catch (_: Exception) {}
+            }
             .setNegativeButton("Skip") { _, _ -> onSkip?.invoke() }
             .show()
     }
