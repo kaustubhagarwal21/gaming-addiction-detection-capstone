@@ -79,7 +79,8 @@ class ParentalDashboardActivity : AppCompatActivity() {
         binding.btnSetLimit.setOnClickListener { showSetLimitDialog() }
 
         startAlertPolling()
-        loadDashboard()
+        // First load happens in onResume (which always runs right after onCreate) —
+        // avoids a redundant double fetch + double spinner on launch.
     }
 
     override fun onResume() {

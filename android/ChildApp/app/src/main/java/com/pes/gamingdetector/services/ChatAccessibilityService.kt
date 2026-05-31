@@ -14,6 +14,7 @@ import com.pes.gamingdetector.util.PrefsManager
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
 
 class ChatAccessibilityService : AccessibilityService() {
@@ -160,6 +161,7 @@ class ChatAccessibilityService : AccessibilityService() {
 
     override fun onDestroy() {
         idleHandler.removeCallbacks(idleFlusher)
+        scope.cancel()          // stop in-flight chat-upload coroutines (was leaking)
         keystrokeBuffer.clear()
         super.onDestroy()
     }

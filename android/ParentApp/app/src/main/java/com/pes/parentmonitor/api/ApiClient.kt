@@ -38,7 +38,7 @@ object ApiClient {
             }
             val client = OkHttpClient.Builder()
                 .connectTimeout(30, TimeUnit.SECONDS)
-                .readTimeout(60, TimeUnit.SECONDS)
+                .readTimeout(90, TimeUnit.SECONDS)   // tolerate cloud (Render) cold-start wake-ups
                 .writeTimeout(60, TimeUnit.SECONDS)
                 .addInterceptor(auth)
                 .addInterceptor(logging)
