@@ -1,9 +1,11 @@
 package com.pes.gamingdetector.activities
 
+import android.Manifest
 import android.app.AppOpsManager
 import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Bundle
 import android.os.Handler
@@ -15,6 +17,7 @@ import android.view.View
 import android.view.ViewGroup
 import android.widget.TextView
 import android.widget.Toast
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
@@ -38,6 +41,12 @@ class HomeActivity : AppCompatActivity() {
     // The single in-flight permission dialog, so prompts never stack on top of each
     // other and the box closes itself the moment everything is granted.
     private var permDialog: AlertDialog? = null
+
+    // Runtime-permission prompt (microphone + notifications). Registered up-front;
+    // whatever the user chooses, we then continue to the special-access checks.
+    private val runtimePerms = registerForActivityResult(
+        ActivityResultContracts.RequestMultiplePermissions()
+    ) { _ -> checkRequiredPermissions() }
 
     private val uiHandler = Handler(Looper.getMainLooper())
     private val bannerRefresh = object : Runnable {
@@ -90,7 +99,28 @@ class HomeActivity : AppCompatActivity() {
         ContextCompat.startForegroundService(
             this, Intent(this, PassiveMonitorService::class.java)
         )
-        checkRequiredPermissions()
+        requestRuntimePermissions()
+    }
+
+    /** Ask directly (system dialog) for the runtime permissions — microphone (voice
+        analysis) and notifications (Android 13+) — then fall through to the
+        special-access prompts. Only asks for ones not already granted. */
+    private fun requestRuntimePermissions() {
+        val needed = mutableListOf<String>()
+        if (ContextCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO)
+                != PackageManager.PERMISSION_GRANTED) {
+            needed += Manifest.permission.RECORD_AUDIO
+        }
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
+            ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS)
+                != PackageManager.PERMISSION_GRANTED) {
+            needed += Manifest.permission.POST_NOTIFICATIONS
+        }
+        if (needed.isNotEmpty()) {
+            runtimePerms.launch(needed.toTypedArray())   // continues in the callback
+        } else {
+            checkRequiredPermissions()
+        }
     }
 
     /** Gate monitoring behind parental consent. Honours consent already recorded
