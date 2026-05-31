@@ -1,31 +1,22 @@
 """
 Demo seed data — PES Capstone PW26_SJ_05
-Usage:  python backend/seed_demo.py
-Creates 15 historical sessions showing a realistic risk-escalation pattern.
-Re-running is safe: existing sessions for user_id=1 are cleared first.
+
+Run locally (SQLite):        python seed_demo.py        (from the backend/ folder)
+Seed the Render Postgres:    in the service's Shell tab, run:  python seed_demo.py
+   (DATABASE_URL is already set in that environment, so it targets the cloud DB.)
+
+Creates a realistic risk-escalation history for Arjun + Priya. Re-running is safe:
+each child's existing data is cleared first.
 """
-import sqlite3, os, random, hmac, hashlib
+import os, sys, random
 from datetime import datetime, timedelta
 
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-DATABASE = os.path.join(BASE_DIR, 'gaming_addiction.db')
-
-# Must match app.py's PIN hashing so seeded PINs authenticate. With no env set,
-# both sides fall back to the same dev secret, so the demo works out of the box.
-PIN_PEPPER = (os.environ.get('PIN_PEPPER') or os.environ.get('AUTH_SECRET')
-              or 'dev-insecure-secret-DO-NOT-USE-IN-PRODUCTION')
-
-
-def hash_pin(pin):
-    return hmac.new(PIN_PEPPER.encode(), str(pin).strip().encode(), hashlib.sha256).hexdigest()
-
-
-def get_db():
-    conn = sqlite3.connect(DATABASE, timeout=30)
-    conn.row_factory = sqlite3.Row
-    conn.execute("PRAGMA journal_mode=WAL")
-    conn.execute("PRAGMA foreign_keys=ON")
-    return conn
+# Reuse the backend's dialect-aware DB layer + PIN hashing, so this seeds the local
+# SQLite file OR the Render Postgres (whenever DATABASE_URL is set) with identical
+# logic — no train/serve or hashing skew. Importing app also runs init_db(), which
+# guarantees the schema exists before we insert.
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from app import get_db, insert_returning_id, hash_pin
 
 
 SESSION_PLAN = [
@@ -87,13 +78,15 @@ def seed_child(c, conn, user_id, name, plan):
         psy = PSY_LEVEL[risk_cat]
         lnr = 0.65 if (hour_start >= 22 or hour_start < 6) else 0.08
 
-        c.execute('''INSERT INTO sessions
+        sid = insert_returning_id(
+                  conn,
+                  '''INSERT INTO sessions
                      (user_id, game_name, start_time, end_time, duration_seconds,
                       final_risk_score, risk_category, confidence)
                      VALUES (?,?,?,?,?,?,?,?)''',
                   (user_id, game, start_dt.isoformat(), end_dt.isoformat(),
-                   dur_min * 60, risk_score, risk_cat, 0.78))
-        sid = c.lastrowid
+                   dur_min * 60, risk_score, risk_cat, 0.78),
+                  pk='session_id')
 
         daily = (dur_min / 60.0) * (1.3 if risk_cat == 'addicted' else 1.0)
         weekly = daily * (6 if risk_cat == 'addicted' else 4 if risk_cat == 'at_risk' else 3)
@@ -246,14 +239,7 @@ def seed():
     conn = get_db()
     c    = conn.cursor()
 
-    # Ensure the keyed-hash columns exist even if seeding runs before the updated
-    # app.py has migrated the DB (app.py adds these the same way).
-    for col in ('pin_hash', 'parent_pin_hash'):
-        try:
-            c.execute(f"ALTER TABLE users ADD COLUMN {col} TEXT DEFAULT NULL")
-        except Exception:
-            pass
-
+    # Schema (incl. pin_hash/parent_pin_hash) is guaranteed by app.init_db() at import.
     arjun_pin,  parent_pin = hash_pin('1234'), hash_pin('0000')
     priya_pin              = hash_pin('5678')
 
