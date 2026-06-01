@@ -103,7 +103,7 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginTop="4dp"
-            android:text="Most games are detected automatically. Use this only if a game isn't being picked up."
+            android:text="Most games are detected automatically. Use this to add a game that's missed, or stop monitoring an app that isn't really a game."
             android:textSize="12sp"
             android:textColor="@color/text_secondary" />
 

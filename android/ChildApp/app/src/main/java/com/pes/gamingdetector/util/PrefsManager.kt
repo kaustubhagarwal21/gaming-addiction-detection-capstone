@@ -74,6 +74,12 @@ class PrefsManager(context: Context) {
         get() = prefs.getStringSet("forced_game_pkgs", emptySet()) ?: emptySet()
         set(v) = prefs.edit().putStringSet("forced_game_pkgs", HashSet(v)).apply()
 
+    // Packages the parent marked as NOT a game (force-exclude). Stops monitoring a
+    // non-game the OS miscategorised as a game, or a game they don't want tracked.
+    var excludedGamePackages: Set<String>
+        get() = prefs.getStringSet("excluded_game_pkgs", emptySet()) ?: emptySet()
+        set(v) = prefs.edit().putStringSet("excluded_game_pkgs", HashSet(v)).apply()
+
     fun isLoggedIn() = userId != -1
 
     fun hasActiveSession() = activeSessionId != -1
@@ -87,12 +93,14 @@ class PrefsManager(context: Context) {
 
     fun logout() {
         // Preserve device-level config that isn't tied to the account: the server URL
-        // and the parent's "mark as game" overrides (set during setup, survive re-login).
+        // and the parent's game overrides (set during setup, survive re-login).
         val savedUrl = serverUrl
-        val savedGames = forcedGamePackages
+        val savedIncluded = forcedGamePackages
+        val savedExcluded = excludedGamePackages
         prefs.edit().clear().apply()
         serverUrl = savedUrl
-        forcedGamePackages = savedGames
+        forcedGamePackages = savedIncluded
+        excludedGamePackages = savedExcluded
         ApiClient.authToken = null
     }
 }

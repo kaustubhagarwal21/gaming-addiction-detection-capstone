@@ -35,9 +35,11 @@ class ManageGamesActivity : AppCompatActivity() {
 
     private lateinit var binding: ActivityManageGamesBinding
     private lateinit var prefs: PrefsManager
-    private val forced = HashSet<String>()
+    private val included = HashSet<String>()   // force-include (not auto-detected)
+    private val excluded = HashSet<String>()   // force-exclude (overrides auto-detection)
 
-    private data class AppItem(val pkg: String, val label: String, val icon: Drawable?, var checked: Boolean)
+    private data class AppItem(val pkg: String, val label: String, val icon: Drawable?,
+                               val isAuto: Boolean, var checked: Boolean)
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -49,7 +51,8 @@ class ManageGamesActivity : AppCompatActivity() {
         supportActionBar?.setDisplayHomeAsUpEnabled(true)
         supportActionBar?.title = "Manage Games"
 
-        forced.addAll(prefs.forcedGamePackages)
+        included.addAll(prefs.forcedGamePackages)
+        excluded.addAll(prefs.excludedGamePackages)
         binding.rvApps.layoutManager = LinearLayoutManager(this)
         loadApps()
     }
@@ -76,15 +79,16 @@ class ManageGamesActivity : AppCompatActivity() {
             val ai = ri.activityInfo?.applicationInfo ?: continue
             val pkg = ai.packageName
             if (pkg == packageName || !seen.add(pkg)) continue
-            // Skip pure system apps (games are user-installed) and apps the OS already
-            // recognises as games (those need no override).
+            // Show user-installed launchable apps (games are user-installed). Both
+            // directions are offered: tick a non-game that's really a game, or untick a
+            // (mis)detected game to stop monitoring it — so don't filter out auto-games.
             val pureSystem = (ai.flags and ApplicationInfo.FLAG_SYSTEM) != 0 &&
                              (ai.flags and ApplicationInfo.FLAG_UPDATED_SYSTEM_APP) == 0
             if (pureSystem) continue
-            if (GameDetector.isAutoDetectedGame(this, pkg)) continue
-            val label = try { pm.getApplicationLabel(ai).toString() } catch (_: Exception) { pkg }
-            val icon  = try { pm.getApplicationIcon(ai) } catch (_: Exception) { null }
-            out.add(AppItem(pkg, label, icon, pkg in forced))
+            val label  = try { pm.getApplicationLabel(ai).toString() } catch (_: Exception) { pkg }
+            val icon   = try { pm.getApplicationIcon(ai) } catch (_: Exception) { null }
+            val isAuto = GameDetector.isAutoDetectedGame(this, pkg)
+            out.add(AppItem(pkg, label, icon, isAuto, GameDetector.isGame(this, pkg)))
         }
         out.sortBy { it.label.lowercase() }
         return out
@@ -92,8 +96,18 @@ class ManageGamesActivity : AppCompatActivity() {
 
     private fun toggle(item: AppItem, checked: Boolean) {
         item.checked = checked
-        if (checked) forced.add(item.pkg) else forced.remove(item.pkg)
-        prefs.forcedGamePackages = forced
+        // Store only deviations from auto-detection so the sets stay minimal:
+        //  checked   → never exclude; force-include only if the OS wouldn't detect it.
+        //  unchecked → never include; force-exclude only if the OS would detect it.
+        if (checked) {
+            excluded.remove(item.pkg)
+            if (item.isAuto) included.remove(item.pkg) else included.add(item.pkg)
+        } else {
+            included.remove(item.pkg)
+            if (item.isAuto) excluded.add(item.pkg) else excluded.remove(item.pkg)
+        }
+        prefs.forcedGamePackages   = included
+        prefs.excludedGamePackages = excluded
         GameDetector.invalidate()   // running monitor picks it up on the next poll
     }
 

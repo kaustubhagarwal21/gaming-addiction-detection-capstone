@@ -25,15 +25,21 @@ import android.os.Build
 object GameDetector {
     private val cache = HashMap<String, Boolean>()
 
-    // Parent's manual "mark as game" overrides, cached. Closes the one case the OS
-    // can't help with: a real game that reports a non-game category and isn't curated.
+    // Parent's manual overrides, cached. force-include closes the case the OS can't help
+    // with (a real game reporting a non-game category, not curated); force-exclude lets
+    // the parent stop monitoring a non-game miscategorised as a game, or a game they
+    // don't want tracked. Exclude wins over everything (explicit parent choice).
     @Volatile private var forced: Set<String>? = null
+    @Volatile private var excluded: Set<String>? = null
 
-    /** Re-read the override list on the next lookup. Call after the parent edits it. */
-    fun invalidate() { forced = null; cache.clear() }
+    /** Re-read the override lists on the next lookup. Call after the parent edits them. */
+    fun invalidate() { forced = null; excluded = null; cache.clear() }
 
     private fun forcedSet(ctx: Context): Set<String> =
         forced ?: PrefsManager(ctx).forcedGamePackages.also { forced = it }
+
+    private fun excludedSet(ctx: Context): Set<String> =
+        excluded ?: PrefsManager(ctx).excludedGamePackages.also { excluded = it }
 
     // Namespaces that can report (or get bucketed under) a game category but are never
     // "the child playing a game": OS/system, Google services, the Play Store, the Play
@@ -84,6 +90,7 @@ object GameDetector {
         parent manually marked as a game. */
     fun isGame(ctx: Context, pkg: String?): Boolean {
         if (pkg.isNullOrEmpty()) return false
+        if (pkg in excludedSet(ctx)) return false   // explicit "not a game" wins over all
         if (pkg in forcedSet(ctx)) return true
         return isAutoDetectedGame(ctx, pkg)
     }

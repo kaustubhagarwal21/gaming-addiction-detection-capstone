@@ -27,7 +27,7 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:padding="16dp"
-            android:text="These apps aren't recognised as games automatically. Tick any that ARE games so they're monitored too."
+            android:text="Ticked apps are monitored as games. Tick an app to start monitoring it, or untick one to stop. Most are already set correctly — change this only if a game is being missed, or a non-game is wrongly tracked."
             android:textSize="13sp"
             android:textColor="@color/text_secondary" />
 
