@@ -86,9 +86,13 @@ class PrefsManager(context: Context) {
     }
 
     fun logout() {
+        // Preserve device-level config that isn't tied to the account: the server URL
+        // and the parent's "mark as game" overrides (set during setup, survive re-login).
         val savedUrl = serverUrl
+        val savedGames = forcedGamePackages
         prefs.edit().clear().apply()
         serverUrl = savedUrl
+        forcedGamePackages = savedGames
         ApiClient.authToken = null
     }
 }
