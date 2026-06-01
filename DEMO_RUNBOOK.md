@@ -101,8 +101,9 @@ Nothing to start. The backend runs 24/7 at **https://gaming-addiction-api.onrend
   labeled data; the voice model is adult-trained so it leans toward arousal detection;
   the weights are priors, not fitted. These are exactly what the active-learning /
   retraining roadmap addresses.
-- **Privacy:** raw audio is processed and discarded after feature extraction; capture
-  is scoped to active gaming sessions of known games only.
+- **Privacy:** raw audio is processed and discarded after feature extraction (the
+  spoken words are transcribed to text and kept, the audio is not); capture is scoped
+  to active gaming sessions of any app the device classifies as a game.
 - **Security:** login issues a signed bearer token (HMAC); every request carries it and
   the server authorizes by ownership — a parent can read only their own children's data
   (cross-account access returns 403), and PINs are stored as keyed hashes, never plaintext.

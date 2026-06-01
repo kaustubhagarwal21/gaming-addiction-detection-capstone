@@ -16,7 +16,11 @@ interface ApiService {
     suspend fun startSession(@Body request: StartSessionRequest): Response<SessionResponse>
 
     @POST("api/session/{id}/end")
-    suspend fun endSession(@Path("id") sessionId: Int): Response<EndSessionResponse>
+    suspend fun endSession(
+        @Path("id") sessionId: Int,
+        // Seconds before now the player actually stopped (grace/ancillary tail). 0 = end now.
+        @Query("ended_seconds_ago") endedSecondsAgo: Long = 0
+    ): Response<EndSessionResponse>
 
     @POST("api/session/{id}/predict")
     suspend fun livePrediction(@Path("id") sessionId: Int): Response<LivePrediction>

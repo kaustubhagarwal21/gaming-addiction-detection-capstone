@@ -1758,7 +1758,7 @@ def update_profile():
 
 # ─────────────── PRIVACY: CONSENT + DATA DELETION + RETENTION ──────────────
 
-CONSENT_VERSION = os.environ.get('CONSENT_VERSION', '2026-05-30')
+CONSENT_VERSION = os.environ.get('CONSENT_VERSION', '2026-06-01')
 # Raw event data older than this many days is purged on startup (0 = keep forever).
 DATA_RETENTION_DAYS = int(os.environ.get('DATA_RETENTION_DAYS', '0'))
 
@@ -1898,9 +1898,20 @@ def end_session(sid):
     if not row:
         conn.close()
         return jsonify({'error': 'Session not found'}), 404
+    # How many seconds before "now" the player actually stopped — the grace / ancillary
+    # tail the auto-monitor waited out before ending. Sent as a delta (not an absolute
+    # timestamp) so device/server clock skew is irrelevant. Clamped so a session can
+    # never end before it started or in the future. 0 for an explicit "end now".
+    try:
+        ago = max(0, int(request.args.get('ended_seconds_ago')
+                          or (request.get_json(silent=True) or {}).get('ended_seconds_ago', 0)))
+    except (TypeError, ValueError):
+        ago = 0
     start    = datetime.fromisoformat(row['start_time'])
-    end_time = datetime.now()
-    duration = int((end_time - start).total_seconds())
+    end_time = datetime.now() - timedelta(seconds=ago)
+    if end_time < start:
+        end_time = start
+    duration = max(0, int((end_time - start).total_seconds()))
     c.execute('UPDATE sessions SET end_time=?, duration_seconds=? WHERE session_id=?',
               (end_time.isoformat(), duration, sid))
     conn.commit()

@@ -1,11 +1,13 @@
 package com.pes.gamingdetector.services
 
+import android.app.KeyguardManager
 import android.app.PendingIntent
 import android.app.Service
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
+import android.net.Uri
 import android.os.IBinder
 import androidx.core.app.NotificationCompat
 import androidx.core.content.ContextCompat
@@ -23,8 +25,8 @@ import kotlinx.coroutines.*
 /**
  * Always-on background service that provides two passive data streams:
  *
- * 1. Auto-session detection — polls UsageStats every 30s; when a known game
- *    moves to the foreground a session is started automatically on the server
+ * 1. Auto-session detection — polls UsageStats (5s while active, 30s when locked +
+ *    idle); when any game moves to the foreground a session is started on the server
  *    and GameMonitorService is launched. When the game leaves foreground for
  *    more than GRACE_PERIOD_MS the session is ended automatically.
  *    This means all gaming is captured regardless of whether the child opens
@@ -45,16 +47,35 @@ class PassiveMonitorService : Service() {
     private var gameLeftAt: Long = 0L
     @Volatile private var startingSession = false  // guards the async startSession round-trip
     @Volatile private var endingSession = false    // guards the async endSession round-trip
-    // True while the device is off OR on the lock screen. Cleared only when the user
-    // actually unlocks (USER_PRESENT) — not merely when the screen turns on — so a
-    // session can't start while the password screen is up and the game is still the
-    // last-resumed app behind it.
-    @Volatile private var screenLocked = false
-    private val GRACE_MS    = 20_000L   // 20s grace — short enough to feel responsive
+    // Screen physically off (SCREEN_OFF → true, SCREEN_ON → false). Lock state itself
+    // is read live from KeyguardManager (see locked()), not tracked here.
+    @Volatile private var screenOff = false
+    private val keyguard by lazy { getSystemService(KeyguardManager::class.java) }
+    private val GRACE_MS    = 20_000L   // 20s grace when the user switches to a real app
+    private val NEUTRAL_GRACE_MS = 120_000L  // 2 min when the game delegated to an ancillary flow
     private val POLL_MS     = 5_000L    // 5s when it matters: near-instant detection
     private val IDLE_POLL_MS = 30_000L  // device locked + no session → nothing to detect, save battery
 
     private var screenReceiver: BroadcastReceiver? = null
+
+    // Packages a game legitimately hands off to mid-play — Google sign-in, Play Store
+    // purchases, the Play Games overlay, or a Custom-Tab browser (rewarded ads / login).
+    // While the foreground sits in one of these we hold the session open with the longer
+    // NEUTRAL grace so one continuous play session isn't split into two.
+    private val ancillaryPackages: Set<String> by lazy {
+        val set = mutableSetOf(
+            "com.google.android.gms",
+            "com.android.vending",
+            "com.google.android.play.games",
+        )
+        try {
+            val browse = Intent(Intent.ACTION_VIEW, Uri.parse("https://example.com"))
+            packageManager.resolveActivity(browse, 0)?.activityInfo?.packageName?.let { set += it }
+        } catch (_: Exception) {}
+        set
+    }
+    private fun isAncillary(pkg: String?) =
+        pkg != null && ancillaryPackages.any { pkg == it || pkg.startsWith("$it.") }
 
     companion object {
         const val NOTIF_ID = 1099
@@ -110,14 +131,15 @@ class PassiveMonitorService : Service() {
                     Intent.ACTION_USER_PRESENT -> "unlocked"
                     else                       -> return
                 }
-                // Track lock state so an active session ends when the device is locked
+                // Track screen on/off so an active session ends when the device is off
                 // mid-game (UsageStats would otherwise keep reporting the game as the
-                // most-recently-resumed app indefinitely). SCREEN_ON keeps it locked —
-                // the keyguard/password screen is still up — only USER_PRESENT (real
-                // unlock) clears it.
+                // most-recently-resumed app indefinitely). Whether the lock screen is up
+                // is queried live from KeyguardManager in locked(), so we don't depend on
+                // USER_PRESENT — which some devices/ROMs never broadcast when no secure
+                // lock is set (common on a child's device).
                 when (intent.action) {
-                    Intent.ACTION_SCREEN_OFF   -> screenLocked = true
-                    Intent.ACTION_USER_PRESENT -> screenLocked = false
+                    Intent.ACTION_SCREEN_OFF -> screenOff = true
+                    Intent.ACTION_SCREEN_ON  -> screenOff = false
                 }
                 if (prefs.isLoggedIn()) {
                     scope.launch { postScreenEvent(type) }
@@ -148,6 +170,12 @@ class PassiveMonitorService : Service() {
 
     // ── Auto-session detection ────────────────────────────────────
 
+    /** The device can't be actively used for gaming right now: the screen is off, or
+        the lock screen (even a swipe keyguard) is showing. On a device with no lock set
+        isKeyguardLocked() is false, so gaming is detected as soon as the screen is on —
+        we don't rely on ACTION_USER_PRESENT, which isn't reliably sent without a lock. */
+    private fun locked(): Boolean = screenOff || (keyguard?.isKeyguardLocked == true)
+
     private suspend fun usageStatsLoop() {
         while (currentCoroutineContext().isActive) {
             if (prefs.isLoggedIn()) {
@@ -156,7 +184,7 @@ class PassiveMonitorService : Service() {
             // Poll fast (5s) only when it matters — the screen is on, or a session is
             // running (so its grace-end stays prompt). While locked AND idle (phone in
             // a pocket, no game) there's nothing to detect, so back off to save battery.
-            val fast = !screenLocked || prefs.hasActiveSession()
+            val fast = !locked() || prefs.hasActiveSession()
             delay(if (fast) POLL_MS else IDLE_POLL_MS)
         }
     }
@@ -194,9 +222,9 @@ class PassiveMonitorService : Service() {
             // foreground app. Anything else — locked, ChildApp, another app — starts the
             // grace timer. The 20s grace still absorbs a quick glance at ChildApp and a
             // return to the game; sitting in ChildApp (or any non-game app) ends it.
-            val stillPlaying = !screenLocked && foregroundPkg == trackedPackage
+            val stillPlaying = !locked() && foregroundPkg == trackedPackage
             // Switched straight to a DIFFERENT game (not a glance at home/our app)?
-            val switchedToAnotherGame = !screenLocked &&
+            val switchedToAnotherGame = !locked() &&
                 foregroundPkg != null &&
                 foregroundPkg != packageName &&
                 foregroundPkg != trackedPackage &&
@@ -209,20 +237,29 @@ class PassiveMonitorService : Service() {
                 // instead of the first game silently absorbing the second's playtime.
                 launchAutoEnd()
             } else {
-                // Glanced at home / our app / a non-game — short grace absorbs a quick
-                // look and a return; sitting elsewhere past the grace ends the session.
+                // Away from the game. If we're in an ancillary flow the game delegated to
+                // (sign-in / purchase / rewarded-ad Custom Tab), use the longer NEUTRAL
+                // grace so a single play session isn't split. A glance at home / our app /
+                // any real other app uses the short grace; sitting there past it ends the
+                // session. The grace is chosen from the CURRENT foreground each tick, so
+                // moving from an ad to the home screen correctly falls back to the short one.
                 if (gameLeftAt == 0L) {
                     gameLeftAt = System.currentTimeMillis()
-                } else if (System.currentTimeMillis() - gameLeftAt > GRACE_MS) {
-                    launchAutoEnd()
+                }
+                val grace = if (isAncillary(foregroundPkg)) NEUTRAL_GRACE_MS else GRACE_MS
+                val awayMs = System.currentTimeMillis() - gameLeftAt
+                if (awayMs > grace) {
+                    // Attribute time only up to when play actually stopped — exclude the
+                    // grace/ancillary tail the user was no longer in the game.
+                    launchAutoEnd(endedSecondsAgo = awayMs / 1000)
                 }
             }
         } else {
             // ── Detection mode: no session yet ────────────────────────────────────
             // Start a session only if the device is unlocked AND the current foreground
-            // app is a known game. The unlock check stops a session spawning while the
-            // game is still the last-resumed app behind the lock/password screen.
-            if (!screenLocked &&
+            // app is a game. The unlock check stops a session spawning while the game is
+            // still the last-resumed app behind the lock/password screen.
+            if (!locked() &&
                 !startingSession &&
                 foregroundPkg != null &&
                 foregroundPkg != packageName &&
@@ -274,23 +311,23 @@ class PassiveMonitorService : Service() {
 
     // Clears tracked state synchronously and runs the async end behind a guard so
     // repeated 5s ticks can't fire a second endSession before this one completes.
-    private fun launchAutoEnd() {
+    private fun launchAutoEnd(endedSecondsAgo: Long = 0L) {
         if (endingSession) return
         endingSession = true
         trackedPackage = ""
         gameLeftAt = 0L
         scope.launch {
-            try { performAutoEnd() } finally { endingSession = false }
+            try { performAutoEnd(endedSecondsAgo) } finally { endingSession = false }
         }
     }
 
-    private suspend fun performAutoEnd() {
+    private suspend fun performAutoEnd(endedSecondsAgo: Long) {
         val sessionId = prefs.activeSessionId
         val gameName  = prefs.activeSessionGame
         if (sessionId == -1) return
         try {
             stopService(Intent(this, GameMonitorService::class.java))
-            val resp = ApiClient.getInstance(prefs.serverUrl).endSession(sessionId)
+            val resp = ApiClient.getInstance(prefs.serverUrl).endSession(sessionId, endedSecondsAgo)
             prefs.clearSession()
             if (resp.isSuccessful) {
                 val pred = resp.body()?.prediction

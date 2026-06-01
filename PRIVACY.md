@@ -1,6 +1,6 @@
 # Privacy Policy — Gaming Wellbeing Monitor (PW26_SJ_05)
 
-_Last updated: 2026-05-30 · Consent version: 2026-05-30_
+_Last updated: 2026-06-01 · Consent version: 2026-06-01_
 
 This is a **parental wellbeing tool**: a parent installs the Child app on their
 child's device to understand the child's gaming patterns and emotional wellbeing,
@@ -12,19 +12,24 @@ it, how long it is kept, and how to delete it.
 
 ## What is collected (only on the monitored child's device, only during gaming)
 
-- **Gaming activity** — which known game is in the foreground, and session
-  start/end times.
-- **In-game chat the child types** — text the child enters in supported games,
+- **Gaming activity** — which game is in the foreground (any app the device
+  classifies as a game, not just a fixed list) and session start/end times. To
+  recognise games, the app checks the *category* of installed apps **locally on the
+  device**; the list of installed apps is never uploaded.
+- **In-game chat the child types** — text the child enters while playing games,
   used for tone/toxicity signals. We capture what the child types, not the
   messages of other players.
 - **Short voice clips during a gaming session** — used to estimate emotional
   arousal/tone. **Raw audio is processed into numeric features and then deleted**
   immediately (it is not stored or sent anywhere) unless a developer explicitly
-  enables retention for testing.
-- **Screen on/off and game-notification events** — timing signals only.
+  enables retention for testing. The **spoken words are also transcribed to text
+  and kept** (the transcript, not the audio), so the emotional tone of what was
+  said can be read.
+- **Screen on/off events** — timing signals. **Game notifications** — the timing
+  and the **title** of notifications shown by games (e.g. event/reward prompts).
 - **Daily check-ins** the child voluntarily submits (mood/sleep/energy).
 
-The app does **not** collect: messages outside supported games, web browsing,
+The app does **not** collect: messages outside games, web browsing,
 contacts, photos, location, or keystrokes outside in-game chat fields.
 
 ## Why it is collected

@@ -17,6 +17,18 @@ object ApiClient {
     // cleared on logout). The interceptor attaches it to every request.
     @Volatile
     var authToken: String? = null
+        set(value) {
+            field = value
+            if (!value.isNullOrEmpty()) unauthorizedSignaled = false  // fresh login re-arms
+        }
+
+    // Invoked once when the server rejects a token we sent with 401 (session expired
+    // after the 30-day TTL, or the signing secret changed). Without this the app would
+    // silently fail every request forever. The Application sets it to force re-login.
+    @Volatile
+    var onUnauthorized: (() -> Unit)? = null
+    @Volatile
+    private var unauthorizedSignaled = false
 
     @Synchronized
     fun getInstance(baseUrl: String): ApiService {
@@ -34,7 +46,17 @@ object ApiClient {
                     chain.request().newBuilder()
                         .header("Authorization", "Bearer $tok").build()
                 else chain.request()
-                chain.proceed(req)
+                val response = chain.proceed(req)
+                // A 401 on a request that carried a token (never the login call) means
+                // the token is dead. Signal exactly once so the app can clear the
+                // session and return to sign-in instead of failing silently forever.
+                if (response.code == 401 && !tok.isNullOrEmpty() &&
+                    !req.url.encodedPath.contains("login") && !unauthorizedSignaled) {
+                    unauthorizedSignaled = true
+                    authToken = null
+                    onUnauthorized?.invoke()
+                }
+                response
             }
             val client = OkHttpClient.Builder()
                 .connectTimeout(30, TimeUnit.SECONDS)

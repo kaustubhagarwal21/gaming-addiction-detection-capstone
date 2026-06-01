@@ -28,8 +28,10 @@ import com.pes.gamingdetector.R
 import com.pes.gamingdetector.api.ApiClient
 import com.pes.gamingdetector.api.Game
 import com.pes.gamingdetector.databinding.ActivityHomeBinding
+import com.pes.gamingdetector.services.GameMonitorService
 import com.pes.gamingdetector.services.GameNotificationService
 import com.pes.gamingdetector.services.PassiveMonitorService
+import com.pes.gamingdetector.services.VoiceRecorderService
 import com.pes.gamingdetector.util.PrefsManager
 import com.pes.gamingdetector.util.PrivacyText
 import kotlinx.coroutines.launch
@@ -65,8 +67,10 @@ class HomeActivity : AppCompatActivity() {
         setSupportActionBar(binding.toolbar)
         supportActionBar?.title = "Hi, ${prefs.userName}"
 
-        // Monitoring only starts after parental consent has been recorded.
-        if (prefs.consentDone) {
+        // Monitoring only starts after parental consent for the CURRENT policy
+        // version. A bumped CONSENT_VERSION (policy changed) re-triggers consent
+        // even on a device that previously agreed to an older version.
+        if (consentCurrent()) {
             startMonitoring()
         } else {
             ensureConsent()
@@ -91,7 +95,7 @@ class HomeActivity : AppCompatActivity() {
         super.onResume()
         refreshBanner()
         uiHandler.postDelayed(bannerRefresh, 3_000L)
-        if (prefs.consentDone) checkRequiredPermissions()
+        if (consentCurrent()) checkRequiredPermissions()
     }
 
     /** Start always-on passive monitoring (auto-session detection + screen events). */
@@ -123,6 +127,11 @@ class HomeActivity : AppCompatActivity() {
         }
     }
 
+    /** True only when consent was given for the version of the policy this build
+        ships. A newer CONSENT_VERSION (policy changed) makes this false → re-prompt. */
+    private fun consentCurrent() =
+        prefs.consentDone && prefs.consentVersion == PrivacyText.CONSENT_VERSION
+
     /** Gate monitoring behind parental consent. Honours consent already recorded
         server-side (e.g. after a reinstall); otherwise shows a blocking dialog. */
     private fun ensureConsent() {
@@ -135,6 +144,7 @@ class HomeActivity : AppCompatActivity() {
             } catch (_: Exception) { /* offline — show consent to be safe */ }
             if (!needs) {
                 prefs.consentDone = true
+                prefs.consentVersion = PrivacyText.CONSENT_VERSION
                 startMonitoring()
             } else {
                 showConsentDialog()
@@ -163,6 +173,7 @@ class HomeActivity : AppCompatActivity() {
                     .postConsent(mapOf("user_id" to uid, "version" to PrivacyText.CONSENT_VERSION))
             } catch (_: Exception) { /* recorded locally; will retry on next launch */ }
             prefs.consentDone = true
+            prefs.consentVersion = PrivacyText.CONSENT_VERSION
             startMonitoring()
         }
     }
@@ -218,12 +229,29 @@ class HomeActivity : AppCompatActivity() {
             true
         }
         R.id.action_logout -> {
-            prefs.logout()
-            startActivity(Intent(this, LoginActivity::class.java))
-            finishAffinity()
+            logoutChild()
             true
         }
         else -> super.onOptionsItemSelected(item)
+    }
+
+    /** Sign out cleanly: stop the monitoring services and close any open server
+        session (while the token is still valid) before clearing the login. Otherwise
+        logout left orphaned foreground services running and a session open server-side
+        (no end_time → skewed duration/behaviour). */
+    private fun logoutChild() {
+        stopService(Intent(this, PassiveMonitorService::class.java))
+        stopService(Intent(this, GameMonitorService::class.java))
+        stopService(Intent(this, VoiceRecorderService::class.java))
+        val sid = prefs.activeSessionId
+        lifecycleScope.launch {
+            if (sid != -1) {
+                try { ApiClient.getInstance(prefs.serverUrl).endSession(sid) } catch (_: Exception) {}
+            }
+            prefs.logout()
+            startActivity(Intent(this@HomeActivity, LoginActivity::class.java))
+            finishAffinity()
+        }
     }
 
     // --- Permission helpers ---

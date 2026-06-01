@@ -62,6 +62,12 @@ class PrefsManager(context: Context) {
         get() = prefs.getBoolean("consent_done", false)
         set(v) = prefs.edit().putBoolean("consent_done", v).apply()
 
+    // Policy version the user actually agreed to. When the shipped CONSENT_VERSION
+    // is newer than this, consent is requested again (the policy materially changed).
+    var consentVersion: String
+        get() = prefs.getString("consent_version", "") ?: ""
+        set(v) = prefs.edit().putString("consent_version", v).apply()
+
     fun isLoggedIn() = userId != -1
 
     fun hasActiveSession() = activeSessionId != -1
