@@ -1,22 +1,13 @@
 package com.pes.gamingdetector.activities
 
-import android.Manifest
-import android.app.AppOpsManager
 import android.content.Intent
-import android.content.pm.PackageManager
-import android.os.Build
 import android.os.Bundle
-import android.os.Process
-import android.provider.Settings
 import android.view.View
 import android.widget.Toast
-import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
-import androidx.core.content.ContextCompat
 import androidx.lifecycle.lifecycleScope
 import com.pes.gamingdetector.api.ApiClient
-import com.pes.gamingdetector.api.StartSessionRequest
 import com.pes.gamingdetector.databinding.ActivitySessionBinding
 import com.pes.gamingdetector.services.GameMonitorService
 import com.pes.gamingdetector.util.PrefsManager
@@ -25,21 +16,19 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 
+/**
+ * Live view of the CURRENT auto-detected session: timer, live risk, an "End Session"
+ * button, and the result screen after ending. Sessions are started automatically by
+ * PassiveMonitorService, so there is no manual "start" here — this screen is only
+ * reached while a session is already active (the resume banner or the monitoring
+ * notification). If it's opened without one, it just returns to Home.
+ */
 class SessionActivity : AppCompatActivity() {
     private lateinit var binding: ActivitySessionBinding
     private lateinit var prefs: PrefsManager
     private var timerJob: Job? = null
     private var livePredictJob: Job? = null
     private var gameName: String = ""
-
-    private val audioPermissionLauncher = registerForActivityResult(
-        ActivityResultContracts.RequestPermission()
-    ) { granted ->
-        if (!granted) {
-            Toast.makeText(this, "Microphone permission needed for voice analysis", Toast.LENGTH_LONG).show()
-        }
-        checkUsageStatsAndStart()
-    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -53,138 +42,25 @@ class SessionActivity : AppCompatActivity() {
         supportActionBar?.setDisplayHomeAsUpEnabled(true)
         supportActionBar?.title = gameName
 
-        if (prefs.hasActiveSession()) {
-            showActiveSession()
-        } else {
-            showPreSession()
+        // Sessions start automatically; this screen only views an active one.
+        if (!prefs.hasActiveSession()) {
+            finish()
+            return
         }
+        showActiveSession()
 
-        binding.btnStartSession.setOnClickListener { checkPermissionsAndStart() }
         binding.btnEndSession.setOnClickListener { confirmEndSession() }
         binding.btnDashboard.setOnClickListener {
             startActivity(Intent(this, ChildDashboardActivity::class.java))
         }
     }
 
-    private fun showPreSession() {
-        binding.layoutPreSession.visibility = View.VISIBLE
-        binding.layoutActiveSession.visibility = View.GONE
-        binding.layoutResult.visibility = View.GONE
-    }
-
     private fun showActiveSession() {
-        binding.layoutPreSession.visibility = View.GONE
         binding.layoutActiveSession.visibility = View.VISIBLE
         binding.layoutResult.visibility = View.GONE
         binding.tvGameName.text = gameName
         startTimer()
         startLivePredictions()
-    }
-
-    private fun checkPermissionsAndStart() {
-        if (!isAccessibilityServiceEnabled()) {
-            AlertDialog.Builder(this)
-                .setTitle("Enable Chat Capture")
-                .setMessage("To analyse your in-game chat, enable 'Gaming Detector' in Accessibility Settings.\n\nTap 'Open Settings', find 'Gaming Detector' and turn it ON, then come back.")
-                .setPositiveButton("Open Settings") { _, _ ->
-                    startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
-                }
-                .setNegativeButton("Skip") { _, _ -> checkAudioPermission() }
-                .show()
-        } else {
-            checkAudioPermission()
-        }
-    }
-
-    private fun isAccessibilityServiceEnabled(): Boolean {
-        val service = "$packageName/${com.pes.gamingdetector.services.ChatAccessibilityService::class.java.canonicalName}"
-        return try {
-            val enabled = android.provider.Settings.Secure.getString(
-                contentResolver, android.provider.Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES
-            ) ?: return false
-            enabled.split(":").any { it.equals(service, ignoreCase = true) }
-        } catch (_: Exception) { false }
-    }
-
-    private fun checkAudioPermission() {
-        if (ContextCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO)
-            != PackageManager.PERMISSION_GRANTED
-        ) {
-            audioPermissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
-        } else {
-            checkUsageStatsAndStart()
-        }
-    }
-
-    private fun checkUsageStatsAndStart() {
-        if (!hasUsageStatsPermission()) {
-            AlertDialog.Builder(this)
-                .setTitle("Usage Access Required")
-                .setMessage("Grant Usage Access to detect which game you're playing.")
-                .setPositiveButton("Open Settings") { _, _ ->
-                    startActivity(Intent(Settings.ACTION_USAGE_ACCESS_SETTINGS))
-                }
-                .setNegativeButton("Skip") { _, _ -> startSession() }
-                .show()
-        } else {
-            startSession()
-        }
-    }
-
-    private fun hasUsageStatsPermission(): Boolean {
-        val appOps = getSystemService(APP_OPS_SERVICE) as AppOpsManager
-        val mode = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-            appOps.unsafeCheckOpNoThrow(
-                AppOpsManager.OPSTR_GET_USAGE_STATS, Process.myUid(), packageName
-            )
-        } else {
-            @Suppress("DEPRECATION")
-            appOps.checkOpNoThrow(
-                AppOpsManager.OPSTR_GET_USAGE_STATS, Process.myUid(), packageName
-            )
-        }
-        return mode == AppOpsManager.MODE_ALLOWED
-    }
-
-    private fun startSession() {
-        binding.btnStartSession.isEnabled = false
-        binding.progressBar.visibility = View.VISIBLE
-
-        lifecycleScope.launch {
-            try {
-                val api = ApiClient.getInstance(prefs.serverUrl)
-                val resp = api.startSession(
-                    StartSessionRequest(userId = prefs.userId, gameName = gameName)
-                )
-                if (resp.isSuccessful && resp.body()?.success == true) {
-                    val sessionId = resp.body()!!.sessionId
-                    prefs.activeSessionId = sessionId
-                    prefs.activeSessionGame = gameName
-                    prefs.activeSessionStart = System.currentTimeMillis()
-
-                    startMonitorService(sessionId)
-                    showActiveSession()
-                } else {
-                    Toast.makeText(this@SessionActivity, "Failed to start session", Toast.LENGTH_SHORT).show()
-                    binding.btnStartSession.isEnabled = true
-                }
-            } catch (e: Exception) {
-                Toast.makeText(this@SessionActivity, "Server error: ${e.message}", Toast.LENGTH_LONG).show()
-                binding.btnStartSession.isEnabled = true
-            } finally {
-                binding.progressBar.visibility = View.GONE
-            }
-        }
-    }
-
-    private fun startMonitorService(sessionId: Int) {
-        val intent = Intent(this, GameMonitorService::class.java).apply {
-            putExtra("session_id", sessionId)
-            putExtra("game_name", gameName)
-            putExtra("user_id", prefs.userId)
-            putExtra("server_url", prefs.serverUrl)
-        }
-        ContextCompat.startForegroundService(this, intent)
     }
 
     private fun confirmEndSession() {
@@ -203,7 +79,6 @@ class SessionActivity : AppCompatActivity() {
         binding.progressBar.visibility = View.VISIBLE
 
         val sessionId = prefs.activeSessionId
-
         stopService(Intent(this, GameMonitorService::class.java))
 
         lifecycleScope.launch {
