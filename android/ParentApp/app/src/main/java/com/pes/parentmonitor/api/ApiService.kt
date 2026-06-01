@@ -9,6 +9,9 @@ interface ApiService {
     @GET("api/health")
     suspend fun health(): Response<HealthResponse>
 
+    @GET("api/model_card")
+    suspend fun getModelCard(): Response<ModelCard>
+
     @POST("api/user/login")
     suspend fun login(@Body request: LoginRequest): Response<LoginResponse>
 

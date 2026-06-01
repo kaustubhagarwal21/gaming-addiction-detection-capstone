@@ -130,6 +130,30 @@ data class HealthResponse(
     @SerializedName("models_loaded") val modelsLoaded: Boolean
 )
 
+// Transparent "model card" — honest held-out metrics + confusion matrix + caveats.
+data class ModelCard(
+    val success: Boolean,
+    val model: String?,
+    @SerializedName("test_accuracy") val testAccuracy: Double?,
+    @SerializedName("macro_f1") val macroF1: Double?,
+    @SerializedName("per_class_precision") val perClassPrecision: Map<String, Double>?,
+    @SerializedName("per_class_recall") val perClassRecall: Map<String, Double>?,
+    @SerializedName("per_class_f1") val perClassF1: Map<String, Double>?,
+    @SerializedName("cv_mean_accuracy") val cvMeanAccuracy: Double?,
+    @SerializedName("cv_std_accuracy") val cvStdAccuracy: Double?,
+    @SerializedName("confusion_matrix") val confusionMatrix: List<List<Int>>?,
+    @SerializedName("confusion_labels") val confusionLabels: List<String>?,
+    @SerializedName("train_samples") val trainSamples: Int?,
+    @SerializedName("test_samples") val testSamples: Int?,
+    @SerializedName("feature_count") val featureCount: Int?,
+    @SerializedName("risk_bands") val riskBands: Map<String, String>?,
+    @SerializedName("ensemble_weights") val ensembleWeights: Map<String, Double>?,
+    @SerializedName("thresholds_note") val thresholdsNote: String?,
+    @SerializedName("data_note") val dataNote: String?,
+    @SerializedName("evaluation_note") val evaluationNote: String?,
+    val disclaimer: String?
+)
+
 data class AlertsResponse(
     val success: Boolean,
     val alerts: List<Alert>?,

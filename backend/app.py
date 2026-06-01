@@ -401,6 +401,18 @@ RISK_DISPLAY = {
 SCREENING_DISCLAIMER = ("Wellbeing screening indicator based on gaming patterns — "
                         "not a medical or clinical diagnosis.")
 
+# Risk-band cutoffs on the 0..1 fused score. These are clinically-motivated PRIORS
+# (roughly even tertiles), NOT thresholds fitted to labelled outcomes — there is no
+# real labelled data yet. They live here (one source of truth) so serving and every
+# dashboard aggregate agree, and so the model card can report them transparently.
+RISK_T1 = 0.33   # below → casual (low concern)
+RISK_T2 = 0.67   # below → at_risk (some concern); at/above → addicted (high concern)
+
+
+def risk_category(score: float) -> str:
+    """Map a fused 0..1 risk score to its band using the shared cutoffs."""
+    return 'casual' if score < RISK_T1 else ('at_risk' if score < RISK_T2 else 'addicted')
+
 
 def load_models():
     global behavior_model, chat_model, voice_model, tfidf_vectorizer, feature_scaler
@@ -1363,7 +1375,7 @@ def run_prediction(session_id: int) -> dict:
         raw_final = 0.5   # no modality produced data
         conf      = 0.3
     final = float(np.clip(raw_final * genre_weight, 0, 1))
-    cat   = 'casual' if final < 0.33 else ('at_risk' if final < 0.67 else 'addicted')
+    cat   = risk_category(final)
     # Don't assert the highest-concern band on sparse data — a few sessions are
     # needed before a confident screening signal. Caps at "Some concern" early on.
     if observation_mode and cat == 'addicted':
@@ -1646,6 +1658,43 @@ def health():
         'behavior_cv_std':      MODEL_METADATA.get('cv_std_accuracy'),
         'behavior_test_accuracy': MODEL_METADATA.get('test_accuracy'),
         'timestamp': datetime.now().isoformat(),
+    })
+
+
+@app.route('/api/model_card', methods=['GET'])
+def model_card():
+    """Transparent 'model card' for the behaviour model: honest held-out metrics, the
+    confusion matrix, the risk-band cutoffs, and an explicit statement that this is a
+    screening signal trained on synthetic/illustrative data — not a clinical tool.
+    Public (exposes no user data)."""
+    m = MODEL_METADATA
+    return jsonify({
+        'success':             True,
+        'model':               'Behaviour risk — RandomForest, 3 classes',
+        'trained_at':          m.get('trained_at'),
+        'test_accuracy':       m.get('test_accuracy'),
+        'macro_f1':            m.get('macro_f1'),
+        'per_class_precision': m.get('per_class_precision'),
+        'per_class_recall':    m.get('per_class_recall'),
+        'per_class_f1':        m.get('per_class_f1'),
+        'cv_mean_accuracy':    m.get('cv_mean_accuracy'),
+        'cv_std_accuracy':     m.get('cv_std_accuracy'),
+        'confusion_matrix':    m.get('confusion_matrix'),
+        'confusion_labels':    m.get('confusion_labels'),
+        'train_samples':       m.get('train_samples'),
+        'test_samples':        m.get('test_samples'),
+        'feature_count':       m.get('feature_count'),
+        'risk_bands': {
+            'casual':   f'score < {RISK_T1}',
+            'at_risk':  f'{RISK_T1} <= score < {RISK_T2}',
+            'addicted': f'score >= {RISK_T2}',
+        },
+        'ensemble_weights':    {'behaviour': 0.40, 'chat': 0.30, 'voice': 0.30},
+        'thresholds_note':     ('Risk-band cutoffs are clinically-motivated priors (even '
+                                'tertiles), not values fitted to labelled outcomes.'),
+        'data_note':           m.get('data_note'),
+        'evaluation_note':     m.get('evaluation_note'),
+        'disclaimer':          SCREENING_DISCLAIMER,
     })
 
 # ─────────────── USER AUTH ───────────────────────────────────────
@@ -2254,10 +2303,10 @@ def user_dashboard():
     games = [dict(r) for r in c.fetchall()]
 
     # Trend data (last 14 days)
-    c.execute('''SELECT SUBSTR(start_time,1,10) AS date,
+    c.execute(f'''SELECT SUBSTR(start_time,1,10) AS date,
                  ROUND(AVG(final_risk_score),4) AS score,
-                 (CASE WHEN AVG(final_risk_score) < 0.33 THEN 'casual'
-                       WHEN AVG(final_risk_score) < 0.67 THEN 'at_risk'
+                 (CASE WHEN AVG(final_risk_score) < {RISK_T1} THEN 'casual'
+                       WHEN AVG(final_risk_score) < {RISK_T2} THEN 'at_risk'
                        ELSE 'addicted' END) AS label
                  FROM sessions WHERE user_id=? AND start_time>=? AND final_risk_score IS NOT NULL
                  GROUP BY date ORDER BY date ASC LIMIT 14''',
@@ -2321,10 +2370,10 @@ def parent_dashboard():
     latest = dict(lrow) if lrow else {}
 
     # 14-day trend
-    c.execute('''SELECT SUBSTR(start_time,1,10) AS date,
+    c.execute(f'''SELECT SUBSTR(start_time,1,10) AS date,
                  ROUND(AVG(final_risk_score),4) AS score,
-                 (CASE WHEN AVG(final_risk_score) < 0.33 THEN 'casual'
-                       WHEN AVG(final_risk_score) < 0.67 THEN 'at_risk'
+                 (CASE WHEN AVG(final_risk_score) < {RISK_T1} THEN 'casual'
+                       WHEN AVG(final_risk_score) < {RISK_T2} THEN 'at_risk'
                        ELSE 'addicted' END) AS label
                  FROM sessions WHERE user_id=? AND final_risk_score IS NOT NULL
                  GROUP BY date ORDER BY date ASC LIMIT 14''', (user_id,))
@@ -2747,10 +2796,10 @@ def weekly_report():
     )[:5]
 
     # 14-day trend
-    c.execute('''SELECT SUBSTR(start_time,1,10) AS date,
+    c.execute(f'''SELECT SUBSTR(start_time,1,10) AS date,
                  ROUND(AVG(final_risk_score),4) AS score,
-                 (CASE WHEN AVG(final_risk_score) < 0.33 THEN 'casual'
-                       WHEN AVG(final_risk_score) < 0.67 THEN 'at_risk'
+                 (CASE WHEN AVG(final_risk_score) < {RISK_T1} THEN 'casual'
+                       WHEN AVG(final_risk_score) < {RISK_T2} THEN 'at_risk'
                        ELSE 'addicted' END) AS label
                  FROM sessions WHERE user_id=? AND start_time>=? AND final_risk_score IS NOT NULL
                  GROUP BY date ORDER BY date ASC''',

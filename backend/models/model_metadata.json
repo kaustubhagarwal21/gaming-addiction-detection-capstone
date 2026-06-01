@@ -25,5 +25,35 @@
   "max_depth": 6,
   "train_samples": 23000,
   "feature_count": 20,
-  "class_balance": "balanced (35/40/25) + class_weight; psychometrics derived from behaviour (train/serve aligned)"
+  "class_balance": "balanced (35/40/25) + class_weight; psychometrics derived from behaviour (train/serve aligned)",
+  "per_class_precision": {
+    "casual": 0.9355,
+    "at_risk": 0.916,
+    "addicted": 0.9148
+  },
+  "confusion_matrix": [
+    [
+      1813,
+      122,
+      0
+    ],
+    [
+      125,
+      2127,
+      127
+    ],
+    [
+      0,
+      73,
+      1363
+    ]
+  ],
+  "confusion_labels": [
+    "casual",
+    "at_risk",
+    "addicted"
+  ],
+  "test_samples": 5750,
+  "data_note": "Trained and evaluated on synthetic/illustrative data with realistic class overlap; this is a screening signal, not a validated clinical instrument.",
+  "evaluation_note": "Metrics are on a held-out 20% split (seed=42) the model never saw during training."
 }

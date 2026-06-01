@@ -7,6 +7,7 @@ import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import androidx.lifecycle.lifecycleScope
 import com.pes.parentmonitor.api.ApiClient
+import com.pes.parentmonitor.api.ModelCard
 import com.pes.parentmonitor.databinding.ActivitySettingsBinding
 import com.pes.parentmonitor.util.PrefsManager
 import com.pes.parentmonitor.util.PrivacyText
@@ -55,6 +56,69 @@ class SettingsActivity : AppCompatActivity() {
         }
 
         binding.btnDeleteChildData.setOnClickListener { confirmDeleteChildData() }
+
+        binding.btnAboutModel.setOnClickListener { showModelCard() }
+    }
+
+    private fun showModelCard() {
+        lifecycleScope.launch {
+            try {
+                val api  = ApiClient.getInstance(prefs.serverUrl)
+                val resp = api.getModelCard()
+                if (resp.isSuccessful && resp.body()?.success == true) {
+                    showModelCardDialog(resp.body()!!)
+                } else {
+                    Toast.makeText(this@SettingsActivity, "Couldn't load model info (${resp.code()})", Toast.LENGTH_SHORT).show()
+                }
+            } catch (e: Exception) {
+                Toast.makeText(this@SettingsActivity, "Couldn't reach server: ${e.message}", Toast.LENGTH_LONG).show()
+            }
+        }
+    }
+
+    /** Honest, plain-language model card so a parent (and an examiner) can see exactly
+        how reliable the score is and that it's a screening signal, not a diagnosis. */
+    private fun showModelCardDialog(mc: ModelCard) {
+        fun pct(d: Double?) = if (d != null) "${"%.0f".format(d * 100)}%" else "—"
+        val nice   = mapOf("casual" to "Low", "at_risk" to "Some", "addicted" to "High")
+        val labels = mc.confusionLabels ?: listOf("casual", "at_risk", "addicted")
+        val sb = StringBuilder()
+
+        sb.append("Overall accuracy: ${pct(mc.testAccuracy)}")
+        if (mc.cvMeanAccuracy != null) {
+            sb.append("  (5-fold cross-validation ${pct(mc.cvMeanAccuracy)} ± ${pct(mc.cvStdAccuracy)})")
+        }
+
+        sb.append("\n\nPer band (precision / recall):\n")
+        labels.forEach { l ->
+            sb.append("  ${nice[l] ?: l} concern:  ${pct(mc.perClassPrecision?.get(l))} / ${pct(mc.perClassRecall?.get(l))}\n")
+        }
+
+        val cm = mc.confusionMatrix
+        if (cm != null && cm.size == labels.size) {
+            sb.append("\nWhere mistakes go (actual → predicted):\n")
+            cm.forEachIndexed { i, row ->
+                val parts = row.mapIndexed { j, n -> "$n ${nice[labels[j]] ?: labels[j]}" }
+                sb.append("  ${nice[labels[i]] ?: labels[i]}: ${parts.joinToString(", ")}\n")
+            }
+            sb.append("Errors only land in a neighbouring band — never Low↔High.\n")
+        }
+
+        mc.ensembleWeights?.let { w ->
+            val b = ((w["behaviour"] ?: 0.0) * 100).toInt()
+            val c = ((w["chat"] ?: 0.0) * 100).toInt()
+            val v = ((w["voice"] ?: 0.0) * 100).toInt()
+            sb.append("\nCombined score: behaviour $b% · chat $c% · voice $v%\n")
+        }
+        mc.thresholdsNote?.let { sb.append("\n$it\n") }
+        mc.dataNote?.let { sb.append("\n$it") }
+        mc.disclaimer?.let { sb.append("\n\n$it") }
+
+        AlertDialog.Builder(this)
+            .setTitle("How the risk score works")
+            .setMessage(sb.toString())
+            .setPositiveButton("Close", null)
+            .show()
     }
 
     private fun confirmDeleteChildData() {
