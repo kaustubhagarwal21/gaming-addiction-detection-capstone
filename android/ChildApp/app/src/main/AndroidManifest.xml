@@ -85,6 +85,12 @@
             android:theme="@style/Theme.ChildApp.NoActionBar" />
 
         <activity
+            android:name=".activities.ManageGamesActivity"
+            android:exported="false"
+            android:parentActivityName=".activities.SettingsActivity"
+            android:theme="@style/Theme.ChildApp.NoActionBar" />
+
+        <activity
             android:name=".activities.OnboardingActivity"
             android:exported="false"
             android:theme="@style/Theme.ChildApp.NoActionBar" />

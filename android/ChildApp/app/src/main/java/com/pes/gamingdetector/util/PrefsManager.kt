@@ -68,6 +68,12 @@ class PrefsManager(context: Context) {
         get() = prefs.getString("consent_version", "") ?: ""
         set(v) = prefs.edit().putString("consent_version", v).apply()
 
+    // Packages the parent manually marked as games (force-include). Covers a real game
+    // the OS doesn't report as CATEGORY_GAME and that isn't in the curated list.
+    var forcedGamePackages: Set<String>
+        get() = prefs.getStringSet("forced_game_pkgs", emptySet()) ?: emptySet()
+        set(v) = prefs.edit().putStringSet("forced_game_pkgs", HashSet(v)).apply()
+
     fun isLoggedIn() = userId != -1
 
     fun hasActiveSession() = activeSessionId != -1

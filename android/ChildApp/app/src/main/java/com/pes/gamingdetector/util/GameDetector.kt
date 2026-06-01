@@ -25,6 +25,16 @@ import android.os.Build
 object GameDetector {
     private val cache = HashMap<String, Boolean>()
 
+    // Parent's manual "mark as game" overrides, cached. Closes the one case the OS
+    // can't help with: a real game that reports a non-game category and isn't curated.
+    @Volatile private var forced: Set<String>? = null
+
+    /** Re-read the override list on the next lookup. Call after the parent edits it. */
+    fun invalidate() { forced = null; cache.clear() }
+
+    private fun forcedSet(ctx: Context): Set<String> =
+        forced ?: PrefsManager(ctx).forcedGamePackages.also { forced = it }
+
     // Namespaces that can report (or get bucketed under) a game category but are never
     // "the child playing a game": OS/system, Google services, the Play Store, the Play
     // Games hub, common OEM launchers, and our own apps. Matched as exact or dot-prefix.
@@ -45,7 +55,9 @@ object GameDetector {
     private fun isNonGameNamespace(pkg: String) =
         NON_GAME_PREFIXES.any { pkg == it || pkg.startsWith("$it.") }
 
-    fun isGame(ctx: Context, pkg: String?): Boolean {
+    /** A game by the device's own knowledge (curated list + OS category), ignoring any
+        manual override. Used by the override screen to decide which apps to offer. */
+    fun isAutoDetectedGame(ctx: Context, pkg: String?): Boolean {
         if (pkg.isNullOrEmpty()) return false
         if (pkg in Constants.KNOWN_GAMING_PACKAGES) return true   // allowlist wins
         if (isNonGameNamespace(pkg)) return false                 // denylist kills false positives
@@ -66,6 +78,14 @@ object GameDetector {
         }
         cache[pkg] = result
         return result
+    }
+
+    /** Whether to treat [pkg] as a game for monitoring: auto-detected OR a package the
+        parent manually marked as a game. */
+    fun isGame(ctx: Context, pkg: String?): Boolean {
+        if (pkg.isNullOrEmpty()) return false
+        if (pkg in forcedSet(ctx)) return true
+        return isAutoDetectedGame(ctx, pkg)
     }
 
     /** Curated name if known, else the app's own label, else a tidy package fallback. */

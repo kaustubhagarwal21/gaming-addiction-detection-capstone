@@ -1,5 +1,6 @@
 package com.pes.gamingdetector.activities
 
+import android.content.Intent
 import android.os.Bundle
 import android.widget.Toast
 import androidx.appcompat.app.AlertDialog
@@ -44,6 +45,10 @@ class SettingsActivity : AppCompatActivity() {
                 .setMessage(PrivacyText.POLICY)
                 .setPositiveButton("Close", null)
                 .show()
+        }
+
+        binding.btnManageGames.setOnClickListener {
+            startActivity(Intent(this, ManageGamesActivity::class.java))
         }
 
         binding.btnDeleteData.setOnClickListener { confirmDeleteData() }
