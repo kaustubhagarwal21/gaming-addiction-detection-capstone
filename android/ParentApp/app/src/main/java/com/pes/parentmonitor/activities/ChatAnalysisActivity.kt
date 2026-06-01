@@ -46,7 +46,9 @@ class ChatAnalysisActivity : AppCompatActivity() {
                         binding.tvChatRisk.text = "No chat captured yet"
                         binding.tvChatRisk.setTextColor(getColor(com.pes.parentmonitor.R.color.risk_low))
                         binding.tvCommunicationPattern.text =
-                            "Captured in-game and voice-to-text messages will be analysed here for toxicity."
+                            "Typed in-game messages and voice-to-text are analysed here for toxicity. " +
+                            "Note: not every game has in-game text chat — voice-only or single-player " +
+                            "games may produce no chat data, and that's expected."
                         binding.tvKeywordGuidance.text = buildKeywordGuidance("casual")
                         return@launch
                     }

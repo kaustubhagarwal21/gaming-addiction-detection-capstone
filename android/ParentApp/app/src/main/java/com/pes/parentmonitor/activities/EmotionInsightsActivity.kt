@@ -44,7 +44,9 @@ class EmotionInsightsActivity : AppCompatActivity() {
                     if (dist.isEmpty() && recent.isEmpty()) {
                         binding.tvRiskContext.text = "No voice data yet"
                         binding.tvEmotionByGame.text =
-                            "Voice emotion analysis appears here once your child plays with voice monitoring on."
+                            "Voice emotion analysis appears here once your child plays with voice monitoring on " +
+                            "and actually speaks during gameplay. Silent or single-player sessions produce no " +
+                            "voice data, and that's expected."
                         binding.tvEmotionTrend.text = ""
                         binding.tvEmotionAdvice.text = buildEmotionAdvice("casual")
                         return@launch

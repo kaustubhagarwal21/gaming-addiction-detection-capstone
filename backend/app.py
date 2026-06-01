@@ -671,6 +671,13 @@ def init_db():
     add_column(c, 'users', 'consent_given_at',  'TEXT DEFAULT NULL')    # parental monitoring consent
     add_column(c, 'users', 'consent_version',   'TEXT DEFAULT NULL')
 
+    # Which signals actually fed each prediction. NULL on legacy rows ("unknown");
+    # new predictions write explicit 1/0 so the UI can distinguish "captured and
+    # clean (0%)" from "this game produced no chat/voice at all".
+    add_column(c, 'predictions', 'behavior_present', 'INTEGER DEFAULT NULL')
+    add_column(c, 'predictions', 'chat_present',     'INTEGER DEFAULT NULL')
+    add_column(c, 'predictions', 'voice_present',    'INTEGER DEFAULT NULL')
+
     # Indexes on the hot query paths (filtering by user/session/time). Keeps the
     # dashboard + feature computation fast as session history grows. IF NOT EXISTS
     # works on both SQLite and Postgres.
@@ -1376,18 +1383,24 @@ def run_prediction(session_id: int) -> dict:
         'top_factors':       top_factors,
         'game_genre':        game_genre,
         'genre_weight':      round(genre_weight, 2),
+        # Which signals were actually captured for this session. A score of 0 with
+        # present=False means "no data for this game" (e.g. a game with no text chat,
+        # or a silent single-player session), NOT "captured and harmless".
+        'modalities':        {'behavior': b_present, 'chat': c_present, 'voice': v_present},
     }
 
     conn = get_db()
     c    = conn.cursor()
     c.execute('''INSERT INTO predictions
                  (session_id, behavior_score, chat_score, voice_score,
-                  final_risk_score, risk_category, confidence, timestamp)
-                 VALUES (?,?,?,?,?,?,?,?)''',
+                  final_risk_score, risk_category, confidence, timestamp,
+                  behavior_present, chat_present, voice_present)
+                 VALUES (?,?,?,?,?,?,?,?,?,?,?)''',
               (session_id, result['behavior_score'], result['chat_score'],
                result['voice_score'], result['final_risk_score'],
                result['risk_category'], result['confidence'],
-               datetime.now().isoformat()))
+               datetime.now().isoformat(),
+               1 if b_present else 0, 1 if c_present else 0, 1 if v_present else 0))
     c.execute('UPDATE sessions SET final_risk_score=?, risk_category=?, confidence=? WHERE session_id=?',
               (result['final_risk_score'], result['risk_category'], result['confidence'], session_id))
     conn.commit()
@@ -1941,6 +1954,7 @@ def end_session(sid):
         'behavior_score':    prediction['behavior_score'],
         'chat_score':        prediction['chat_score'],
         'voice_score':       prediction['voice_score'],
+        'modalities':        prediction.get('modalities'),
         'recommendations':   _build_recommendations(prediction['risk_category']),
         'top_factors':       prediction.get('top_factors', []),
         'observation_mode':  prediction.get('observation_mode', False),
@@ -2374,6 +2388,22 @@ def parent_dashboard():
                  WHERE s.user_id=? ORDER BY p.timestamp DESC LIMIT 1''', (user_id,))
     lp = c.fetchone()
 
+    # Which signals fed the latest prediction, so the UI can say "Chat: not captured
+    # for this game" rather than showing a misleading 0%. NULL flags (legacy rows)
+    # are reported as None → the app simply omits the breakdown for those.
+    c.execute('''SELECT p.behavior_present, p.chat_present, p.voice_present
+                 FROM predictions p JOIN sessions s ON s.session_id=p.session_id
+                 WHERE s.user_id=? ORDER BY p.timestamp DESC LIMIT 1''', (user_id,))
+    sig_row = c.fetchone()
+    if sig_row and sig_row['behavior_present'] is not None:
+        latest_signals = {
+            'behavior': bool(sig_row['behavior_present']),
+            'chat':     bool(sig_row['chat_present']),
+            'voice':    bool(sig_row['voice_present']),
+        }
+    else:
+        latest_signals = None
+
     # Child age for personalised suggestions
     child_age = profile.get('age', 15) or 15
     risk_level = latest.get('risk_category', 'casual')
@@ -2430,6 +2460,7 @@ def parent_dashboard():
         'streak':                streak_data,
         'parent_set_limit':      parent_set_limit,
         'top_anomaly':           top_anomaly,
+        'latest_signals':        latest_signals,
     })
 
 

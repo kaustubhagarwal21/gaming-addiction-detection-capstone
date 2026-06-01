@@ -236,15 +236,31 @@ class ParentalDashboardActivity : AppCompatActivity() {
             }
         }
 
-        // ── Explainable risk ───────────────────────────────────
+        // ── Explainable risk + which signals were analysed ─────
         val factors = dash.riskExplanation ?: emptyList()
-        if (factors.isNotEmpty()) {
+        val sig = dash.latestSignals
+        if (factors.isNotEmpty() || sig != null) {
             binding.cardRiskExplanation.visibility = View.VISIBLE
             val sb = StringBuilder()
             factors.forEach { f ->
                 // SHAP direction: ▲ raises the score, ▼ lowers it.
                 val arrow = when (f.direction) { "raises" -> "▲"; "lowers" -> "▼"; else -> "•" }
                 sb.append("$arrow ${f.label}:  ${"%.1f".format(f.value)}  (${f.contributionPct.toInt()}%)\n")
+            }
+            // Be explicit about which signals fed this score. A signal marked
+            // "not captured" means the game produced no data for it (e.g. no in-game
+            // text chat, or a silent session) — so a 0 there isn't a clean result,
+            // it's an absent one, and the score relied on the remaining signals.
+            if (sig != null) {
+                fun mark(b: Boolean?) = if (b == true) "✓ analysed" else "— not captured"
+                if (sb.isNotEmpty()) sb.append("\n")
+                sb.append("Signals used for this score:\n")
+                sb.append("• Behaviour: ${mark(sig.behavior)}\n")
+                sb.append("• Chat: ${mark(sig.chat)}\n")
+                sb.append("• Voice: ${mark(sig.voice)}\n")
+                if (sig.chat != true || sig.voice != true) {
+                    sb.append("Some games have no in-game text chat or voice; the score then relies only on the signals that were available.\n")
+                }
             }
             dash.disclaimer?.let { sb.append("\nℹ ${it}") }
             binding.tvRiskExplanation.text = sb.toString().trimEnd()

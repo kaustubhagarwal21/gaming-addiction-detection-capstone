@@ -85,7 +85,17 @@ data class ParentalDashboard(
     @SerializedName("risk_explanation") val riskExplanation: List<RiskFactor>?,
     val streak: StreakData?,
     @SerializedName("parent_set_limit") val parentSetLimit: Double?,
-    @SerializedName("top_anomaly") val topAnomaly: AnomalyInfo?
+    @SerializedName("top_anomaly") val topAnomaly: AnomalyInfo?,
+    @SerializedName("latest_signals") val latestSignals: SignalAvailability?
+)
+
+// Which of the three signals were actually captured for the latest scored session.
+// null fields mean "unknown" (legacy prediction); false means "not captured for this
+// game" (e.g. no in-game text chat, or a silent session) — distinct from a clean 0%.
+data class SignalAvailability(
+    val behavior: Boolean?,
+    val chat: Boolean?,
+    val voice: Boolean?
 )
 
 data class Alert(

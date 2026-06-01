@@ -120,12 +120,18 @@ def seed_child(c, conn, user_id, name, plan):
         b_s = min(0.95, risk_score * 1.1)
         c_s = min(0.9, len(chats) * 0.12 + risk_score * 0.25)
         v_s = 0.75 if emotion == 'angry' else 0.45 if emotion == 'frustrated' else 0.15
+        # Mirror real capture: behaviour is always present; chat only if messages
+        # were typed; voice only if the child spoke (non-neutral emotion seeded).
+        chat_present  = 1 if chats else 0
+        voice_present = 1 if emotion != 'neutral' else 0
         c.execute('''INSERT INTO predictions
                      (session_id, behavior_score, chat_score, voice_score,
-                      final_risk_score, risk_category, confidence, timestamp)
-                     VALUES (?,?,?,?,?,?,?,?)''',
+                      final_risk_score, risk_category, confidence, timestamp,
+                      behavior_present, chat_present, voice_present)
+                     VALUES (?,?,?,?,?,?,?,?,?,?,?)''',
                   (sid, round(b_s, 3), round(c_s, 3), round(v_s, 3),
-                   risk_score, risk_cat, 0.78, end_dt.isoformat()))
+                   risk_score, risk_cat, 0.78, end_dt.isoformat(),
+                   1, chat_present, voice_present))
 
         for msg in chats:
             tox = 0.75 if any(w in msg for w in ['kys','die','trash','loser','idiot','stupid']) else 0.4
