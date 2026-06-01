@@ -15,14 +15,10 @@ import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.lifecycleScope
-import androidx.core.app.NotificationCompat
-import androidx.core.app.NotificationManagerCompat
 import com.pes.gamingdetector.api.ApiClient
 import com.pes.gamingdetector.api.StartSessionRequest
-import com.pes.gamingdetector.R
 import com.pes.gamingdetector.databinding.ActivitySessionBinding
 import com.pes.gamingdetector.services.GameMonitorService
-import com.pes.gamingdetector.util.Constants
 import com.pes.gamingdetector.util.PrefsManager
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -286,24 +282,10 @@ class SessionActivity : AppCompatActivity() {
     }
 
     private fun startLivePredictions() {
-        var nudgeSentAt90  = false
-        var nudgeSentAt120 = false
-
+        // Break-reminder nudges live in GameMonitorService so they fire during real
+        // gameplay (when this screen isn't open); here we only show the live risk.
         livePredictJob = lifecycleScope.launch {
             while (isActive) {
-                // Break nudge notifications
-                val elapsed = System.currentTimeMillis() - prefs.activeSessionStart
-                val elapsedMin = elapsed / 60_000
-                if (elapsedMin >= 90 && !nudgeSentAt90) {
-                    nudgeSentAt90 = true
-                    sendBreakNudge("90-Minute Check-in",
-                        "You've been gaming for 90 minutes. Take a 10-minute break — your brain will thank you!")
-                } else if (elapsedMin >= 120 && !nudgeSentAt120) {
-                    nudgeSentAt120 = true
-                    sendBreakNudge("2-Hour Reminder",
-                        "2 hours of gaming done! Time to take a proper break and rest your eyes.")
-                }
-
                 try {
                     val api  = ApiClient.getInstance(prefs.serverUrl)
                     val resp = api.livePrediction(prefs.activeSessionId)
@@ -320,20 +302,6 @@ class SessionActivity : AppCompatActivity() {
                 delay(60_000)
             }
         }
-    }
-
-    private fun sendBreakNudge(title: String, message: String) {
-        try {
-            val notif = NotificationCompat.Builder(this, Constants.CHANNEL_MONITORING)
-                .setSmallIcon(R.drawable.ic_launcher)
-                .setContentTitle(title)
-                .setContentText(message)
-                .setStyle(NotificationCompat.BigTextStyle().bigText(message))
-                .setPriority(NotificationCompat.PRIORITY_HIGH)
-                .setAutoCancel(true)
-                .build()
-            NotificationManagerCompat.from(this).notify(System.currentTimeMillis().toInt(), notif)
-        } catch (_: SecurityException) {}
     }
 
     override fun onSupportNavigateUp(): Boolean {
