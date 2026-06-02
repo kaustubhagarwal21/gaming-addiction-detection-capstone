@@ -112,12 +112,16 @@ class HomeActivity : AppCompatActivity() {
                 if (resp.isSuccessful && b?.success == true) {
                     val played = b.playedTodayHours ?: 0.0
                     val goal   = (b.dailyGoalHours ?: 2.0).coerceAtLeast(0.1)
+                    val over   = b.goalIsParentSet == true && played >= goal
                     binding.tvTodayHours.text = "${"%.1f".format(played)}h played today"
                     binding.todayProgress.progress = ((played / goal) * 100).toInt().coerceIn(0, 100)
-                    binding.tvTodayGoal.text = if (b.goalIsParentSet == true)
-                        "of your ${"%.1f".format(goal)}h daily limit"
-                    else
-                        "of a healthy ~${"%.1f".format(goal)}h a day"
+                    binding.tvTodayGoal.text = when {
+                        over                      -> "Over your ${"%.1f".format(goal)}h limit — time for a break"
+                        b.goalIsParentSet == true -> "of your ${"%.1f".format(goal)}h daily limit"
+                        else                      -> "of a healthy ~${"%.1f".format(goal)}h a day"
+                    }
+                    binding.tvTodayGoal.setTextColor(
+                        getColor(if (over) R.color.risk_high else R.color.text_secondary))
                     val streak = b.streak?.currentStreak ?: 0
                     binding.tvStreak.text = if (streak > 0)
                         "🔥 $streak-day healthy streak"

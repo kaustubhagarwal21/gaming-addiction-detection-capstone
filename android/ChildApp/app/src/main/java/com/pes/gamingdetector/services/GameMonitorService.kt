@@ -8,6 +8,7 @@ import android.os.PowerManager
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
 import com.pes.gamingdetector.R
+import com.pes.gamingdetector.api.ApiClient
 import com.pes.gamingdetector.activities.SessionActivity
 import com.pes.gamingdetector.util.Constants
 import com.pes.gamingdetector.util.PrefsManager
@@ -58,6 +59,7 @@ class GameMonitorService : Service() {
         nudgeJob = scope.launch {
             var sent90 = false
             var sent120 = false
+            var limitNotified = false
             while (isActive) {
                 val start = prefs.activeSessionStart
                 if (start > 0L) {
@@ -71,11 +73,35 @@ class GameMonitorService : Service() {
                         sendBreakNudge("90-Minute Check-in",
                             "You've been gaming for 90 minutes. Take a 10-minute break — your brain will thank you!")
                     }
+                    // Parent-set daily limit reached for today (completed sessions + this one).
+                    if (!limitNotified) {
+                        val limit = checkDailyLimitReached(start)
+                        if (limit != null) {
+                            limitNotified = true
+                            sendBreakNudge("Daily limit reached",
+                                "You've hit your ${"%.1f".format(limit)}h gaming limit for today. " +
+                                "Time to wrap up and do something else — your parent set this with you. 🌟")
+                        }
+                    }
                 }
                 delay(60_000)
             }
         }
     }
+
+    /** Today's total play time (completed sessions + the live one) vs the parent's daily
+        limit. Returns the limit hours if reached/exceeded, else null. Only fires when a
+        parent actually set a limit — never for the soft default goal. */
+    private suspend fun checkDailyLimitReached(sessionStart: Long): Double? = try {
+        val resp = ApiClient.getInstance(serverUrl).getChildEnriched(prefs.userId)
+        val b = resp.body()
+        val limit = b?.dailyGoalHours
+        if (resp.isSuccessful && b?.success == true && b.goalIsParentSet == true && limit != null) {
+            val sessionHrs = (System.currentTimeMillis() - sessionStart) / 3_600_000.0
+            val totalToday = (b.playedTodayHours ?: 0.0) + sessionHrs
+            if (totalToday >= limit) limit else null
+        } else null
+    } catch (_: Exception) { null }
 
     private fun sendBreakNudge(title: String, message: String) {
         try {
