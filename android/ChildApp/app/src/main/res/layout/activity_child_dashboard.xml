@@ -297,7 +297,7 @@
                             android:layout_width="match_parent"
                             android:layout_height="wrap_content"
                             android:layout_marginTop="14dp"
-                            android:text="A healthy-gaming streak counts days you stay under your goal. Earn badges as it grows: ⭐ Starter (3 days) · 🥉 Bronze (7) · 🥈 Silver (14) · 🥇 Gold (30)."
+                            android:text="A healthy-gaming streak = consecutive days you keep your average play under ~2 hours/day and stay at Low concern. Earn badges as it grows: ⭐ Starter (3 days) · 🥉 Bronze (7) · 🥈 Silver (14) · 🥇 Gold (30). One over-the-limit day resets it."
                             android:textColor="@color/text_secondary"
                             android:textSize="12sp"
                             android:lineSpacingExtra="2dp" />
