@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Release / sideload posture: all network traffic must be HTTPS. The production
+  backend (Render) is HTTPS, so the distributed APK never sends data in cleartext.
+  Plain HTTP is permitted ONLY to loopback / emulator hosts as a local-dev
+  convenience. Debug builds use a more permissive override at
+  src/debug/res/xml/network_security_config.xml (any LAN host) so on-device
+  development against a laptop server keeps working.
+-->
+<network-security-config>
+    <base-config cleartextTrafficPermitted="false">
+        <trust-anchors>
+            <certificates src="system" />
+        </trust-anchors>
+    </base-config>
+    <domain-config cleartextTrafficPermitted="true">
+        <domain includeSubdomains="true">localhost</domain>
+        <domain includeSubdomains="true">127.0.0.1</domain>
+        <domain includeSubdomains="true">10.0.2.2</domain>
+    </domain-config>
+</network-security-config>

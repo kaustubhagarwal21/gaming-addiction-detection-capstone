@@ -409,6 +409,13 @@ SCREENING_DISCLAIMER = ("Wellbeing screening indicator based on gaming patterns 
 RISK_T1 = 0.33   # below → casual (low concern)
 RISK_T2 = 0.67   # below → at_risk (some concern); at/above → addicted (high concern)
 
+# Per-message chat-toxicity alert cutoffs. Deliberately high: on a realistic
+# imbalanced stream the chat model's precision at 0.5 is poor (~0.20 — many false
+# alarms), so we only raise a parent-facing alert when we're quite confident. This
+# trades a little recall for far fewer false accusations of normal gaming chat.
+CHAT_ALERT_T      = 0.75   # at/above → raise a toxicity alert
+CHAT_ALERT_HIGH_T = 0.85   # at/above → mark that alert 'high' severity (else 'medium')
+
 
 def risk_category(score: float) -> str:
     """Map a fused 0..1 risk score to its band using the shared cutoffs."""
@@ -1631,6 +1638,12 @@ def model_card():
             'at_risk':  f'{RISK_T1} <= score < {RISK_T2}',
             'addicted': f'score >= {RISK_T2}',
         },
+        'chat_alert_threshold': CHAT_ALERT_T,
+        'chat_alert_note':     ('A chat message triggers a toxicity alert only at '
+                                f'score >= {CHAT_ALERT_T} (high severity >= {CHAT_ALERT_HIGH_T}). '
+                                'Set high on purpose: the chat model over-flags at lower '
+                                'thresholds, so this favours precision over recall to avoid '
+                                'false alarms on normal gaming chat.'),
         'ensemble_weights':    {'behaviour': 0.40, 'chat': 0.30, 'voice': 0.30},
         'thresholds_note':     ('Risk-band cutoffs are clinically-motivated priors (even '
                                 'tertiles), not values fitted to labelled outcomes.'),
@@ -2182,8 +2195,9 @@ def save_chat(sid):
               (sid, message, data.get('source', 'ocr'), round(tox_score, 3),
                datetime.now().isoformat()))
 
-    # Raise social toxicity alert when a single message is highly toxic
-    if tox_score >= 0.65:
+    # Raise social toxicity alert only when a single message is confidently toxic
+    # (CHAT_ALERT_T is intentionally high to suppress the chat model's false positives).
+    if tox_score >= CHAT_ALERT_T:
         c.execute('SELECT user_id FROM sessions WHERE session_id=?', (sid,))
         srow = c.fetchone()
         if srow:
@@ -2191,7 +2205,7 @@ def save_chat(sid):
             c.execute('INSERT INTO alerts (user_id, type, message, severity) VALUES (?,?,?,?)',
                       (srow['user_id'], 'toxicity',
                        f'Toxic language detected during gaming: "{snippet}"',
-                       'high' if tox_score >= 0.8 else 'medium'))
+                       'high' if tox_score >= CHAT_ALERT_HIGH_T else 'medium'))
 
     conn.commit()
     conn.close()

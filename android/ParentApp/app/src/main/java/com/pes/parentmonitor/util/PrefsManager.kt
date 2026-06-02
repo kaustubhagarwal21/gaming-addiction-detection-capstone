@@ -5,8 +5,8 @@ import android.content.SharedPreferences
 import com.pes.parentmonitor.api.ApiClient
 
 class PrefsManager(context: Context) {
-    private val prefs: SharedPreferences =
-        context.getSharedPreferences(Constants.PREFS_NAME, Context.MODE_PRIVATE)
+    // Encrypted at rest (EncryptedSharedPreferences); migrates the legacy plaintext store once.
+    private val prefs: SharedPreferences = SecurePrefs.get(context, Constants.PREFS_NAME)
 
     init {
         // Refresh the in-memory bearer token from disk whenever a PrefsManager is
