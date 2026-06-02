@@ -7,7 +7,8 @@ data class RegisterRequest(
     val name: String,
     val age: Int,
     val pin: String,
-    @SerializedName("parent_pin") val parentPin: String
+    @SerializedName("parent_pin") val parentPin: String,
+    @SerializedName("family_code") val familyCode: String? = null  // blank/null = new family
 )
 data class LoginResponse(
     val success: Boolean,
@@ -15,7 +16,8 @@ data class LoginResponse(
     val name: String,
     val role: String,
     val token: String?,
-    val message: String?
+    val message: String?,
+    @SerializedName("family_code") val familyCode: String? = null
 )
 
 data class ConsentStatus(

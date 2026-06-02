@@ -87,13 +87,28 @@
                 android:layout_height="wrap_content"
                 android:layout_marginTop="12dp"
                 android:hint="Family PIN (4–6 digits)"
-                app:helperText="Enter this same Family PIN in the Parent app. Use one Family PIN for all your children. Choose 6 digits for better privacy.">
+                app:helperText="The parent's secret. Use the same Family PIN for all your children.">
                 <com.google.android.material.textfield.TextInputEditText
                     android:id="@+id/etFamilyPin"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
                     android:inputType="numberPassword"
                     android:maxLength="6" />
+            </com.google.android.material.textfield.TextInputLayout>
+
+            <com.google.android.material.textfield.TextInputLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="12dp"
+                android:hint="Family code (optional)"
+                app:helperText="Adding a sibling? Enter your existing family code. Leave blank to start a new family — we'll give you a code to use in the Parent app."
+                app:boxBackgroundMode="outline">
+                <com.google.android.material.textfield.TextInputEditText
+                    android:id="@+id/etFamilyCode"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:inputType="textCapCharacters"
+                    android:maxLength="8" />
             </com.google.android.material.textfield.TextInputLayout>
 
             <com.google.android.material.button.MaterialButton

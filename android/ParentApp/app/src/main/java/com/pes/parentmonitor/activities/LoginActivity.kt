@@ -53,6 +53,7 @@ class LoginActivity : AppCompatActivity() {
             binding.etPin.error = "Enter your PIN"
             return
         }
+        val familyCode = binding.etFamilyCode.text.toString().trim().uppercase()
 
         binding.btnLogin.isEnabled = false
         binding.progressBar.visibility = View.VISIBLE
@@ -60,7 +61,8 @@ class LoginActivity : AppCompatActivity() {
         lifecycleScope.launch {
             try {
                 val api = ApiClient.getInstance(prefs.serverUrl)
-                val resp = api.login(LoginRequest(pin = pin, role = "parent"))
+                val resp = api.login(
+                    LoginRequest(pin = pin, role = "parent", familyCode = familyCode.ifBlank { null }))
                 if (resp.isSuccessful && resp.body()?.success == true) {
                     val body = resp.body()!!
                     prefs.authToken = body.token   // set first so following calls are authenticated

@@ -684,6 +684,10 @@ def init_db():
     add_column(c, 'users', 'parent_pin_hash', 'TEXT DEFAULT NULL')
     add_column(c, 'users', 'consent_given_at',  'TEXT DEFAULT NULL')    # parental monitoring consent
     add_column(c, 'users', 'consent_version',   'TEXT DEFAULT NULL')
+    # Unique per-family code. NULL on legacy/seed rows (parent logs in with PIN only);
+    # new families get a generated code so two families sharing a parent PIN can't
+    # collide — the parent logs in with code + PIN.
+    add_column(c, 'users', 'family_code',       'TEXT DEFAULT NULL')
 
     # Which signals actually fed each prediction. NULL on legacy rows ("unknown");
     # new predictions write explicit 1/0 so the UI can distinguish "captured and
@@ -1706,6 +1710,20 @@ def model_card():
 
 # ─────────────── USER AUTH ───────────────────────────────────────
 
+_FAMILY_ALPHABET = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789'  # no easily-confused 0/O/1/I/L
+
+
+def _generate_family_code(c) -> str:
+    """A short, unique, unambiguous family code, collision-checked against existing ones."""
+    import secrets
+    for _ in range(20):
+        code = ''.join(secrets.choice(_FAMILY_ALPHABET) for _ in range(6))
+        c.execute('SELECT 1 FROM users WHERE family_code=?', (code,))
+        if not c.fetchone():
+            return code
+    return ''.join(secrets.choice(_FAMILY_ALPHABET) for _ in range(8))  # rare-miss widen
+
+
 @app.route('/api/register', methods=['POST'])
 @limiter.limit("5 per minute")
 def register_user():
@@ -1715,9 +1733,10 @@ def register_user():
     with that family PIN to see every child who shares it. Returns a token so the child
     is signed in immediately."""
     data       = request.get_json() or {}
-    name       = str(data.get('name', '')).strip()
-    pin        = str(data.get('pin', '')).strip()          # child's own login PIN
-    parent_pin = str(data.get('parent_pin', '')).strip()   # shared family PIN
+    name        = str(data.get('name', '')).strip()
+    pin         = str(data.get('pin', '')).strip()          # child's own login PIN
+    parent_pin  = str(data.get('parent_pin', '')).strip()   # shared family PIN
+    family_code = str(data.get('family_code', '')).strip().upper()  # blank => new family
     try:
         age = int(data.get('age', 0))
     except (TypeError, ValueError):
@@ -1745,25 +1764,42 @@ def register_user():
         conn.close()
         return jsonify({'success': False, 'message': 'That child PIN is already taken — pick another'}), 409
 
+    # Resolve the family: a blank code starts a NEW family (unique generated code); a
+    # provided code JOINS that existing family, but only when the family PIN matches it
+    # (so you can't attach a child to someone else's family).
+    if family_code:
+        c.execute('SELECT parent_pin_hash FROM users WHERE family_code=? LIMIT 1', (family_code,))
+        frow = c.fetchone()
+        if not frow:
+            conn.close()
+            return jsonify({'success': False, 'message': 'Unknown family code'}), 404
+        if frow['parent_pin_hash'] != ppin_h:
+            conn.close()
+            return jsonify({'success': False, 'message': 'Family PIN does not match this family code'}), 403
+        code = family_code
+    else:
+        code = _generate_family_code(c)
+
     now = datetime.now().isoformat()
     # Store only the hashes; the plaintext pin/parent_pin columns are kept empty.
     uid = insert_returning_id(
         conn,
-        "INSERT INTO users (name, age, pin, parent_pin, pin_hash, parent_pin_hash, created_at) "
-        "VALUES (?,?,?,?,?,?,?)",
-        (name, age, '', '', pin_h, ppin_h, now),
+        "INSERT INTO users (name, age, pin, parent_pin, pin_hash, parent_pin_hash, family_code, created_at) "
+        "VALUES (?,?,?,?,?,?,?,?)",
+        (name, age, '', '', pin_h, ppin_h, code, now),
         pk='user_id')
     conn.commit()
     conn.close()
 
-    logger.info(f"Registered child user {uid} ({name})")
+    logger.info(f"Registered child user {uid} ({name}) in family {code}")
     return jsonify({
-        'success': True,
-        'user_id': uid,
-        'name':    name,
-        'age':     age,
-        'role':    'child',
-        'token':   mint_token('child', uid, [uid]),
+        'success':     True,
+        'user_id':     uid,
+        'name':        name,
+        'age':         age,
+        'role':        'child',
+        'family_code': code,
+        'token':       mint_token('child', uid, [uid]),
     })
 
 
@@ -1780,17 +1816,31 @@ def user_login():
     conn = get_db()
     c    = conn.cursor()
     pin_h = hash_pin(pin)
-    col   = 'parent_pin_hash' if role == 'parent' else 'pin_hash'
-    c.execute(f'SELECT user_id, name, age FROM users WHERE {col}=?', (pin_h,))
+    family_code = str(data.get('family_code', '')).strip().upper()
+    if role == 'parent':
+        if family_code:
+            # New-style family: unique code + matching parent PIN — collision-free even
+            # if another family chose the same parent PIN.
+            c.execute('SELECT user_id, name, age FROM users WHERE family_code=? AND parent_pin_hash=?',
+                      (family_code, pin_h))
+        else:
+            # Legacy/seed accounts have no family code; group by parent PIN alone.
+            c.execute('SELECT user_id, name, age FROM users WHERE parent_pin_hash=? AND family_code IS NULL',
+                      (pin_h,))
+    else:
+        c.execute('SELECT user_id, name, age FROM users WHERE pin_hash=?', (pin_h,))
     rows = c.fetchall()
     if not rows:
         conn.close()
-        return jsonify({'success': False, 'message': 'Invalid PIN'}), 401
+        msg = 'Invalid family code or PIN' if (role == 'parent' and family_code) else 'Invalid PIN'
+        return jsonify({'success': False, 'message': msg}), 401
     row  = rows[0]
     resp = {'success': True, 'user_id': row['user_id'],
             'name': row['name'], 'age': row['age'], 'role': role}
     if role == 'parent':
-        # All users sharing this parent_pin (hash) are children of this parent
+        if family_code:
+            resp['family_code'] = family_code
+        # All users in this family are children of this parent
         children = [{'user_id': r['user_id'], 'name': r['name'], 'age': r['age']} for r in rows]
         resp['children'] = children
         resp['child_user_id'] = children[0]['user_id']

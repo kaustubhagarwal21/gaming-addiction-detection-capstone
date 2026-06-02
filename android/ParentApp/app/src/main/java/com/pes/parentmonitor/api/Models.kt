@@ -2,7 +2,11 @@ package com.pes.parentmonitor.api
 
 import com.google.gson.annotations.SerializedName
 
-data class LoginRequest(val pin: String, val role: String = "parent")
+data class LoginRequest(
+    val pin: String,
+    val role: String = "parent",
+    @SerializedName("family_code") val familyCode: String? = null
+)
 data class ChildInfo(
     @SerializedName("user_id") val userId: Int,
     val name: String,

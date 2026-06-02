@@ -87,10 +87,26 @@
                 android:layout_marginTop="4dp" />
 
             <com.google.android.material.textfield.TextInputLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="24dp"
+                android:hint="Family code (optional)"
+                app:helperText="Shown in the Child app when you set up your child. Leave blank for the demo account.">
+
+                <com.google.android.material.textfield.TextInputEditText
+                    android:id="@+id/etFamilyCode"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:inputType="textCapCharacters"
+                    android:textSize="16sp"
+                    android:maxLength="8" />
+            </com.google.android.material.textfield.TextInputLayout>
+
+            <com.google.android.material.textfield.TextInputLayout
                 android:id="@+id/tilPin"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:layout_marginTop="28dp"
+                android:layout_marginTop="12dp"
                 android:hint="Parent PIN">
 
                 <com.google.android.material.textfield.TextInputEditText
