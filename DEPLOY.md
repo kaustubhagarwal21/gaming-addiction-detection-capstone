@@ -60,3 +60,24 @@ cross-user → 403, parent sees both children, and the SUBSTR-based date logic r
 `./demo_setup.ps1` still works exactly as before — SQLite + adb tunnel, shadow
 auth. Add `-Enforce` to require tokens once both apps are reinstalled with token
 support. See [DEMO_RUNBOOK.md](DEMO_RUNBOOK.md).
+
+## D. Build the signed release APKs (distribution package)
+
+The apps are distributed as **sideloaded signed release APKs** (not Play Store —
+the AccessibilityService chat capture is Play-restricted; see the report).
+
+Signing credentials live in `android/<App>/keystore.properties` + a `capstone-release.jks`
+keystore, both **gitignored** (never committed). To build:
+
+```
+cd android/ChildApp  && ./gradlew :app:assembleRelease
+cd android/ParentApp && ./gradlew :app:assembleRelease
+```
+
+Output: `app/build/outputs/apk/release/app-release.apk` (signed with the
+`PES Capstone PW26_SJ_05` key; APK Signature Scheme v2). Install with
+`adb install -r app-release.apk`. The release build uses the strict HTTPS-only
+network-security config, so it talks only to the cloud backend over TLS.
+
+If `keystore.properties` is absent (fresh clone without the secret), the release
+build falls back to unsigned and debug builds are unaffected.

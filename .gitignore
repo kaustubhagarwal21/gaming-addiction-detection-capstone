@@ -59,3 +59,8 @@ __MACOSX/
 
 # Experimental dataset outputs (large; keep local, not in git)
 data/improved/
+
+# Release signing secrets — never commit
+android/capstone-release.jks
+android/*/capstone-release.jks
+android/*/keystore.properties
