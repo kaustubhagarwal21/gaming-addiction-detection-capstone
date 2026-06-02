@@ -1,5 +1,6 @@
 package com.pes.parentmonitor.activities
 
+import android.content.Intent
 import android.os.Bundle
 import android.view.View
 import android.widget.Toast
@@ -56,6 +57,8 @@ class SettingsActivity : AppCompatActivity() {
         }
 
         binding.btnDeleteChildData.setOnClickListener { confirmDeleteChildData() }
+
+        binding.btnRemoveChild.setOnClickListener { confirmRemoveChild() }
 
         binding.btnAboutModel.setOnClickListener { showModelCard() }
     }
@@ -151,6 +154,45 @@ class SettingsActivity : AppCompatActivity() {
                 Toast.makeText(this@SettingsActivity, msg, Toast.LENGTH_LONG).show()
             } catch (e: Exception) {
                 Toast.makeText(this@SettingsActivity, "Delete failed: ${e.message}", Toast.LENGTH_LONG).show()
+            }
+        }
+    }
+
+    private fun confirmRemoveChild() {
+        val childId = prefs.childUserId
+        if (childId == -1) {
+            Toast.makeText(this, "No child selected", Toast.LENGTH_SHORT).show()
+            return
+        }
+        val who = prefs.childName.ifBlank { "this child" }
+        AlertDialog.Builder(this)
+            .setTitle("Remove $who from your family?")
+            .setMessage("This permanently removes $who and ALL their data. They'll no longer " +
+                "appear here, and their Child-app PIN will stop working. This cannot be undone.")
+            .setNegativeButton("Cancel", null)
+            .setPositiveButton("Remove") { _, _ -> removeChild(childId) }
+            .show()
+    }
+
+    /** Full account removal (scope=account): deletes the child's user row + data. The
+        family roster changed, so we send the parent back to sign in — re-login fetches
+        the updated list of children. */
+    private fun removeChild(childId: Int) {
+        lifecycleScope.launch {
+            try {
+                val api  = ApiClient.getInstance(prefs.serverUrl)
+                val resp = api.deleteData(mapOf("user_id" to childId.toString(), "scope" to "account"))
+                if (resp.isSuccessful && resp.body()?.success == true) {
+                    Toast.makeText(this@SettingsActivity, "Child removed from family", Toast.LENGTH_LONG).show()
+                    prefs.logout()   // roster changed → re-login refreshes it (keeps server URL)
+                    startActivity(Intent(this@SettingsActivity, LoginActivity::class.java)
+                        .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK))
+                    finish()
+                } else {
+                    Toast.makeText(this@SettingsActivity, "Remove failed (${resp.code()})", Toast.LENGTH_LONG).show()
+                }
+            } catch (e: Exception) {
+                Toast.makeText(this@SettingsActivity, "Remove failed: ${e.message}", Toast.LENGTH_LONG).show()
             }
         }
     }
