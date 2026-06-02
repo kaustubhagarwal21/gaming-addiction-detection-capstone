@@ -48,12 +48,16 @@ class LoginActivity : AppCompatActivity() {
     }
 
     private fun doLogin() {
+        val familyCode = binding.etFamilyCode.text.toString().trim().uppercase()
+        if (familyCode.isEmpty()) {
+            binding.etFamilyCode.error = "Enter your family code"
+            return
+        }
         val pin = binding.etPin.text.toString().trim()
         if (pin.isEmpty()) {
             binding.etPin.error = "Enter your PIN"
             return
         }
-        val familyCode = binding.etFamilyCode.text.toString().trim().uppercase()
 
         binding.btnLogin.isEnabled = false
         binding.progressBar.visibility = View.VISIBLE
@@ -62,7 +66,7 @@ class LoginActivity : AppCompatActivity() {
             try {
                 val api = ApiClient.getInstance(prefs.serverUrl)
                 val resp = api.login(
-                    LoginRequest(pin = pin, role = "parent", familyCode = familyCode.ifBlank { null }))
+                    LoginRequest(pin = pin, role = "parent", familyCode = familyCode))
                 if (resp.isSuccessful && resp.body()?.success == true) {
                     val body = resp.body()!!
                     prefs.authToken = body.token   // set first so following calls are authenticated

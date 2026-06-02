@@ -1818,21 +1818,19 @@ def user_login():
     pin_h = hash_pin(pin)
     family_code = str(data.get('family_code', '')).strip().upper()
     if role == 'parent':
-        if family_code:
-            # New-style family: unique code + matching parent PIN — collision-free even
-            # if another family chose the same parent PIN.
-            c.execute('SELECT user_id, name, age FROM users WHERE family_code=? AND parent_pin_hash=?',
-                      (family_code, pin_h))
-        else:
-            # Legacy/seed accounts have no family code; group by parent PIN alone.
-            c.execute('SELECT user_id, name, age FROM users WHERE parent_pin_hash=? AND family_code IS NULL',
-                      (pin_h,))
+        # A parent always signs in with their family code + PIN. The code (unique per
+        # family) makes this collision-free even if two families chose the same PIN.
+        if not family_code:
+            conn.close()
+            return jsonify({'success': False, 'message': 'Family code is required'}), 400
+        c.execute('SELECT user_id, name, age FROM users WHERE family_code=? AND parent_pin_hash=?',
+                  (family_code, pin_h))
     else:
         c.execute('SELECT user_id, name, age FROM users WHERE pin_hash=?', (pin_h,))
     rows = c.fetchall()
     if not rows:
         conn.close()
-        msg = 'Invalid family code or PIN' if (role == 'parent' and family_code) else 'Invalid PIN'
+        msg = 'Invalid family code or PIN' if role == 'parent' else 'Invalid PIN'
         return jsonify({'success': False, 'message': msg}), 401
     row  = rows[0]
     resp = {'success': True, 'user_id': row['user_id'],

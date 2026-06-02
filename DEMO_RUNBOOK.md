@@ -56,6 +56,17 @@ actual product flow, not a shortcut.
 
 ## 3. Demo flow (suggested narrative)
 
+### 0. Onboarding — how a real family signs up (optional, ~30s)
+Shows it's a real product, not canned accounts. (The seeded Arjun/Priya family below
+was created exactly this way — they just come pre-loaded with rich history.)
+1. **ChildApp → Create an account**: enter a child name/age + a child PIN, **leave the
+   family code blank** → it generates and shows a **family code** to use in the Parent app.
+2. **ParentApp**: sign in with that **family code + the parent PIN** → the child appears.
+3. (Adding a sibling later? Set them up in the ChildApp using the *same* family code.)
+   *(This creates a real account; delete it afterwards via ChildApp → Settings → Delete My Data.)*
+
+Then switch to the pre-seeded family for the data-rich story:
+
 ### A. Parent side — the "wow" (start here)
 1. Open **ParentApp** → sign in with family code **FAM789** + PIN **0000** → pick **Arjun**.
 2. **Dashboard**: addicted, 85% risk, ~17h/week, 14-day rising trend chart, contributing factors.
@@ -88,6 +99,7 @@ actual product flow, not a shortcut.
 | **Cloud:** first request slow / times out | Free tier woke from sleep — wait ~30–60s and retry; pre-warm via the health URL |
 | **Cloud:** network error on phone | Confirm the phone has WiFi/mobile data; open the health URL in the phone's browser |
 | **Cloud:** login fails after reseed | The seed used the wrong `PIN_PEPPER` — reseed with Render's exact `PIN_PEPPER` value |
+| Parent login: "Invalid family code or PIN" | Use **family code FAM789 + PIN 0000**; ensure you installed the **latest ParentApp** (older builds had no family-code field) |
 | **Local:** app shows network error | Re-run `adb reverse tcp:5000 tcp:5000` (USB tunnel dropped) |
 | **Local:** backend not responding | Restart it (`.\demo_setup.ps1`) — and quit Docker Desktop so port 5000 is free |
 | Data looks wrong / want a clean slate | Re-seed (see §2) then pull-to-refresh the app |
