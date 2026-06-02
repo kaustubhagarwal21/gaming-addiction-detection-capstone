@@ -167,8 +167,9 @@ paths:
           application/json:
             schema:
               type: object
+              required: [message]
               properties:
-                text: { type: string }
+                message: { type: string }
                 source: { type: string, enum: [keyboard, ocr, voice_stt] }
       responses:
         '200': { description: OK }
