@@ -18,8 +18,11 @@ import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
 import androidx.core.content.FileProvider
 import androidx.lifecycle.lifecycleScope
+import com.github.mikephil.charting.components.LimitLine
+import com.github.mikephil.charting.components.XAxis
 import com.github.mikephil.charting.data.*
 import com.github.mikephil.charting.formatter.IndexAxisValueFormatter
+import com.github.mikephil.charting.formatter.ValueFormatter
 import com.pes.parentmonitor.R
 import com.pes.parentmonitor.api.ApiClient
 import com.pes.parentmonitor.api.ParentalDashboard
@@ -364,14 +367,38 @@ class ParentalDashboardActivity : AppCompatActivity() {
         }
         binding.lineChart.apply {
             data = LineData(dataSet)
-            xAxis.valueFormatter     = IndexAxisValueFormatter(labels)
-            xAxis.granularity        = 1f
-            xAxis.labelRotationAngle = -30f
-            axisRight.isEnabled      = false
-            axisLeft.axisMinimum     = 0f
-            axisLeft.axisMaximum     = 100f
-            legend.isEnabled         = false
-            description.isEnabled    = false
+            // X axis: the date of each day (MM-DD), along the bottom.
+            xAxis.apply {
+                valueFormatter     = IndexAxisValueFormatter(labels)
+                granularity        = 1f
+                labelRotationAngle = -30f
+                position           = XAxis.XAxisPosition.BOTTOM
+                setDrawGridLines(false)
+                textColor          = getColor(R.color.text_secondary)
+            }
+            // Y axis: 0–100% with the risk-band cutoffs drawn in, so the line is read
+            // against "some concern" (33%) and "high concern" (67%).
+            axisLeft.apply {
+                axisMinimum = 0f
+                axisMaximum = 100f
+                granularity = 25f
+                textColor   = getColor(R.color.text_secondary)
+                valueFormatter = object : ValueFormatter() {
+                    override fun getFormattedValue(value: Float) = "${value.toInt()}%"
+                }
+                removeAllLimitLines()
+                addLimitLine(LimitLine(33f, "Some concern").apply {
+                    lineColor = getColor(R.color.risk_medium); lineWidth = 1.2f
+                    textColor = getColor(R.color.risk_medium); textSize = 9f
+                })
+                addLimitLine(LimitLine(67f, "High concern").apply {
+                    lineColor = getColor(R.color.risk_high); lineWidth = 1.2f
+                    textColor = getColor(R.color.risk_high); textSize = 9f
+                })
+            }
+            axisRight.isEnabled   = false
+            legend.isEnabled      = false
+            description.isEnabled = false
             setTouchEnabled(true)
             if (animate) animateX(800)
             invalidate()

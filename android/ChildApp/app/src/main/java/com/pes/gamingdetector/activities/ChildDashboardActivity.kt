@@ -91,12 +91,14 @@ class ChildDashboardActivity : AppCompatActivity() {
                             binding.cardStreak.visibility  = View.VISIBLE
                             binding.tvStreakCurrent.text   = "${s.currentStreak} days"
                             binding.tvStreakBest.text      = "${s.longestStreak} days"
+                            // Badge = reward tier for the healthy-gaming streak (see the
+                            // caption below). Locked until the first 3-day streak.
                             val badgeText = when {
-                                s.currentStreak >= 30 -> "Gold"
-                                s.currentStreak >= 14 -> "Silver"
-                                s.currentStreak >= 7  -> "Bronze"
-                                s.currentStreak >= 3  -> "Starter"
-                                else                  -> "—"
+                                s.currentStreak >= 30 -> "🥇 Gold"
+                                s.currentStreak >= 14 -> "🥈 Silver"
+                                s.currentStreak >= 7  -> "🥉 Bronze"
+                                s.currentStreak >= 3  -> "⭐ Starter"
+                                else                  -> "🔒"
                             }
                             binding.tvStreakBadge.text = badgeText
                         }

@@ -682,10 +682,19 @@
                             android:text="14-DAY RISK TREND"
                             android:textAppearance="@style/TextAppearance.App.Label" />
 
+                        <TextView
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:layout_marginTop="4dp"
+                            android:text="Daily risk score (0–100%, vertical) per day (date, horizontal). Higher = more concern; above the amber line is at-risk, above red is high concern."
+                            android:textColor="@color/text_secondary"
+                            android:textSize="12sp"
+                            android:lineSpacingExtra="2dp" />
+
                         <com.github.mikephil.charting.charts.LineChart
                             android:id="@+id/lineChart"
                             android:layout_width="match_parent"
-                            android:layout_height="200dp"
+                            android:layout_height="210dp"
                             android:layout_marginTop="12dp" />
                     </LinearLayout>
                 </com.google.android.material.card.MaterialCardView>
