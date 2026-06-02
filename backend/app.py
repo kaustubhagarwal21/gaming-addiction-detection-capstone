@@ -2317,13 +2317,19 @@ def analyse_chat():
     if chat_model is not None and tfidf_vectorizer is not None:
         try:
             vec      = tfidf_vectorizer.transform([clean_text(msg)])
-            raw      = float(chat_model.predict(vec)[0])
-            ml_score = float(np.clip(raw * 1.5, 0, 1))
+            # The chat model is a classifier: use P(toxic), not predict() (a 0/1 class
+            # label) — the same continuous score the alert path and ensemble use. The
+            # old `predict()*1.5` collapsed this to a crude binary 0/1.
+            proba    = chat_model.predict_proba(vec)[0]
+            ml_score = float(proba[1]) if len(proba) > 1 else float(proba[0])
         except Exception:
             pass
     kw_score = keyword_toxicity(msg)
     final    = float(np.clip(max(ml_score, kw_score), 0, 1))
-    label    = 'safe' if final < 0.3 else ('toxic' if final > 0.6 else 'borderline')
+    # Label bands aligned with the alert threshold: don't call a message 'toxic' in the UI
+    # unless it would actually raise an alert — avoids scaring parents over normal gaming
+    # chat the model tends to over-score.
+    label    = 'toxic' if final >= CHAT_ALERT_T else ('borderline' if final >= 0.4 else 'safe')
     return jsonify({'message': msg, 'toxicity_score': round(final, 4),
                     'ml_score': round(ml_score, 4), 'keyword_score': round(kw_score, 4),
                     'label': label})
