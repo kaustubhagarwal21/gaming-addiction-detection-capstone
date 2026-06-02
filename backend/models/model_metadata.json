@@ -63,5 +63,116 @@
   ],
   "test_samples": 5750,
   "data_note": "Trained and evaluated on synthetic/illustrative data with realistic class overlap; a screening signal, not a validated clinical instrument.",
-  "evaluation_note": "Held-out 20% split (seed=42) the model never trained on. Psychometric features use the shared derive_psychometrics() \u2014 identical in training and serving."
+  "evaluation_note": "Held-out 20% split (seed=42) the model never trained on. Psychometric features use the shared derive_psychometrics() \u2014 identical in training and serving.",
+  "chat_metrics": {
+    "model": "LogisticRegression + TF-IDF (1-2gram)",
+    "balanced_holdout": {
+      "precision_toxic": 0.887,
+      "recall_toxic": 0.9313,
+      "f1_toxic": 0.9086,
+      "accuracy": 0.9063,
+      "confusion": [
+        [
+          1078,
+          145
+        ],
+        [
+          84,
+          1138
+        ]
+      ]
+    },
+    "realistic_holdout": {
+      "toxic_base_rate": 0.007,
+      "at_threshold_0.5": {
+        "precision_toxic": 0.0478,
+        "recall_toxic": 0.9313,
+        "f1_toxic": 0.0909,
+        "accuracy": 0.8703,
+        "confusion": [
+          [
+            151595,
+            22680
+          ],
+          [
+            84,
+            1138
+          ]
+        ]
+      },
+      "at_alert_threshold_0.75": {
+        "precision_toxic": 0.0735,
+        "recall_toxic": 0.6628,
+        "f1_toxic": 0.1323,
+        "accuracy": 0.9395,
+        "confusion": [
+          [
+            164062,
+            10213
+          ],
+          [
+            412,
+            810
+          ]
+        ]
+      }
+    },
+    "note": "Balanced split flatters the model; the realistic set reflects the true ~imbalanced stream. Toxic precision is low at 0.5 (the model over-flags gaming language), which is exactly why the live alert threshold is 0.75 (higher precision, lower recall). The real fix is real gaming-chat data.",
+    "confusion_labels": [
+      "clean",
+      "toxic"
+    ],
+    "eval": "Held-out rows the deployed model never trained on (seeds match retrain)."
+  },
+  "voice_metrics": {
+    "model": "GradientBoosting on 17 acoustic features (synthetic)",
+    "accuracy": 0.9925,
+    "macro_f1": 0.9925,
+    "per_class_precision": {
+      "neutral": 0.9926,
+      "excited": 0.9899,
+      "frustrated": 0.9925,
+      "angry": 0.995
+    },
+    "per_class_recall": {
+      "neutral": 1.0,
+      "excited": 0.985,
+      "frustrated": 0.9875,
+      "angry": 0.9975
+    },
+    "confusion": [
+      [
+        400,
+        0,
+        0,
+        0
+      ],
+      [
+        1,
+        394,
+        3,
+        2
+      ],
+      [
+        2,
+        3,
+        395,
+        0
+      ],
+      [
+        0,
+        1,
+        0,
+        399
+      ]
+    ],
+    "confusion_labels": [
+      "neutral",
+      "excited",
+      "frustrated",
+      "angry"
+    ],
+    "eval": "Held-out 20% split (seed=42).",
+    "note": "Trained and evaluated on SYNTHETIC acoustic features, not real microphone audio \u2014 so this high accuracy is internal validity only; real-world voice accuracy is unproven. Lowest ensemble weight for this reason."
+  }
 }

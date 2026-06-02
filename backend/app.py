@@ -1651,6 +1651,8 @@ def model_card():
         'train_samples':       m.get('train_samples'),
         'test_samples':        m.get('test_samples'),
         'feature_count':       m.get('feature_count'),
+        'chat_metrics':        m.get('chat_metrics'),
+        'voice_metrics':       m.get('voice_metrics'),
         'risk_bands': {
             'casual':   f'score < {RISK_T1}',
             'at_risk':  f'{RISK_T1} <= score < {RISK_T2}',
