@@ -1706,6 +1706,67 @@ def model_card():
 
 # ─────────────── USER AUTH ───────────────────────────────────────
 
+@app.route('/api/register', methods=['POST'])
+@limiter.limit("5 per minute")
+def register_user():
+    """Create a child account so a real family can onboard (previously accounts were
+    seed-only). Identity is PIN-based: the child gets their own login PIN, and a shared
+    FAMILY PIN groups siblings under one parent — the parent logs into the Parent app
+    with that family PIN to see every child who shares it. Returns a token so the child
+    is signed in immediately."""
+    data       = request.get_json() or {}
+    name       = str(data.get('name', '')).strip()
+    pin        = str(data.get('pin', '')).strip()          # child's own login PIN
+    parent_pin = str(data.get('parent_pin', '')).strip()   # shared family PIN
+    try:
+        age = int(data.get('age', 0))
+    except (TypeError, ValueError):
+        age = 0
+
+    if not name:
+        return jsonify({'success': False, 'message': 'Name is required'}), 400
+    if not (1 <= age <= 100):
+        return jsonify({'success': False, 'message': 'Enter a valid age'}), 400
+    if not (pin.isdigit() and 4 <= len(pin) <= 6):
+        return jsonify({'success': False, 'message': 'Child PIN must be 4–6 digits'}), 400
+    if not (parent_pin.isdigit() and 4 <= len(parent_pin) <= 6):
+        return jsonify({'success': False, 'message': 'Family PIN must be 4–6 digits'}), 400
+    if pin == parent_pin:
+        return jsonify({'success': False, 'message': 'Child PIN and Family PIN must be different'}), 400
+
+    conn = get_db()
+    c    = conn.cursor()
+    pin_h, ppin_h = hash_pin(pin), hash_pin(parent_pin)
+
+    # Child login matches on pin_hash and takes the first row, so a child PIN must be
+    # globally unique or two children's logins would collide.
+    c.execute('SELECT user_id FROM users WHERE pin_hash=?', (pin_h,))
+    if c.fetchone():
+        conn.close()
+        return jsonify({'success': False, 'message': 'That child PIN is already taken — pick another'}), 409
+
+    now = datetime.now().isoformat()
+    # Store only the hashes; the plaintext pin/parent_pin columns are kept empty.
+    uid = insert_returning_id(
+        conn,
+        "INSERT INTO users (name, age, pin, parent_pin, pin_hash, parent_pin_hash, created_at) "
+        "VALUES (?,?,?,?,?,?,?)",
+        (name, age, '', '', pin_h, ppin_h, now),
+        pk='user_id')
+    conn.commit()
+    conn.close()
+
+    logger.info(f"Registered child user {uid} ({name})")
+    return jsonify({
+        'success': True,
+        'user_id': uid,
+        'name':    name,
+        'age':     age,
+        'role':    'child',
+        'token':   mint_token('child', uid, [uid]),
+    })
+
+
 @app.route('/api/user/login', methods=['POST'])
 @limiter.limit("10 per minute")
 def user_login():

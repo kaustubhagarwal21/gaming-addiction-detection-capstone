@@ -12,6 +12,9 @@ interface ApiService {
     @POST("api/user/login")
     suspend fun login(@Body request: LoginRequest): Response<LoginResponse>
 
+    @POST("api/register")
+    suspend fun register(@Body request: RegisterRequest): Response<LoginResponse>
+
     @POST("api/session/start")
     suspend fun startSession(@Body request: StartSessionRequest): Response<SessionResponse>
 

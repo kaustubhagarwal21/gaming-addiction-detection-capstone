@@ -23,6 +23,9 @@ class LoginActivity : AppCompatActivity() {
         prefs = PrefsManager(this)
 
         binding.btnLogin.setOnClickListener { doLogin() }
+        binding.tvCreateAccount.setOnClickListener {
+            startActivity(Intent(this, RegisterActivity::class.java))
+        }
         binding.tvSettings.setOnClickListener {
             startActivity(Intent(this, SettingsActivity::class.java))
         }

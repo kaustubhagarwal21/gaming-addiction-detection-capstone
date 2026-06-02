@@ -64,6 +64,12 @@
             android:theme="@style/Theme.ChildApp.NoActionBar" />
 
         <activity
+            android:name=".activities.RegisterActivity"
+            android:exported="false"
+            android:parentActivityName=".activities.LoginActivity"
+            android:theme="@style/Theme.ChildApp.NoActionBar" />
+
+        <activity
             android:name=".activities.HomeActivity"
             android:exported="false"
             android:theme="@style/Theme.ChildApp.NoActionBar" />

@@ -3,6 +3,12 @@ package com.pes.gamingdetector.api
 import com.google.gson.annotations.SerializedName
 
 data class LoginRequest(val pin: String, val role: String = "child")
+data class RegisterRequest(
+    val name: String,
+    val age: Int,
+    val pin: String,
+    @SerializedName("parent_pin") val parentPin: String
+)
 data class LoginResponse(
     val success: Boolean,
     @SerializedName("user_id") val userId: Int,
