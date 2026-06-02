@@ -29,21 +29,13 @@ class SettingsActivity : AppCompatActivity() {
         supportActionBar?.title = "Settings"
 
         binding.etServerUrl.setText(prefs.serverUrl)
-        binding.etChildUserId.setText(if (prefs.childUserId != -1) prefs.childUserId.toString() else "")
 
         binding.btnSave.setOnClickListener {
-            val url     = binding.etServerUrl.text.toString().trim()
-            val childId = binding.etChildUserId.text.toString().trim().toIntOrNull()
-
+            val url = binding.etServerUrl.text.toString().trim()
             if (url.isNotEmpty()) {
                 prefs.serverUrl = if (url.endsWith("/")) url else "$url/"
             }
-            if (childId != null) {
-                prefs.childUserId = childId
-                attemptPairing(childId)
-            } else {
-                Toast.makeText(this, "Settings saved", Toast.LENGTH_SHORT).show()
-            }
+            Toast.makeText(this, "Settings saved", Toast.LENGTH_SHORT).show()
         }
 
         binding.btnTestConnection.setOnClickListener { testConnection() }
@@ -193,26 +185,6 @@ class SettingsActivity : AppCompatActivity() {
                 }
             } catch (e: Exception) {
                 Toast.makeText(this@SettingsActivity, "Remove failed: ${e.message}", Toast.LENGTH_LONG).show()
-            }
-        }
-    }
-
-    private fun attemptPairing(childId: Int) {
-        lifecycleScope.launch {
-            try {
-                val api  = ApiClient.getInstance(prefs.serverUrl)
-                val body = mapOf("parent_id" to prefs.parentId, "child_user_id" to childId)
-                val resp = api.pairDevices(body)
-                if (resp.isSuccessful && resp.body()?.success == true) {
-                    val name = resp.body()?.childName ?: "your child"
-                    binding.tvPairedStatus.text = "Paired with: $name (ID: $childId)"
-                    binding.tvPairedStatus.visibility = View.VISIBLE
-                    Toast.makeText(this@SettingsActivity, "Paired with $name", Toast.LENGTH_LONG).show()
-                } else {
-                    Toast.makeText(this@SettingsActivity, "Pairing failed — check the code", Toast.LENGTH_SHORT).show()
-                }
-            } catch (e: Exception) {
-                Toast.makeText(this@SettingsActivity, "Settings saved (pairing skipped: ${e.message})", Toast.LENGTH_SHORT).show()
             }
         }
     }

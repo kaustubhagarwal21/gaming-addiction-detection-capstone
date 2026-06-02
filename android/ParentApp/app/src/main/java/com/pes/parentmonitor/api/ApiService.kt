@@ -27,9 +27,6 @@ interface ApiService {
     @GET("api/child/status")
     suspend fun getChildStatus(@Query("user_id") userId: Int): Response<ChildStatusResponse>
 
-    @POST("api/pair")
-    suspend fun pairDevices(@Body body: Map<String, Int>): Response<PairResponse>
-
     @GET("api/dashboard/emotions")
     suspend fun getEmotions(@Query("user_id") userId: Int): Response<EmotionDashboard>
 

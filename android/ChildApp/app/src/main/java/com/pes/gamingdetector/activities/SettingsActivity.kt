@@ -50,11 +50,6 @@ class SettingsActivity : AppCompatActivity() {
         binding.btnManageGames.setOnClickListener {
             startActivity(Intent(this, ManageGamesActivity::class.java))
         }
-
-        val uid = prefs.userId
-        if (uid != -1) {
-            binding.tvPairingCode.text = uid.toString().padStart(6, '0')
-        }
     }
 
     private fun testConnection() {

@@ -56,3 +56,6 @@ __MACOSX/
 # ── Old duplicate project copies (kept on disk, intentionally not in the repo) ──
 /capstone-main/
 /capstone_full_integrated/
+
+# Experimental dataset outputs (large; keep local, not in git)
+data/improved/

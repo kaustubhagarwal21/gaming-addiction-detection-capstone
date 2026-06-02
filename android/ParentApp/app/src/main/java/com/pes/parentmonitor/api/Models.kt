@@ -199,13 +199,6 @@ data class ChildStatusResponse(
     @SerializedName("risk_score") val riskScore: Double?
 )
 
-data class PairResponse(
-    val success: Boolean,
-    @SerializedName("child_name") val childName: String?,
-    @SerializedName("child_user_id") val childUserId: Int?,
-    val message: String?
-)
-
 // ── Dedicated emotion-insights dashboard ──────────────────────────
 data class EmotionCount(
     val emotion: String?,

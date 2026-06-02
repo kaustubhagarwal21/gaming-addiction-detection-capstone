@@ -1851,21 +1851,6 @@ def user_login():
     return jsonify(resp)
 
 
-@app.route('/api/parent/children', methods=['GET'])
-def get_children():
-    parent_id = request.args.get('parent_id', type=int)
-    if not parent_id:
-        return jsonify({'success': False, 'message': 'parent_id required'}), 400
-    deny = guard(parent_id)
-    if deny: return deny
-    conn = get_db()
-    c = conn.cursor()
-    c.execute("SELECT user_id, name, age FROM users WHERE parent_id=? AND role='child'", (parent_id,))
-    children = [{'user_id': r['user_id'], 'name': r['name'], 'age': r['age']} for r in c.fetchall()]
-    conn.close()
-    return jsonify({'success': True, 'children': children})
-
-
 @app.route('/api/user/fcm_token', methods=['POST'])
 def update_fcm_token():
     """Store or update a device's FCM registration token."""
@@ -2111,8 +2096,18 @@ def end_session(sid):
         if prediction.get('risk_category') == 'addicted':
             conn2b = get_db()
             c2b    = conn2b.cursor()
-            c2b.execute('SELECT fcm_token FROM users WHERE child_user_id=?', (srow['user_id'],))
-            parent_row = c2b.fetchone()
+            # The parent's FCM token lives on a row in this child's family (the parent
+            # logs in as the family). Look it up by family_code — the legacy
+            # child_user_id link is never populated in the family-code model.
+            c2b.execute('SELECT family_code FROM users WHERE user_id=?', (srow['user_id'],))
+            _fc  = c2b.fetchone()
+            fam  = _fc['family_code'] if _fc else None
+            if fam:
+                c2b.execute("SELECT fcm_token FROM users WHERE family_code=? "
+                            "AND fcm_token IS NOT NULL AND fcm_token != '' LIMIT 1", (fam,))
+                parent_row = c2b.fetchone()
+            else:
+                parent_row = None
             conn2b.close()
             if parent_row and parent_row['fcm_token']:
                 score_pct = int(prediction['final_risk_score'] * 100)
@@ -2831,44 +2826,9 @@ def get_games():
 
 # ─────────────── PAIRING ─────────────────────────────────────────
 
-@app.route('/api/pair', methods=['POST'])
-def pair_devices():
-    """Parent enters child's user_id to link the two apps."""
-    data      = request.get_json() or {}
-    parent_id = int(data.get('parent_id', 0)) or None
-    child_id  = int(data.get('child_user_id', 0)) or None
-
-    if not parent_id or not child_id:
-        return jsonify({'success': False, 'message': 'parent_id and child_user_id required'}), 400
-
-    conn = get_db()
-    c    = conn.cursor()
-    c.execute('SELECT user_id, name FROM users WHERE user_id=?', (child_id,))
-    child = c.fetchone()
-    if not child:
-        conn.close()
-        return jsonify({'success': False, 'message': 'Child user not found'}), 404
-
-    c.execute('UPDATE users SET child_user_id=? WHERE user_id=?', (child_id, parent_id))
-    conn.commit()
-    conn.close()
-    return jsonify({'success': True, 'child_name': child['name'], 'child_user_id': child_id})
-
-
-@app.route('/api/pair/info', methods=['GET'])
-def get_pairing_info():
-    """Child can fetch their user_id as a pairing code."""
-    user_id = request.args.get('user_id', 1, type=int)
-    deny = guard(user_id)
-    if deny: return deny
-    conn    = get_db()
-    c       = conn.cursor()
-    c.execute('SELECT user_id, name FROM users WHERE user_id=?', (user_id,))
-    row = c.fetchone()
-    conn.close()
-    if not row:
-        return jsonify({'success': False, 'message': 'User not found'}), 404
-    return jsonify({'success': True, 'pairing_code': row['user_id'], 'name': row['name']})
+# Device pairing (pair-by-user-id) was removed: parents now link to their children
+# via the family code at login, which is authenticated and collision-free. The old
+# /api/pair (unauthenticated) and /api/pair/info endpoints are gone.
 
 
 # ─────────────── WEEKLY REPORT ───────────────────────────────────
