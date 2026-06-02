@@ -76,8 +76,6 @@ class HomeActivity : AppCompatActivity() {
             ensureConsent()
         }
 
-        binding.rvGames.layoutManager = GridLayoutManager(this, 2)
-
         binding.btnResume.setOnClickListener {
             if (prefs.hasActiveSession()) {
                 startActivity(Intent(this, SessionActivity::class.java))
@@ -88,14 +86,63 @@ class HomeActivity : AppCompatActivity() {
             startActivity(Intent(this, ChildDashboardActivity::class.java))
         }
 
-        loadGames()
+        // Interactive break (a healthy alternative to "one more game").
+        binding.cardBreak.setOnClickListener {
+            startActivity(Intent(this, BreatheActivity::class.java))
+        }
+        binding.btnShuffle.setOnClickListener { shuffleActivity() }
+        shuffleActivity()
     }
 
     override fun onResume() {
         super.onResume()
         refreshBanner()
+        loadToday()
         uiHandler.postDelayed(bannerRefresh, 3_000L)
         if (consentCurrent()) checkRequiredPermissions()
+    }
+
+    /** Self-awareness snapshot: how much the child has played today vs a healthy goal,
+        their streak, and an encouraging line. One call, refreshed on every resume. */
+    private fun loadToday() {
+        lifecycleScope.launch {
+            try {
+                val resp = ApiClient.getInstance(prefs.serverUrl).getChildEnriched(prefs.userId)
+                val b = resp.body()
+                if (resp.isSuccessful && b?.success == true) {
+                    val played = b.playedTodayHours ?: 0.0
+                    val goal   = (b.dailyGoalHours ?: 2.0).coerceAtLeast(0.1)
+                    binding.tvTodayHours.text = "${"%.1f".format(played)}h played today"
+                    binding.todayProgress.progress = ((played / goal) * 100).toInt().coerceIn(0, 100)
+                    binding.tvTodayGoal.text = if (b.goalIsParentSet == true)
+                        "of your ${"%.1f".format(goal)}h daily limit"
+                    else
+                        "of a healthy ~${"%.1f".format(goal)}h a day"
+                    val streak = b.streak?.currentStreak ?: 0
+                    binding.tvStreak.text = if (streak > 0)
+                        "🔥 $streak-day healthy streak"
+                    else
+                        "🌱 Stay under your goal to start a healthy streak"
+                    binding.tvSelfAwareness.text = b.selfAwarenessMessage ?: ""
+                }
+            } catch (_: Exception) { /* offline — keep last values */ }
+        }
+    }
+
+    private val tryInstead = listOf(
+        "Go for a 10-minute walk 🚶",
+        "Drink a glass of water 💧",
+        "Stretch or do 10 push-ups 💪",
+        "Message a friend to hang out 👋",
+        "Read a few pages of a book 📖",
+        "Step outside for some fresh air 🌳",
+        "Draw or doodle something ✏️",
+        "Help out at home — surprise your family 🧹",
+        "Play a song you love 🎵",
+        "Plan something fun for the weekend 🗓️",
+    )
+    private fun shuffleActivity() {
+        binding.tvActivity.text = tryInstead.random()
     }
 
     /** Start always-on passive monitoring (auto-session detection + screen events). */
@@ -195,26 +242,6 @@ class HomeActivity : AppCompatActivity() {
             binding.tvResumegame.text = "Session active: ${prefs.activeSessionGame}"
         } else {
             binding.resumeBanner.visibility = View.GONE
-        }
-    }
-
-    private fun loadGames() {
-        lifecycleScope.launch {
-            try {
-                val api = ApiClient.getInstance(prefs.serverUrl)
-                val resp = api.getGames()
-                if (resp.isSuccessful && resp.body()?.success == true) {
-                    val games = resp.body()!!.games
-                    // Read-only list of monitored games — sessions start automatically
-                    // when a game is opened, so tapping a tile does nothing.
-                    binding.rvGames.adapter = GameAdapter(games)
-                }
-            } catch (e: Exception) {
-                val msg = if (e is java.io.IOException)
-                    "Cannot reach server at ${prefs.serverUrl} — go to Settings and update the server address."
-                else "Failed to load games: ${e.message}"
-                Toast.makeText(this@HomeActivity, msg, Toast.LENGTH_LONG).show()
-            }
         }
     }
 

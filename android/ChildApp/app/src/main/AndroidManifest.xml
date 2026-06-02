@@ -117,6 +117,11 @@
             android:exported="false"
             android:theme="@style/Theme.ChildApp.NoActionBar" />
 
+        <activity
+            android:name=".activities.BreatheActivity"
+            android:exported="false"
+            android:theme="@style/Theme.ChildApp.NoActionBar" />
+
         <!-- Game monitoring foreground service -->
         <service
             android:name=".services.GameMonitorService"

@@ -3136,10 +3136,17 @@ def child_dashboard_enriched():
             'exceeded':            today_h > daily_limit,
         }
 
+    # Always expose today's play time + a goal (the parent's limit, else a gentle
+    # default) so the child's home can show self-awareness even with no limit set.
+    DEFAULT_GOAL_HOURS = 2.0
+    goal = daily_limit if daily_limit else DEFAULT_GOAL_HOURS
     return jsonify({
         'success':          True,
         'streak':           streak,
         'limit_status':     limit_status,
+        'played_today_hours': round(today_h, 2),
+        'daily_goal_hours':   round(goal, 2),
+        'goal_is_parent_set': bool(daily_limit),
         'self_awareness_message': self_msg,
     })
 

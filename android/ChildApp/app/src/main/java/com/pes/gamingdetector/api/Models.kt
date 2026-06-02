@@ -129,6 +129,9 @@ data class ChildEnrichedResponse(
     val success: Boolean,
     val streak: StreakInfo?,
     @SerializedName("limit_status") val limitStatus: LimitStatus?,
+    @SerializedName("played_today_hours") val playedTodayHours: Double?,
+    @SerializedName("daily_goal_hours") val dailyGoalHours: Double?,
+    @SerializedName("goal_is_parent_set") val goalIsParentSet: Boolean?,
     @SerializedName("self_awareness_message") val selfAwarenessMessage: String?
 )
 
