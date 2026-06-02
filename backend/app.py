@@ -237,7 +237,9 @@ def _init_firebase():
 _init_firebase()
 
 BASE_DIR    = os.path.dirname(os.path.abspath(__file__))
-DATABASE    = os.path.join(BASE_DIR, 'gaming_addiction.db')
+# Env-overridable so the test suite can point at an isolated throwaway DB
+# (DATABASE_PATH) instead of the real gaming_addiction.db. Unset in production.
+DATABASE    = os.environ.get('DATABASE_PATH', os.path.join(BASE_DIR, 'gaming_addiction.db'))
 MODEL_DIR   = os.path.join(BASE_DIR, 'models')
 AUDIO_DIR   = os.path.join(BASE_DIR, 'audio_uploads')
 os.makedirs(AUDIO_DIR, exist_ok=True)

@@ -237,7 +237,7 @@ capstone_main/
 ├── backend/
 │   ├── app.py         ── Flask REST API (2,300+ lines)
 │   ├── models/        ── 5 trained model files
-│   ├── tests/         ── pytest suite (23 tests)
+│   ├── tests/         ── pytest suite (35 tests, isolated DB)
 │   ├── openapi.yaml   ── OpenAPI 3.0 spec
 │   └── seed_demo.py   ── Demo data seeder
 ├── ml/
@@ -293,7 +293,7 @@ We state these explicitly; each has a concrete mitigation already in place or a 
 | Backend lines of code (Python) | ~2,500 |
 | Android lines of code (Kotlin) | ~6,000 |
 | ML notebooks | 3 |
-| Test coverage | 23 API integration tests, all passing |
+| Test coverage | 35 API integration tests, all passing (isolated test DB) |
 | Trained models | 5 (.pkl files, ~80 MB total) |
 | Database tables | 13 |
 | REST endpoints | 40+ |

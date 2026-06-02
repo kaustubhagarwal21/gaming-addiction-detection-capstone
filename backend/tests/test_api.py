@@ -1,25 +1,16 @@
 """Backend smoke + integration tests — PES Capstone PW26_SJ_05.
 
-Run from project root:
+Run from the backend dir:
     cd backend && pytest tests/ -v
 
-These tests use Flask's test client (no live server needed). The DB is the
-real `gaming_addiction.db` so make sure `python seed_demo.py` has been run.
+Uses Flask's test client (no live server). conftest.py points the app at an
+isolated throwaway SQLite DB seeded with deterministic data, so no real DB or
+`seed_demo.py` run is required. The seeded family is: child PIN 1234,
+parent PIN 0000, family code TEST01 (user_id=1).
 """
-import os
-import sys
-import json
 import pytest
 
-sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
-from app import app as flask_app
-
-
-@pytest.fixture(scope='session')
-def client():
-    flask_app.config['TESTING'] = True
-    with flask_app.test_client() as c:
-        yield c
+FAMILY_CODE = 'TEST01'   # must match the family code seeded in conftest.py
 
 
 # ─── Health and basic endpoints ────────────────────────────────────
@@ -48,10 +39,22 @@ def test_child_login(client):
     assert r.status_code in (200, 401)
 
 
-def test_parent_login(client):
+def test_parent_login_requires_family_code(client):
+    """Parent login without a family code must be rejected (family-code model)."""
+    r = client.post('/api/user/login', json={'pin': '0000', 'role': 'parent'})
+    assert r.status_code == 400
+    assert r.get_json()['success'] is False
+
+
+def test_parent_login_with_family_code(client):
+    """Parent login with the seeded family code + PIN succeeds and returns children."""
     r = client.post('/api/user/login',
-                    json={'pin': '0000', 'role': 'parent'})
-    assert r.status_code in (200, 401)
+                    json={'pin': '0000', 'role': 'parent', 'family_code': FAMILY_CODE})
+    assert r.status_code == 200
+    data = r.get_json()
+    assert data['success'] is True
+    assert data['token']
+    assert isinstance(data.get('children'), list) and len(data['children']) >= 1
 
 
 def test_bad_login(client):
@@ -284,3 +287,55 @@ def test_missing_user_id(client):
     r = client.get('/api/dashboard/user')
     # Should default or 400 — either is acceptable
     assert r.status_code in (200, 400)
+
+
+# ─── Model card (per-model metrics) ────────────────────────────────
+
+def test_model_card(client):
+    r = client.get('/api/model_card')
+    assert r.status_code == 200
+    data = r.get_json()
+    assert 'test_accuracy' in data
+    # chat + voice metrics are now reported alongside behaviour
+    assert 'chat_metrics' in data
+    assert 'voice_metrics' in data
+
+
+# ─── Parent feedback loop (real labels) ────────────────────────────
+
+def test_feedback_loop(client):
+    alerts = client.get('/api/alerts?user_id=1').get_json()['alerts']
+    assert alerts, 'seed should provide at least one alert'
+    aid = alerts[0]['id']
+
+    r = client.post('/api/feedback', json={'alert_id': aid, 'label': 'accurate'})
+    assert r.status_code == 200 and r.get_json()['success'] is True
+
+    # The verdict should now be attached to the alert and counted in the summary.
+    again = client.get('/api/alerts?user_id=1').get_json()['alerts']
+    marked = next(a for a in again if a['id'] == aid)
+    assert marked['feedback'] == 'accurate'
+
+    summary = client.get('/api/feedback/summary?user_id=1').get_json()
+    assert summary['success'] is True
+    assert summary['counts'].get('accurate', 0) >= 1
+
+
+def test_feedback_bad_label(client):
+    r = client.post('/api/feedback', json={'user_id': 1, 'label': 'definitely_not_valid'})
+    assert r.status_code == 400
+
+
+def test_feedback_summary_validation(client):
+    r = client.get('/api/feedback/summary')
+    assert r.status_code == 400
+
+
+# ─── Auth gate (enforce mode) ──────────────────────────────────────
+
+def test_auth_enforced_blocks_untokened_request(client, monkeypatch):
+    """With AUTH_ENFORCE on, a protected endpoint must 401 without a bearer token."""
+    import app as appmod
+    monkeypatch.setattr(appmod, 'AUTH_ENFORCE', True)
+    r = client.get('/api/alerts?user_id=1')
+    assert r.status_code == 401
