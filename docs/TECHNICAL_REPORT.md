@@ -210,6 +210,8 @@ Tested via pytest test suite — see [`backend/tests/test_api.py`](../backend/te
 - No raw audio leaves the device after STT — only the transcript is uploaded.
 - Chat capture uses Android's official `AccessibilityService` API with explicit user consent.
 - `NotificationListenerService` requires per-app opt-in via system settings.
+- **Transport:** the apps ship a `network-security-config` that forbids cleartext (HTTPS-only); plain HTTP is permitted only to loopback/dev hosts, and only in debug builds. The distributed (release) APK never sends family data in the clear.
+- **Auth tokens** are stored in Android `EncryptedSharedPreferences` (AES-256), not plaintext XML. PINs are never persisted raw — only a keyed hash (PIN pepper).
 - SQLite WAL mode provides crash safety; future work: SQLCipher for at-rest encryption.
 
 ---
@@ -260,8 +262,22 @@ capstone_main/
 
 ---
 
-## 12. Future Work
+## 12. Known Limitations
 
+We state these explicitly; each has a concrete mitigation already in place or a clear path.
+
+- **Models are trained on synthetic data.** The behavioural and voice models are trained on generated data, so their held-out accuracy (≈92% behaviour) is *internal validity*, not proven real-world accuracy. **Mitigation shipped:** a parent feedback loop (`/api/feedback`) now records real "accurate / false alarm" labels per alert — the genuine labels a future retrain or threshold-tune should learn from. Real-world *agreement rate* is reported separately from the synthetic test metrics in the model card.
+- **The chat toxicity model over-flags gaming language.** Trained on general-toxicity data, it scores normal competitive chat ("nice kill", "I'm addicted to this game") as borderline. **Mitigated at three layers:** the keyword booster no longer treats game-mechanic words as toxic; the parent-alert threshold is held high (0.75) to favour precision; and the UI labels anything below that bar "borderline", not "toxic". The root fix needs real gaming-chat data (which the feedback loop is designed to seed).
+- **Uploads are best-effort; there is no offline retry queue.** If the device is offline when a sample is captured, that individual sample is dropped — which *lowers prediction confidence rather than corrupting results* (dashboards exclude incomplete sessions, and the modality-presence logic tolerates missing chat/voice/screen data). **Mitigation shipped:** the backend auto-closes any session left open longer than 6 hours (so a lost end-event can't leave a child shown as "perpetually playing"). A full offline outbox with idempotent retry is future work — deliberately deferred because a half-built queue risks worse failures (duplicate/out-of-order events) than a clean drop.
+- **Psychometric features are derived proxies, not measured survey scores.** The 10 psychological features (craving, tolerance, etc.) are deterministic functions of observed play behaviour, computed identically in training and serving (single source of truth), not clinical instruments. They are screening signals, not a diagnosis.
+- **Voice is the weakest modality.** Emotion is inferred from acoustic features (arousal) fused with transcript valence; it has no clinical ground truth and the smallest training set, which is why it carries the lowest ensemble weight.
+
+---
+
+## 13. Future Work
+
+- Offline outbox with idempotent server-side de-duplication (the principled version of the best-effort upload limitation above)
+- Retrain chat + behaviour on real labels harvested from the parent feedback loop
 - Federated learning to retrain models on-device without ever uploading raw features
 - Replace rule-based Mira with on-device LLM (Phi-3 Mini, Gemma 2B)
 - SQLCipher encryption at rest
@@ -270,7 +286,7 @@ capstone_main/
 
 ---
 
-## 13. Repository Stats
+## 14. Repository Stats
 
 | | |
 | --- | --- |

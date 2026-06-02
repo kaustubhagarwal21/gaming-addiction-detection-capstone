@@ -1970,6 +1970,48 @@ def delete_user_data():
 
 # ─────────────── SESSION MANAGEMENT ─────────────────────────────
 
+# A session whose end-event never reaches the server (e.g. the device was offline when
+# the child stopped playing) would otherwise stay open forever — showing "currently
+# playing" and never counting toward stats. Auto-close any session left open longer than
+# this, ending it at its last recorded activity so the duration stays realistic. This is
+# the server-side safety net for best-effort uploads (there is no offline retry queue).
+STALE_SESSION_HOURS = 6
+
+
+def _close_stale_sessions(c, user_id):
+    """Self-heal sessions orphaned by a lost end-event. Caller commits. Best-effort:
+    never raises into the request."""
+    try:
+        cutoff = (datetime.now() - timedelta(hours=STALE_SESSION_HOURS)).isoformat()
+        c.execute("SELECT session_id, start_time FROM sessions "
+                  "WHERE user_id=? AND end_time IS NULL AND start_time < ?",
+                  (user_id, cutoff))
+        rows = c.fetchall()
+        for r in rows:
+            sid = r['session_id']
+            # End at the last activity we actually recorded for this session.
+            c.execute("SELECT MAX(t) AS t FROM ("
+                      "  SELECT MAX(timestamp) AS t FROM chat_messages   WHERE session_id=? "
+                      "  UNION ALL SELECT MAX(timestamp) FROM voice_events    WHERE session_id=? "
+                      "  UNION ALL SELECT MAX(timestamp) FROM behavioral_data WHERE session_id=? "
+                      "  UNION ALL SELECT MAX(timestamp) FROM predictions     WHERE session_id=? "
+                      ") q", (sid, sid, sid, sid))
+            last   = c.fetchone()
+            end_ts = last['t'] if (last and last['t']) else r['start_time']
+            try:
+                sdt = datetime.fromisoformat(str(r['start_time']).replace(' ', 'T'))
+                edt = datetime.fromisoformat(str(end_ts).replace(' ', 'T').split('+')[0].split('Z')[0])
+                dur = max(0, int((edt - sdt).total_seconds()))
+            except Exception:
+                end_ts, dur = r['start_time'], 0
+            dur = min(dur, STALE_SESSION_HOURS * 3600)   # cap against bad timestamps
+            c.execute("UPDATE sessions SET end_time=?, duration_seconds=? WHERE session_id=?",
+                      (end_ts, dur, sid))
+            logger.info("Auto-closed stale session %s (offline end-event presumed lost)", sid)
+    except Exception as e:
+        logger.warning("Stale-session sweep failed for user %s: %s", user_id, e)
+
+
 @app.route('/api/session/start', methods=['POST'])
 @limiter.limit("5 per minute")
 def start_session():
@@ -1988,6 +2030,8 @@ def start_session():
     if deny: return deny
     now       = datetime.now().isoformat()
     conn = get_db()
+    # Self-heal any session orphaned by a lost end-event before opening a new one.
+    _close_stale_sessions(conn.cursor(), user_id)
     sid  = insert_returning_id(
         conn,
         'INSERT INTO sessions (user_id, game_name, start_time) VALUES (?,?,?)',
@@ -2824,6 +2868,11 @@ def child_status():
     if deny: return deny
     conn    = get_db()
     c       = conn.cursor()
+
+    # Self-heal any session orphaned by a lost end-event, so the parent view doesn't
+    # show the child "playing" indefinitely.
+    _close_stale_sessions(c, user_id)
+    conn.commit()
 
     # Check if currently in an active (not-ended) session
     c.execute('''SELECT session_id, game_name, start_time
