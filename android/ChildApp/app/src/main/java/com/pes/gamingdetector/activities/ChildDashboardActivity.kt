@@ -6,8 +6,11 @@ import android.view.View
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
 import androidx.lifecycle.lifecycleScope
+import com.github.mikephil.charting.components.LimitLine
+import com.github.mikephil.charting.components.XAxis
 import com.github.mikephil.charting.data.*
 import com.github.mikephil.charting.formatter.IndexAxisValueFormatter
+import com.github.mikephil.charting.formatter.ValueFormatter
 import com.pes.gamingdetector.R
 import com.pes.gamingdetector.api.ApiClient
 import com.pes.gamingdetector.api.TrendPoint
@@ -134,19 +137,47 @@ class ChildDashboardActivity : AppCompatActivity() {
         }
         val labels = trendData.takeLast(14).map { it.date.takeLast(5) }
 
-        val dataSet = LineDataSet(entries, "Risk Score").apply {
+        val dataSet = LineDataSet(entries, "Daily risk %").apply {
             color = getColor(R.color.colorPrimary)
             setCircleColor(getColor(R.color.colorPrimary))
             lineWidth = 2f
             circleRadius = 4f
             setDrawValues(false)
             mode = LineDataSet.Mode.CUBIC_BEZIER
+            setDrawFilled(true)
+            fillColor = getColor(R.color.colorPrimary)
+            fillAlpha = 28
         }
 
         binding.lineChart.apply {
             data = LineData(dataSet)
-            xAxis.valueFormatter = IndexAxisValueFormatter(labels)
-            xAxis.granularity = 1f
+            xAxis.apply {
+                valueFormatter = IndexAxisValueFormatter(labels)
+                granularity = 1f
+                position = XAxis.XAxisPosition.BOTTOM
+                setDrawGridLines(false)
+                textColor = getColor(R.color.text_secondary)
+            }
+            // Fixed 0–100% scale with the actual risk-band cutoffs drawn in, so the line
+            // is read against "some concern" (33%) and "high concern" (67%).
+            axisLeft.apply {
+                axisMinimum = 0f
+                axisMaximum = 100f
+                granularity = 25f
+                textColor = getColor(R.color.text_secondary)
+                valueFormatter = object : ValueFormatter() {
+                    override fun getFormattedValue(value: Float) = "${value.toInt()}%"
+                }
+                removeAllLimitLines()
+                addLimitLine(LimitLine(33f, "Some concern").apply {
+                    lineColor = getColor(R.color.risk_medium); lineWidth = 1.2f
+                    textColor = getColor(R.color.risk_medium); textSize = 9f
+                })
+                addLimitLine(LimitLine(67f, "High concern").apply {
+                    lineColor = getColor(R.color.risk_high); lineWidth = 1.2f
+                    textColor = getColor(R.color.risk_high); textSize = 9f
+                })
+            }
             axisRight.isEnabled = false
             legend.isEnabled = false
             description.isEnabled = false

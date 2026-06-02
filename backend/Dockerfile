@@ -14,9 +14,10 @@ RUN pip install --user --no-cache-dir -r requirements.txt
 
 FROM python:3.11-slim AS runtime
 
-# librosa/soundfile need libsndfile + ffmpeg at runtime; libgomp for sklearn/numba
+# librosa/soundfile need libsndfile + ffmpeg at runtime; libgomp for sklearn/numba;
+# tzdata so the TZ env var resolves (server runs in the family's local timezone).
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    libsndfile1 ffmpeg libgomp1 curl \
+    libsndfile1 ffmpeg libgomp1 curl tzdata \
     && rm -rf /var/lib/apt/lists/* \
     && useradd --create-home --shell /bin/bash app
 
@@ -28,6 +29,7 @@ ENV PATH=/home/app/.local/bin:$PATH \
     PYTHONDONTWRITEBYTECODE=1 \
     NUMBA_CACHE_DIR=/tmp \
     MPLCONFIGDIR=/tmp \
+    TZ=Asia/Kolkata \
     PORT=5000
 
 WORKDIR /app

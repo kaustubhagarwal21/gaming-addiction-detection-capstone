@@ -54,12 +54,15 @@ deleted right after feature extraction.
 
 ## Your rights — view and delete
 
-A parent (or the child on their own account) can, from the app's Settings:
-- **Delete collected data** — erases all sessions, chats, voice features,
+The **parent** controls the child's data — from the Parent app's Settings they can:
+- **Delete the child's data** — erases all sessions, chats, voice features,
   predictions, alerts and events for that child, keeping the account.
-- **Delete the account** — the above, plus the account record itself.
+- **Remove the child from the family** — the above, plus the child's account record
+  itself (their login then stops working).
 
-Both call `POST /api/user/delete_data` and take effect immediately and permanently.
+The child cannot delete their own monitored data (it's a parental wellbeing tool, so
+deletion is parent-controlled). Both actions call `POST /api/user/delete_data` and
+take effect immediately and permanently.
 
 ## Consent
 

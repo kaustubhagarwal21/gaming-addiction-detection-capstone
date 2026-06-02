@@ -24,6 +24,9 @@ services:
     healthCheckPath: /api/health
     autoDeploy: true
     envVars:
+      - key: TZ
+        value: "Asia/Kolkata"    # server runs in the family's timezone (IST) so
+                                 # timestamps, late-night detection + "today" are correct
       - key: AUTH_ENFORCE
         value: "1"               # production requires valid tokens
       - key: AUTH_SECRET

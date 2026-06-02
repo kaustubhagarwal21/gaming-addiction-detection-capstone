@@ -19,7 +19,7 @@ While you play a game, the app collects:
 
 It does NOT read messages outside games, your browsing, photos, contacts, or location.
 
-Only your linked parent can see this data. You can delete all of it any time from Settings.
+Only your linked parent can see this data, and they manage it (including deleting it) from the Parent app.
 
 This is a wellbeing screening aid, not a diagnosis.
 """
@@ -49,7 +49,8 @@ signed token on every request and only lets a parent see their own children's da
 PINs are stored hashed, never as plaintext; production traffic uses HTTPS.
 
 YOUR RIGHTS
-From Settings you can Delete My Data (erase everything collected) at any time.
+Your parent can delete this data, or remove your account entirely, at any time from
+the Parent app.
 
 LIMITATIONS (stated honestly)
 The models are demo-grade and the risk score is a screening signal, not a medical
