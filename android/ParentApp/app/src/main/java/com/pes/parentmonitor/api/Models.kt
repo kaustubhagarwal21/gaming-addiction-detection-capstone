@@ -141,6 +141,7 @@ data class ModelCard(
     @SerializedName("per_class_f1") val perClassF1: Map<String, Double>?,
     @SerializedName("cv_mean_accuracy") val cvMeanAccuracy: Double?,
     @SerializedName("cv_std_accuracy") val cvStdAccuracy: Double?,
+    val calibration: Calibration?,
     @SerializedName("confusion_matrix") val confusionMatrix: List<List<Int>>?,
     @SerializedName("confusion_labels") val confusionLabels: List<String>?,
     @SerializedName("train_samples") val trainSamples: Int?,
@@ -152,6 +153,13 @@ data class ModelCard(
     @SerializedName("data_note") val dataNote: String?,
     @SerializedName("evaluation_note") val evaluationNote: String?,
     val disclaimer: String?
+)
+
+data class Calibration(
+    val method: String?,
+    @SerializedName("brier_uncalibrated") val brierUncalibrated: Double?,
+    @SerializedName("brier_calibrated") val brierCalibrated: Double?,
+    @SerializedName("eval_samples") val evalSamples: Int?
 )
 
 data class AlertsResponse(

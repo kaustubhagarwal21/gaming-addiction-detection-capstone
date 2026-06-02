@@ -110,6 +110,11 @@ class SettingsActivity : AppCompatActivity() {
             val v = ((w["voice"] ?: 0.0) * 100).toInt()
             sb.append("\nCombined score: behaviour $b% · chat $c% · voice $v%\n")
         }
+        mc.calibration?.let { cal ->
+            sb.append("\nProbabilities are ${cal.method ?: "isotonic"}-calibrated " +
+                "(Brier ${"%.3f".format(cal.brierUncalibrated ?: 0.0)} → " +
+                "${"%.3f".format(cal.brierCalibrated ?: 0.0)}, lower = better).\n")
+        }
         mc.thresholdsNote?.let { sb.append("\n$it\n") }
         mc.dataNote?.let { sb.append("\n$it") }
         mc.disclaimer?.let { sb.append("\n\n$it") }

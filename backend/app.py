@@ -349,7 +349,8 @@ def insert_returning_id(conn, sql, params, pk='id'):
 
 # ─────────────────────────── ML MODELS ───────────────────────────
 
-behavior_model   = None
+behavior_model      = None   # RandomForest — used for predictions, SHAP, importances
+behavior_calibrated = None   # optional isotonic calibrator over the RF — served probability only
 chat_model       = None
 voice_model      = None
 tfidf_vectorizer = None
@@ -415,13 +416,14 @@ def risk_category(score: float) -> str:
 
 
 def load_models():
-    global behavior_model, chat_model, voice_model, tfidf_vectorizer, feature_scaler
+    global behavior_model, behavior_calibrated, chat_model, voice_model, tfidf_vectorizer, feature_scaler
     mapping = {
-        'behavior_model':   'behavior_model.pkl',
-        'chat_model':       'chat_model.pkl',
-        'voice_model':      'voice_model.pkl',
-        'tfidf_vectorizer': 'tfidf_vectorizer.pkl',
-        'feature_scaler':   'feature_scaler.pkl',
+        'behavior_model':      'behavior_model.pkl',
+        'behavior_calibrated': 'behavior_calibrated.pkl',  # optional; falls back to RF if absent
+        'chat_model':          'chat_model.pkl',
+        'voice_model':         'voice_model.pkl',
+        'tfidf_vectorizer':    'tfidf_vectorizer.pkl',
+        'feature_scaler':      'feature_scaler.pkl',
     }
     for var_name, filename in mapping.items():
         path = os.path.join(MODEL_DIR, filename)
@@ -1283,7 +1285,10 @@ def run_prediction(session_id: int) -> dict:
                 X_arr = feature_scaler.transform(X_df)
             else:
                 X_arr = X_df.values
-            probs     = behavior_model.predict_proba(X_arr)[0]
+            # Use the isotonic-calibrated probabilities for the served score when
+            # available; the raw RF is the fallback (and still drives SHAP below).
+            proba_model = behavior_calibrated if behavior_calibrated is not None else behavior_model
+            probs     = proba_model.predict_proba(X_arr)[0]
             b_score   = float(probs[1] * 0.5 + probs[2] * 1.0) if len(probs) > 2 else float(probs[-1])
             b_conf    = float(max(probs))
             top_factors = _shap_explain_behavior(feat_dict)
@@ -1679,6 +1684,7 @@ def model_card():
         'per_class_f1':        m.get('per_class_f1'),
         'cv_mean_accuracy':    m.get('cv_mean_accuracy'),
         'cv_std_accuracy':     m.get('cv_std_accuracy'),
+        'calibration':         m.get('calibration'),
         'confusion_matrix':    m.get('confusion_matrix'),
         'confusion_labels':    m.get('confusion_labels'),
         'train_samples':       m.get('train_samples'),
