@@ -664,6 +664,23 @@ def init_db():
             detected_at   TEXT DEFAULT CURRENT_TIMESTAMP,
             resolved      INTEGER DEFAULT 0
         );
+
+        -- Parent verdict on the model's output ("was this right?"). The only source of
+        -- REAL labels in the system — every other label is synthetic — so this is what a
+        -- future retrain/threshold-tune should learn from. We snapshot the model's
+        -- category + score at feedback time so each label stays meaningful even as the
+        -- model changes later.
+        CREATE TABLE IF NOT EXISTS feedback (
+            id            INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id       INTEGER NOT NULL,       -- the child the feedback is about
+            alert_id      INTEGER DEFAULT NULL,   -- alert this responds to (optional)
+            prediction_id INTEGER DEFAULT NULL,   -- prediction snapshot (optional)
+            label         TEXT    NOT NULL,       -- accurate | false_alarm | too_sensitive | too_late
+            risk_category TEXT    DEFAULT NULL,   -- model category at feedback time
+            risk_score    REAL    DEFAULT NULL,   -- model fused score at feedback time
+            note          TEXT    DEFAULT NULL,   -- optional free text
+            created_at    TEXT    DEFAULT CURRENT_TIMESTAMP
+        );
     '''
     if USE_POSTGRES:
         # Postgres dialect: SERIAL auto-increment, and a text-typed default for the
@@ -718,6 +735,7 @@ def init_db():
         CREATE INDEX IF NOT EXISTS idx_notif_user           ON notification_events(user_id);
         CREATE INDEX IF NOT EXISTS idx_reflections_user     ON reflections(user_id);
         CREATE INDEX IF NOT EXISTS idx_counselor_user       ON counselor_messages(user_id);
+        CREATE INDEX IF NOT EXISTS idx_feedback_user        ON feedback(user_id);
     ''')
 
     # Seed default user if none exists
@@ -2669,13 +2687,16 @@ def get_alerts():
     if deny: return deny
     conn    = get_db()
     c       = conn.cursor()
-    c.execute('SELECT * FROM alerts WHERE user_id=? ORDER BY created_at DESC LIMIT 50', (user_id,))
+    c.execute('''SELECT a.*, f.label AS feedback_label
+                 FROM alerts a
+                 LEFT JOIN feedback f ON f.alert_id = a.id
+                 WHERE a.user_id=? ORDER BY a.created_at DESC LIMIT 50''', (user_id,))
     rows    = [dict(r) for r in c.fetchall()]
     conn.close()
     unread  = sum(1 for r in rows if not r['read'])
     alerts  = [{'id': r['id'], 'type': r['type'], 'message': r['message'],
                 'severity': r['severity'], 'created_at': r['created_at'],
-                'read': bool(r['read'])} for r in rows]
+                'read': bool(r['read']), 'feedback': r.get('feedback_label')} for r in rows]
     return jsonify({'success': True, 'alerts': alerts, 'unread_count': unread})
 
 
@@ -2701,6 +2722,93 @@ def mark_alerts_read():
     conn.commit()
     conn.close()
     return jsonify({'success': True, 'message': f'Marked {len(alert_ids)} alerts read'})
+
+
+# Parent verdicts the model can learn from. accurate/false_alarm are the calibration
+# signal; too_sensitive/too_late capture timing complaints.
+FEEDBACK_LABELS = {'accurate', 'false_alarm', 'too_sensitive', 'too_late'}
+
+
+@app.route('/api/feedback', methods=['POST'])
+def submit_feedback():
+    """A parent's verdict on the model's output ('was this right?'). The only source of
+    REAL labels in the system — everything else is synthetic — so this is what a future
+    retrain or threshold-tune should learn from. We snapshot the child's latest model
+    category + score so each label stays interpretable even after the model changes."""
+    data     = request.get_json() or {}
+    label    = (data.get('label') or '').strip().lower()
+    alert_id = data.get('alert_id')
+    note     = ((data.get('note') or '').strip()[:500]) or None
+    if label not in FEEDBACK_LABELS:
+        return jsonify({'success': False,
+                        'message': f'label must be one of {sorted(FEEDBACK_LABELS)}'}), 400
+
+    conn = get_db()
+    c    = conn.cursor()
+
+    # Which child is this about? Prefer an explicit user_id; otherwise derive from the alert.
+    user_id = data.get('user_id')
+    if user_id is None and alert_id is not None:
+        c.execute('SELECT user_id FROM alerts WHERE id=?', (alert_id,))
+        arow = c.fetchone()
+        if arow:
+            user_id = arow['user_id']
+    if user_id is None:
+        conn.close()
+        return jsonify({'success': False, 'message': 'user_id or a valid alert_id is required'}), 400
+    user_id = int(user_id)
+
+    deny = guard(user_id)
+    if deny:
+        conn.close()
+        return deny
+
+    # Snapshot the model's most recent verdict for this child (retraining context).
+    c.execute('''SELECT p.id, p.risk_category, p.final_risk_score
+                 FROM predictions p JOIN sessions s ON p.session_id = s.session_id
+                 WHERE s.user_id=? ORDER BY p.id DESC LIMIT 1''', (user_id,))
+    prow     = c.fetchone()
+    pred_id  = prow['id'] if prow else None
+    pred_cat = prow['risk_category'] if prow else None
+    pred_sc  = float(prow['final_risk_score']) if prow and prow['final_risk_score'] is not None else None
+
+    # One verdict per alert: a re-submission replaces the earlier one.
+    if alert_id is not None:
+        c.execute('DELETE FROM feedback WHERE alert_id=?', (alert_id,))
+
+    c.execute('''INSERT INTO feedback (user_id, alert_id, prediction_id, label,
+                                       risk_category, risk_score, note)
+                 VALUES (?,?,?,?,?,?,?)''',
+              (user_id, alert_id, pred_id, label, pred_cat, pred_sc, note))
+    conn.commit()
+    conn.close()
+    return jsonify({'success': True, 'message': 'Feedback recorded', 'label': label})
+
+
+@app.route('/api/feedback/summary', methods=['GET'])
+def feedback_summary():
+    """Aggregate of parent verdicts for a child — the model-credibility / drift view.
+    agreement_rate = accurate / (accurate + false_alarm): a real-world precision proxy
+    built from genuine labels, unlike the synthetic test-set metrics in the model card."""
+    user_id = request.args.get('user_id', type=int)
+    if user_id is None:
+        return jsonify({'success': False, 'message': 'user_id is required'}), 400
+    deny = guard(user_id)
+    if deny: return deny
+    conn = get_db()
+    c    = conn.cursor()
+    c.execute('SELECT label, COUNT(*) AS n FROM feedback WHERE user_id=? GROUP BY label', (user_id,))
+    counts = {r['label']: int(r['n']) for r in c.fetchall()}
+    c.execute('''SELECT label, risk_category, risk_score, note, created_at
+                 FROM feedback WHERE user_id=? ORDER BY id DESC LIMIT 10''', (user_id,))
+    recent = [dict(r) for r in c.fetchall()]
+    conn.close()
+    total = sum(counts.values())
+    acc   = counts.get('accurate', 0)
+    fa    = counts.get('false_alarm', 0)
+    agreement = round(acc / (acc + fa), 3) if (acc + fa) else None
+    return jsonify({'success': True, 'user_id': user_id, 'total': total,
+                    'counts': counts, 'agreement_rate': agreement, 'recent': recent})
 
 
 @app.route('/api/child/status', methods=['GET'])

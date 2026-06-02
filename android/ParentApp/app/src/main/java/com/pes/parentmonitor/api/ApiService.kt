@@ -24,6 +24,9 @@ interface ApiService {
     @POST("api/alerts/mark_read")
     suspend fun markAlertsRead(@Body request: MarkReadRequest): Response<GenericResponse>
 
+    @POST("api/feedback")
+    suspend fun submitFeedback(@Body request: FeedbackRequest): Response<GenericResponse>
+
     @GET("api/child/status")
     suspend fun getChildStatus(@Query("user_id") userId: Int): Response<ChildStatusResponse>
 

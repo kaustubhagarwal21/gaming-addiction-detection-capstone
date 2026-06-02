@@ -108,7 +108,10 @@ data class Alert(
     val message: String,
     val severity: String,
     @SerializedName("created_at") val createdAt: String,
-    val read: Boolean
+    val read: Boolean,
+    // Parent verdict already given on this alert (null = not yet rated). Mutable so the
+    // list can reflect a just-submitted rating without a server round-trip.
+    var feedback: String? = null
 )
 
 data class TrendPoint(
@@ -174,6 +177,13 @@ data class AlertsResponse(
 
 data class MarkReadRequest(
     @SerializedName("alert_ids") val alertIds: List<Int>
+)
+
+data class FeedbackRequest(
+    @SerializedName("user_id") val userId: Int,
+    @SerializedName("alert_id") val alertId: Int?,
+    val label: String,
+    val note: String? = null
 )
 
 data class GenericResponse(
