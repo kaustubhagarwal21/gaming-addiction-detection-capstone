@@ -18,10 +18,22 @@ SLANG_MAP = {
     'tr4sh': 'trash', 'trsh': 'trash',
 }
 
-TOXIC_HIGH = {'kill', 'die', 'death', 'murder', 'destroy', 'hate', 'fuck', 'shit', 'bitch', 'retard',
-              'suicide', 'kys', 'toxic', 'rage', 'addicted'}
-TOXIC_MEDIUM = {'stupid', 'idiot', 'loser', 'trash', 'garbage', 'suck', 'worst', 'angry', 'furious',
-                'pathetic', 'useless', 'dumb', 'noob', 'cry', 'scream', 'punch', 'smash', 'break'}
+# Words that signal genuine hostility regardless of gaming context: profanity, a slur,
+# self-harm. Game-mechanic verbs (kill/die/death/murder/destroy) and neutral emotion/
+# action words (rage/angry/furious/cry/scream/punch/smash/break/hate/toxic/addicted) were
+# DELIBERATELY REMOVED: in gaming chat "nice kill", "I died", "rage quit", "smash that
+# combo" and "I'm addicted to this game" are normal, and auto-flagging them was a major
+# false-positive source. The trained chat model is the primary signal; this keyword
+# booster is kept precise on purpose (see CHAT_ALERT_T in app.py).
+TOXIC_HIGH = {'fuck', 'shit', 'bitch', 'retard', 'suicide'}
+TOXIC_MEDIUM = {'stupid', 'idiot', 'loser', 'trash', 'garbage', 'suck', 'worst',
+                'pathetic', 'useless'}
+
+# Genuinely hostile/self-harm PHRASES. keyword_toxicity() runs AFTER slang expansion,
+# so 'kys' -> "kill yourself", 'kms' -> "kill myself", 'stfu' -> "shut the fuck up".
+# Matching the phrase (not the bare word "kill") keeps real abuse/self-harm toxic while
+# letting the game-mechanic "kill"/"die" through.
+TOXIC_PHRASES = ('kill yourself', 'kill myself', 'shut the fuck up', 'get the fuck out')
 
 STOP_WORDS = {
     'i', 'me', 'my', 'we', 'our', 'you', 'your', 'he', 'him', 'his', 'she', 'her', 'it', 'its',
@@ -49,7 +61,9 @@ def clean_text(text):
 
 
 def keyword_toxicity(text):
-    words = set(normalize_slang(text).split())
+    norm   = normalize_slang(text)            # 'kys' -> 'kill yourself'
+    words  = set(norm.split())
     high   = len(words & TOXIC_HIGH)
     medium = len(words & TOXIC_MEDIUM)
-    return min(high * 0.2 + medium * 0.1, 0.9)
+    phrase = sum(1 for p in TOXIC_PHRASES if p in norm)
+    return min(high * 0.2 + medium * 0.1 + phrase * 0.3, 0.9)
