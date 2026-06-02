@@ -18,9 +18,12 @@ warnings.filterwarnings('ignore')
 MODELS_DIR = os.path.join(os.path.dirname(__file__), '..', 'backend', 'models')
 DATA_DIR   = os.path.join(os.path.dirname(__file__), '..', 'data')
 
-# Share the EXACT preprocessing the backend serves with (no train/serve skew).
+# Share the EXACT preprocessing + feature derivation the backend serves with (no
+# train/serve skew). derive_psychometrics is the single source of truth for the 10
+# psychometric features, used identically here and in app.compute_behavioral_features.
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'backend'))
 from text_utils import clean_text
+from behavior_features import derive_psychometrics as _derive_psych
 
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -46,26 +49,21 @@ def generate_behavior_dataset(n=25000, seed=42):
     def clip(arr, lo, hi):
         return np.clip(arr, lo, hi)
 
+    _PSY_ORDER = ['urge_to_continue_score', 'loss_of_time_awareness_score', 'control_loss_score',
+                  'craving_score', 'tolerance_score', 'missed_sleep_days_per_week',
+                  'fatigue_after_play_score', 'routine_disruption_score',
+                  'neglect_responsibilities_score', 'gaming_priority_score']
+
     def derive_psychometrics(obj):
-        """Derive the 10 psychometric scores from the 10 objective features using the
-        SAME formulas the live backend's compute_behavioral_features() uses at serving
-        (with notification/screen terms at their 'no extra signal' defaults). This
-        removes the train/serve skew that came from generating them independently."""
-        daily, weekly, spd, dur, lnr, dpw, streak, binge, brk, rlr = (obj[:, i] for i in range(10))
-        m = obj.shape[0]
-        nz = lambda s: rng.normal(0.0, s, m)        # small spread so it's not a pure function
-        urge      = clip(rlr * 3 + spd * 1.0 + nz(0.6),            0, 10)
-        loss_time = clip(dur / 18.0 + nz(0.6),                     0, 10)
-        control   = clip(binge * 1.5 + dpw * 0.7 + nz(0.6),        0, 10)
-        craving   = clip(rlr * 3 + lnr * 3 + nz(0.6),              0, 10)
-        tolerance = clip(dur / 25.0 + binge * 0.4 + nz(0.6),       0, 10)
-        missed    = clip(lnr * 7 + nz(0.5),                        0, 7)
-        fatigue   = clip((dur / 60.0) * 1.5 + lnr * 3 + nz(0.6),   0, 10)
-        routine   = clip(binge * 0.8 + daily / 4.0 + nz(0.6),      0, 10)
-        neglect   = clip(daily * 0.5 + binge * 0.5 + nz(0.6),      0, 10)
-        gaming_pr = clip(daily / 16.0 * 10 + nz(0.6),              0, 10)
-        return np.column_stack([urge, loss_time, control, craving, tolerance,
-                                missed, fatigue, routine, neglect, gaming_pr])
+        """Apply the SHARED derive_psychometrics() — the exact mapping the live backend
+        uses at serving (single source of truth, zero train/serve skew) — then add small
+        Gaussian noise so the model can't trivially invert the deterministic relationship."""
+        rows = np.array([[_derive_psych(*[float(r[i]) for i in range(10)])[k] for k in _PSY_ORDER]
+                          for r in obj])
+        rows = rows + rng.normal(0.0, 0.6, rows.shape)
+        rows = clip(rows, 0, 10)
+        rows[:, 5] = clip(rows[:, 5], 0, 7)   # missed_sleep_days_per_week is 0–7
+        return rows
 
     def make_class(size, label):
         # Wider distributions + realistic class overlap → target ~87% accuracy
@@ -245,17 +243,16 @@ def train_chat_model():
     print("TRAINING CHAT MODEL")
     print("=" * 60)
 
+    # NOTE: We evaluated ChatGPT's cleaned/curated chat data (ml/improve_datasets.py):
+    # it removed duplicate/conflicting labels + added gaming hard-negatives, but realistic
+    # toxic precision stayed ~0.20 (flat) — the issue is the general-hate-speech vs
+    # gaming-chat domain mismatch + 30:1 imbalance, not label noise. So we did NOT adopt
+    # it; the real chat lever is real gaming-chat data / threshold tuning, not cleanup.
     df = pd.read_csv(os.path.join(DATA_DIR, 'chat_dataset.csv'))
     df = df[['text', 'toxicity_score']].dropna()
-    # Apply the SAME clean_text the backend uses at serving (fixes train/serve skew:
-    # the model was previously fit on raw text but served on clean_text()).
+    # Apply the SAME clean_text the backend uses at serving (no train/serve skew).
     df['text'] = df['text'].astype(str).map(clean_text)
     df = df[df['text'].str.len() > 2]
-
-    # Binary label: toxic only if CLEARLY toxic (>=0.5). The source data is general
-    # hate-speech, not gaming chat, and labelling every mildly-flagged line (>0) as
-    # toxic taught the model to over-fire on benign gaming terms ("shot", "clutch").
-    # A sharper boundary trades a little recall for far fewer false positives.
     df['toxic'] = (df['toxicity_score'] >= 0.5).astype(int)
     print(f"Dataset: {df.shape}")
     print(f"Toxic: {df['toxic'].sum():,} ({df['toxic'].mean()*100:.1f}%)  Non-toxic: {(df['toxic']==0).sum():,}")

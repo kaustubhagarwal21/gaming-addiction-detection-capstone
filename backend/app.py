@@ -739,6 +739,7 @@ init_db()
 # share ONE definition (no train/serve skew). See backend/text_utils.py.
 from text_utils import (SLANG_MAP, TOXIC_HIGH, TOXIC_MEDIUM, STOP_WORDS,
                         normalize_slang, clean_text, keyword_toxicity)
+from behavior_features import derive_psychometrics
 
 # ─────────────── GENRE RISK WEIGHTS ─────────────────────────────
 # Battle Royale / FPS have higher addiction correlation (variable reward schedules,
@@ -1156,96 +1157,26 @@ def compute_behavioral_features(session_id: int) -> dict:
         min(sum(1 for b in breaks if b < 15) / max(len(breaks), 1), 1.0), 4
     ) if breaks else 0.0
 
-    # --- Real signals from screen events (zero-permission data) ---------------
-    c.execute('''SELECT COUNT(*) AS n FROM screen_events
-                 WHERE user_id=? AND event_type='screen_on' AND timestamp>=?
-                 AND (CAST(SUBSTR(timestamp,12,2) AS INTEGER) >= 22
-                      OR CAST(SUBSTR(timestamp,12,2) AS INTEGER) < 6)''',
-              (user_id, since_30d))
-    late_screen_wakes = c.fetchone()['n']
-
-    # How many distinct days had late-night screen wakes (missed sleep signal)
-    c.execute('''SELECT COUNT(DISTINCT SUBSTR(timestamp,1,10)) AS n FROM screen_events
-                 WHERE user_id=? AND event_type='screen_on' AND timestamp>=?
-                 AND (CAST(SUBSTR(timestamp,12,2) AS INTEGER) >= 22
-                      OR CAST(SUBSTR(timestamp,12,2) AS INTEGER) < 6)''',
-              (user_id, since_30d))
-    missed_sleep_real = min(7, c.fetchone()['n'])
-
-    # --- Real craving signals from game notification events -------------------
-    c.execute('''SELECT COUNT(*) AS n FROM notification_events
-                 WHERE user_id=? AND timestamp>=?''',
-              (user_id, since_30d))
-    total_notif = c.fetchone()['n']
-    notif_per_day = total_notif / 30.0
-
-    # Notification → session response time (craving: did child open game right after notif?)
-    c.execute('''SELECT ne.timestamp AS nt, MIN(s.start_time) AS st
-                 FROM notification_events ne
-                 JOIN sessions s ON s.user_id=ne.user_id
-                 WHERE ne.user_id=? AND ne.timestamp>=?
-                   AND s.start_time > ne.timestamp
-                 GROUP BY ne.id''',
-              (user_id, (datetime.now() - timedelta(days=7)).isoformat()))
-    notif_response_rows = c.fetchall()
-    quick_responses = sum(
-        1 for r in notif_response_rows
-        if (datetime.fromisoformat(r['st']) - datetime.fromisoformat(r['nt'])).total_seconds() < 900
-    )
-    notif_response_ratio = round(min(quick_responses / max(len(notif_response_rows), 1), 1.0), 4) \
-        if notif_response_rows else 0.0
-
-    # --- Psychological proxies — now enriched with real sensor data -----------
-    urge_score   = round(min(10.0,
-        rapid_relogin_ratio * 3 + sessions_per_day * 1.0 + notif_response_ratio * 4), 2)
-    loss_time    = round(min(10.0, avg_session_duration_min / 18.0), 2)
-    control_loss = round(min(10.0, binge_sessions_per_week * 1.5 + days_played_per_week * 0.7), 2)
-    craving      = round(min(10.0,
-        rapid_relogin_ratio * 3 + late_night_play_ratio * 3 + notif_per_day * 0.5 + notif_response_ratio * 3), 2)
-
-    recent_durs = [s['duration_seconds'] or 0 for s in past[:5]]
-    older_durs  = [s['duration_seconds'] or 0 for s in past[5:15]]
-    if older_durs and float(np.mean(older_durs)) > 0:
-        tolerance = round(min(10.0, max(0.0,
-            (float(np.mean(recent_durs)) / float(np.mean(older_durs)) - 1.0) * 5 + 5.0)), 2)
-    else:
-        tolerance = round(min(10.0, avg_session_duration_min / 30.0), 2)
-
-    # Use real screen-wake data when available, fall back to session-based estimate
-    missed_sleep = missed_sleep_real if missed_sleep_real > 0 else min(7, late_cnt)
-    fatigue      = round(min(10.0, cur_hrs * 1.5 + late_night_play_ratio * 3
-                             + (late_screen_wakes / 10.0)), 2)
-
-    school_cnt   = sum(1 for s in all_starts
-                       if 8 <= datetime.fromisoformat(s['start_time']).hour <= 17)
-    routine_dis  = round(min(10.0, school_cnt * 0.7 + binge_sessions_per_week * 0.8), 2)
-    neglect      = round(min(10.0, school_cnt * 1.0 + daily_play_time * 0.5), 2)
-    gaming_prio  = round(min(10.0, daily_play_time / 16.0 * 10.0), 2)
-
     conn.close()
 
-    return {
-        'daily_play_time_hours':           daily_play_time,
-        'weekly_play_time_hours':          weekly_play_time,
-        'sessions_per_day':                sessions_per_day,
-        'avg_session_duration_min':        avg_session_duration_min,
-        'late_night_play_ratio':           late_night_play_ratio,
-        'days_played_per_week':            days_played_per_week,
-        'longest_play_streak_days':        longest_play_streak_days,
-        'binge_sessions_per_week':         binge_sessions_per_week,
-        'avg_break_between_sessions_min':  avg_break,
-        'rapid_relogin_ratio':             rapid_relogin_ratio,
-        'urge_to_continue_score':          urge_score,
-        'loss_of_time_awareness_score':    loss_time,
-        'control_loss_score':              control_loss,
-        'craving_score':                   craving,
-        'tolerance_score':                 tolerance,
-        'missed_sleep_days_per_week':      missed_sleep,
-        'fatigue_after_play_score':        fatigue,
-        'routine_disruption_score':        routine_dis,
-        'neglect_responsibilities_score':  neglect,
-        'gaming_priority_score':           gaming_prio,
+    # The 10 psychometric proxies are derived from the 10 objective features by the
+    # SHARED derive_psychometrics() — the identical mapping the model is trained on
+    # (ml/retrain_models.py), so there is NO train/serve skew. (Notification/screen-wake
+    # data is still collected and used elsewhere — sleep-impact + late-night views — it
+    # just no longer feeds the model's psychometric inputs in a way training never saw.)
+    objective = {
+        'daily_play_time_hours':          daily_play_time,
+        'weekly_play_time_hours':         weekly_play_time,
+        'sessions_per_day':               sessions_per_day,
+        'avg_session_duration_min':       avg_session_duration_min,
+        'late_night_play_ratio':          late_night_play_ratio,
+        'days_played_per_week':           days_played_per_week,
+        'longest_play_streak_days':       longest_play_streak_days,
+        'binge_sessions_per_week':        binge_sessions_per_week,
+        'avg_break_between_sessions_min': avg_break,
+        'rapid_relogin_ratio':            rapid_relogin_ratio,
     }
+    return {**objective, **derive_psychometrics(**objective)}
 
 
 def run_prediction(session_id: int) -> dict:

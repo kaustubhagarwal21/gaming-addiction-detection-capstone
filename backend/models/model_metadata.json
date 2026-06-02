@@ -1,51 +1,59 @@
 {
-  "trained_at": "2026-05-30T18:16:18.672851",
-  "test_accuracy": 0.9223,
-  "macro_f1": 0.9243,
+  "trained_at": "2026-06-02T17:18:35.229855",
+  "test_accuracy": 0.9243,
+  "macro_f1": 0.9261,
   "per_class_f1": {
-    "casual": 0.9362,
-    "at_risk": 0.9049,
-    "addicted": 0.9316
+    "casual": 0.9401,
+    "at_risk": 0.9077,
+    "addicted": 0.9303
   },
   "per_class_recall": {
-    "casual": 0.937,
-    "at_risk": 0.8941,
-    "addicted": 0.9492
+    "casual": 0.9375,
+    "at_risk": 0.8995,
+    "addicted": 0.9478
   },
-  "cv_mean_accuracy": 0.9231,
-  "cv_std_accuracy": 0.0026,
+  "cv_mean_accuracy": 0.923,
+  "cv_std_accuracy": 0.0033,
   "cv_fold_scores": [
-    0.9228,
-    0.9204,
-    0.9274,
-    0.9204,
-    0.9243
+    0.9209,
+    0.9187,
+    0.9272,
+    0.9217,
+    0.9267
   ],
   "n_estimators": 200,
   "max_depth": 6,
   "train_samples": 23000,
   "feature_count": 20,
   "class_balance": "balanced (35/40/25) + class_weight; psychometrics derived from behaviour (train/serve aligned)",
+  "calibration": {
+    "method": "isotonic",
+    "fit": "held-out split the RF never trained on (FrozenEstimator, prefit)",
+    "brier_uncalibrated": 0.1254,
+    "brier_calibrated": 0.1213,
+    "eval_samples": 2875,
+    "note": "Calibrates the served probability only; the RF used for SHAP/feature-importances is unchanged."
+  },
   "per_class_precision": {
-    "casual": 0.9355,
-    "at_risk": 0.916,
-    "addicted": 0.9148
+    "casual": 0.9428,
+    "at_risk": 0.9161,
+    "addicted": 0.9134
   },
   "confusion_matrix": [
     [
-      1813,
-      122,
+      1814,
+      121,
       0
     ],
     [
-      125,
-      2127,
-      127
+      110,
+      2140,
+      129
     ],
     [
       0,
-      73,
-      1363
+      75,
+      1361
     ]
   ],
   "confusion_labels": [
@@ -54,14 +62,6 @@
     "addicted"
   ],
   "test_samples": 5750,
-  "data_note": "Trained and evaluated on synthetic/illustrative data with realistic class overlap; this is a screening signal, not a validated clinical instrument.",
-  "evaluation_note": "Metrics are on a held-out 20% split (seed=42) the model never saw during training.",
-  "calibration": {
-    "method": "isotonic",
-    "fit": "held-out split the RF never trained on (FrozenEstimator, prefit)",
-    "brier_uncalibrated": 0.1253,
-    "brier_calibrated": 0.122,
-    "eval_samples": 2875,
-    "note": "Calibrates the served probability only; the RF used for SHAP/feature-importances is unchanged."
-  }
+  "data_note": "Trained and evaluated on synthetic/illustrative data with realistic class overlap; a screening signal, not a validated clinical instrument.",
+  "evaluation_note": "Held-out 20% split (seed=42) the model never trained on. Psychometric features use the shared derive_psychometrics() \u2014 identical in training and serving."
 }
