@@ -158,8 +158,12 @@ class ChildDashboardActivity : AppCompatActivity() {
                 granularity = 1f
                 position = XAxis.XAxisPosition.BOTTOM
                 setDrawGridLines(false)
-                textColor = getColor(R.color.text_secondary)
+                textColor = getColor(R.color.text_primary)   // dark = clearly visible
+                textSize = 10f
+                labelRotationAngle = -45f
+                setAvoidFirstLastClipping(true)
             }
+            extraBottomOffset = 18f   // room for the rotated date labels (was clipped)
             // Fixed 0–100% scale with the actual risk-band cutoffs drawn in, so the line
             // is read against "some concern" (33%) and "high concern" (67%).
             axisLeft.apply {

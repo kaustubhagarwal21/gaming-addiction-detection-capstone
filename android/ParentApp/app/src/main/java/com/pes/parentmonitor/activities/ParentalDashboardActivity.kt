@@ -371,11 +371,14 @@ class ParentalDashboardActivity : AppCompatActivity() {
             xAxis.apply {
                 valueFormatter     = IndexAxisValueFormatter(labels)
                 granularity        = 1f
-                labelRotationAngle = -30f
+                labelRotationAngle = -45f
                 position           = XAxis.XAxisPosition.BOTTOM
                 setDrawGridLines(false)
-                textColor          = getColor(R.color.text_secondary)
+                textColor          = getColor(R.color.text_primary)   // dark = clearly visible
+                textSize           = 10f
+                setAvoidFirstLastClipping(true)
             }
+            extraBottomOffset = 18f   // room for the rotated date labels (was clipped)
             // Y axis: 0–100% with the risk-band cutoffs drawn in, so the line is read
             // against "some concern" (33%) and "high concern" (67%).
             axisLeft.apply {
