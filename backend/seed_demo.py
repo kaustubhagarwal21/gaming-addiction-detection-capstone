@@ -36,6 +36,7 @@ SESSION_PLAN = [
     (4,  220, 'COD Mobile',  'addicted', 0.78, 1,  ['kys loser', 'wtf man', 'stupid game'],                     'angry'),
     (2,  270, 'BGMI',        'addicted', 0.81, 0,  ['rage quit', 'hate this game'],                             'angry'),
     (1,  300, 'COD Mobile',  'addicted', 0.85, 23, ['trash team', 'loser', 'idiot', 'die'],                     'angry'),
+    (0,  95,  'BGMI',        'at_risk',  0.55, 15, ['gg', 'one more game', 'so close'],                         'frustrated'),  # earlier today
 ]
 
 PRIYA_PLAN = [
@@ -50,6 +51,7 @@ PRIYA_PLAN = [
     (4,  180, 'Roblox',       'at_risk', 0.56, 22, ['need to win', 'cant stop', 'one more'],     'angry'),
     (2,  200, 'Roblox',       'at_risk', 0.60, 23, ['so addicted', 'just one more', 'tired'],    'angry'),
     (1,  210, 'Roblox',       'at_risk', 0.63, 0,  ['cant sleep', 'need to play', 'one more'],   'angry'),
+    (0,  50,  'Roblox',       'casual',  0.20, 16, ['lets build', 'this is fun'],                'excited'),  # earlier today
 ]
 
 PSY_LEVEL = {'casual': 2.5, 'at_risk': 5.5, 'addicted': 8.5}
@@ -72,9 +74,15 @@ def seed_child(c, conn, user_id, name, plan):
     now = datetime.now()
     inserted = 0
     for days_ago, dur_min, game, risk_cat, risk_score, hour_start, chats, emotion in plan:
-        start_dt = (now - timedelta(days=days_ago)).replace(
-            hour=hour_start, minute=random.randint(0, 29), second=0, microsecond=0)
-        end_dt = start_dt + timedelta(minutes=dur_min)
+        if days_ago == 0:
+            # A session from earlier TODAY, anchored as a just-finished session so it
+            # always lands in the current day — drives the child's "Today" card.
+            end_dt   = now
+            start_dt = now - timedelta(minutes=dur_min)
+        else:
+            start_dt = (now - timedelta(days=days_ago)).replace(
+                hour=hour_start, minute=random.randint(0, 29), second=0, microsecond=0)
+            end_dt = start_dt + timedelta(minutes=dur_min)
         psy = PSY_LEVEL[risk_cat]
         lnr = 0.65 if (hour_start >= 22 or hour_start < 6) else 0.08
 
