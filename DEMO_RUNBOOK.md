@@ -24,12 +24,20 @@ Nothing to start. The backend runs 24/7 at **https://gaming-addiction-api.onrend
   .\demo_setup.ps1 -Seed        # adb tunnel + reseed + start backend (leave window open)
   ```
 
-## 1. Demo PINs (same for cloud or local)
-| Who | PIN |
-|-----|-----|
-| Child — Arjun (the addiction story) | **1234** |
-| Child — Priya (milder Roblox story) | **5678** |
-| Parent (sees both children) | **0000** |
+## 1. Demo logins (same for cloud or local)
+
+The demo family is set up exactly like a **real registered family** — so this is the
+actual product flow, not a shortcut.
+
+| Who | App | How to sign in |
+|-----|-----|----------------|
+| Child — Arjun (the addiction story) | Child app | PIN **1234** |
+| Child — Priya (milder Roblox story) | Child app | PIN **5678** |
+| Parent (sees both children) | Parent app | Family code **FAM789** + Parent PIN **0000** |
+
+> A real family creates this themselves in the Child app (**Create an account** → it
+> shows the family code), then signs into the Parent app with that code + PIN. The demo
+> family just comes pre-seeded with code **FAM789**.
 
 ## 2. Health check + (re)seed
 - **Health** — Cloud: open `https://gaming-addiction-api.onrender.com/api/health` →
@@ -49,7 +57,7 @@ Nothing to start. The backend runs 24/7 at **https://gaming-addiction-api.onrend
 ## 3. Demo flow (suggested narrative)
 
 ### A. Parent side — the "wow" (start here)
-1. Open **ParentApp** → log in with **0000** → pick **Arjun**.
+1. Open **ParentApp** → sign in with family code **FAM789** + PIN **0000** → pick **Arjun**.
 2. **Dashboard**: addicted, 85% risk, ~17h/week, 14-day rising trend chart, contributing factors.
 3. **Alerts**: high-risk alerts firing.
 4. **Emotion Insights**: real emotion breakdown (angry/frustrated/excited) from voice.

@@ -245,27 +245,34 @@ def seed():
     conn = get_db()
     c    = conn.cursor()
 
-    # Schema (incl. pin_hash/parent_pin_hash) is guaranteed by app.init_db() at import.
+    # Schema (incl. pin_hash/parent_pin_hash/family_code) is guaranteed by app.init_db().
+    # The demo family is set up exactly like a real registered family: each child has
+    # their own login PIN, and a shared FAMILY CODE + parent PIN. The parent signs into
+    # the Parent app with the family code + PIN — the real onboarding flow, not the
+    # legacy PIN-only shortcut.
     arjun_pin,  parent_pin = hash_pin('1234'), hash_pin('0000')
     priya_pin              = hash_pin('5678')
+    family_code            = 'FAM789'
 
     # Child 1: Arjun (user_id=1). PINs stored hashed; plaintext nulled.
     c.execute("SELECT user_id FROM users WHERE user_id=1")
     if not c.fetchone():
-        c.execute("INSERT INTO users (user_id, name, pin, parent_pin, pin_hash, parent_pin_hash, age) VALUES (1,'Arjun','','',?,?,14)",
-                  (arjun_pin, parent_pin))
+        c.execute("INSERT INTO users (user_id, name, pin, parent_pin, pin_hash, parent_pin_hash, family_code, age) "
+                  "VALUES (1,'Arjun','','',?,?,?,14)",
+                  (arjun_pin, parent_pin, family_code))
     else:
-        c.execute("UPDATE users SET name='Arjun', pin_hash=?, parent_pin_hash=?, pin='', parent_pin='', age=14 WHERE user_id=1",
-                  (arjun_pin, parent_pin))
+        c.execute("UPDATE users SET name='Arjun', pin_hash=?, parent_pin_hash=?, family_code=?, pin='', parent_pin='', age=14 WHERE user_id=1",
+                  (arjun_pin, parent_pin, family_code))
 
-    # Child 2: Priya (user_id=3) — same parent_pin (hash) links her to the same parent
+    # Child 2: Priya (user_id=3) — same family code + parent_pin links her to the parent
     c.execute("SELECT user_id FROM users WHERE user_id=3")
     if not c.fetchone():
-        c.execute("INSERT INTO users (user_id, name, pin, parent_pin, pin_hash, parent_pin_hash, age) VALUES (3,'Priya','','',?,?,12)",
-                  (priya_pin, parent_pin))
+        c.execute("INSERT INTO users (user_id, name, pin, parent_pin, pin_hash, parent_pin_hash, family_code, age) "
+                  "VALUES (3,'Priya','','',?,?,?,12)",
+                  (priya_pin, parent_pin, family_code))
     else:
-        c.execute("UPDATE users SET name='Priya', pin_hash=?, parent_pin_hash=?, pin='', parent_pin='', age=12 WHERE user_id=3",
-                  (priya_pin, parent_pin))
+        c.execute("UPDATE users SET name='Priya', pin_hash=?, parent_pin_hash=?, family_code=?, pin='', parent_pin='', age=12 WHERE user_id=3",
+                  (priya_pin, parent_pin, family_code))
     conn.commit()
 
     n1 = seed_child(c, conn, 1, 'Arjun', SESSION_PLAN)
@@ -283,12 +290,13 @@ def seed():
 
     conn.close()
 
-    print(f"Seeded {n1} sessions for Arjun  (user_id=1, PIN: 1234)")
-    print(f"Seeded {n2} sessions for Priya  (user_id=3, PIN: 5678)")
+    print(f"Seeded {n1} sessions for Arjun  (Child app login PIN: 1234)")
+    print(f"Seeded {n2} sessions for Priya  (Child app login PIN: 5678)")
     print()
     print("Enriched data: reflections, counselor messages, screen events, notifications")
     print()
-    print("Parent PIN : 0000  (sees BOTH children)")
+    print("PARENT APP login (the real flow):  Family code = FAM789   Parent PIN = 0000")
+    print("  -> sees BOTH children, exactly like a registered family.")
     print()
     print("Arjun:  Casual -> At-risk -> Addicted (4 high-risk alerts)")
     print("Priya:  Casual -> At-risk            (escalating Roblox pattern)")
