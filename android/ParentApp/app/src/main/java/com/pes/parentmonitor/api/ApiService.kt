@@ -42,6 +42,9 @@ interface ApiService {
     @POST("api/parent/set_limit")
     suspend fun setTimeLimit(@Body body: @JvmSuppressWildcards Map<String, Any>): Response<GenericResponse>
 
+    @POST("api/parent/nudge")
+    suspend fun sendNudge(@Body body: @JvmSuppressWildcards Map<String, Any>): Response<GenericResponse>
+
     @POST("api/user/delete_data")
     suspend fun deleteData(@Body body: Map<String, String>): Response<GenericResponse>
 

@@ -10,6 +10,7 @@ import android.content.IntentFilter
 import android.net.Uri
 import android.os.IBinder
 import androidx.core.app.NotificationCompat
+import androidx.core.app.NotificationManagerCompat
 import androidx.core.content.ContextCompat
 import com.pes.gamingdetector.R
 import com.pes.gamingdetector.activities.HomeActivity
@@ -55,6 +56,7 @@ class PassiveMonitorService : Service() {
     private val NEUTRAL_GRACE_MS = 120_000L  // 2 min when the game delegated to an ancillary flow
     private val POLL_MS     = 5_000L    // 5s when it matters: near-instant detection
     private val IDLE_POLL_MS = 30_000L  // device locked + no session → nothing to detect, save battery
+    private val NUDGE_POLL_MS = 20_000L // how often to check for parent->child nudges
 
     private var screenReceiver: BroadcastReceiver? = null
 
@@ -91,6 +93,7 @@ class PassiveMonitorService : Service() {
         startForeground(NOTIF_ID, buildNotification())
         registerScreenReceiver()
         scope.launch { usageStatsLoop() }
+        scope.launch { nudgeLoop() }
         return START_STICKY
     }
 
@@ -101,6 +104,41 @@ class PassiveMonitorService : Service() {
     }
 
     override fun onBind(intent: Intent?): IBinder? = null
+
+    // ── Parent -> child nudges ────────────────────────────────────
+    // Polls the backend for messages the parent (or the system, on toxic chat) sent,
+    // and pops each up as a notification on the child's phone. Runs always-on so a
+    // nudge reaches the child even between gaming sessions.
+    private suspend fun nudgeLoop() {
+        while (currentCoroutineContext().isActive) {
+            try {
+                val uid = prefs.userId
+                if (uid != -1) {
+                    val resp = ApiClient.getInstance(prefs.serverUrl).getNudges(uid)
+                    if (resp.isSuccessful && resp.body()?.success == true) {
+                        resp.body()?.nudges?.forEach { showNudge(it.message, it.kind) }
+                    }
+                }
+            } catch (_: Exception) { /* network blip — try again next tick */ }
+            delay(NUDGE_POLL_MS)
+        }
+    }
+
+    private fun showNudge(message: String, kind: String?) {
+        try {
+            val title = if (kind == "language") "A friendly reminder" else "Message from your parent"
+            val notif = NotificationCompat.Builder(this, Constants.CHANNEL_ALERTS)
+                .setSmallIcon(R.drawable.ic_launcher)
+                .setContentTitle(title)
+                .setContentText(message)
+                .setStyle(NotificationCompat.BigTextStyle().bigText(message))
+                .setPriority(NotificationCompat.PRIORITY_HIGH)
+                .setAutoCancel(true)
+                .build()
+            NotificationManagerCompat.from(this)
+                .notify(System.currentTimeMillis().toInt() and 0xFFFF, notif)
+        } catch (_: SecurityException) { /* notifications not permitted — skip */ }
+    }
 
     // ── Notification ──────────────────────────────────────────────
 

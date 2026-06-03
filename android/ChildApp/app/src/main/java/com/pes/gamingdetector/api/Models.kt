@@ -38,6 +38,17 @@ data class SessionResponse(
     val message: String?
 )
 
+data class NudgesResponse(
+    val success: Boolean,
+    val nudges: List<Nudge>?
+)
+
+data class Nudge(
+    val id: Int,
+    val message: String,
+    val kind: String?
+)
+
 data class EndSessionResponse(
     val success: Boolean,
     val prediction: Prediction?,

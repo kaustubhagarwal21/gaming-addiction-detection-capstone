@@ -695,6 +695,18 @@ def init_db():
             note          TEXT    DEFAULT NULL,   -- optional free text
             created_at    TEXT    DEFAULT CURRENT_TIMESTAMP
         );
+
+        -- Parent -> child nudges: a one-off message the parent (or the system, on toxic
+        -- chat) pushes to the child's phone, shown as a notification. The child app polls
+        -- for undelivered ones. kind = parent | language | break.
+        CREATE TABLE IF NOT EXISTS child_nudges (
+            id          INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id     INTEGER NOT NULL,
+            message     TEXT    NOT NULL,
+            kind        TEXT    DEFAULT 'parent',
+            delivered   INTEGER DEFAULT 0,
+            created_at  TEXT    DEFAULT CURRENT_TIMESTAMP
+        );
     '''
     if USE_POSTGRES:
         # Postgres dialect: SERIAL auto-increment, and a text-typed default for the
@@ -750,6 +762,7 @@ def init_db():
         CREATE INDEX IF NOT EXISTS idx_reflections_user     ON reflections(user_id);
         CREATE INDEX IF NOT EXISTS idx_counselor_user       ON counselor_messages(user_id);
         CREATE INDEX IF NOT EXISTS idx_feedback_user        ON feedback(user_id);
+        CREATE INDEX IF NOT EXISTS idx_nudges_user          ON child_nudges(user_id);
     ''')
 
     # Seed default user if none exists
@@ -2289,6 +2302,13 @@ def save_chat(sid):
                       (srow['user_id'], 'toxicity',
                        f'Toxic language detected during gaming: "{snippet}"',
                        'high' if tox_score >= CHAT_ALERT_HIGH_T else 'medium'))
+            # Gentle self-correction nudge to the CHILD too — but at most one pending at a
+            # time so a toxic streak doesn't spam them.
+            c.execute("SELECT 1 FROM child_nudges WHERE user_id=? AND kind='language' AND delivered=0 LIMIT 1",
+                      (srow['user_id'],))
+            if not c.fetchone():
+                c.execute("INSERT INTO child_nudges (user_id, message, kind) VALUES (?,?,?)",
+                          (srow['user_id'], "Let's keep it friendly — mind the language 🙂", 'language'))
 
     conn.commit()
     conn.close()
@@ -3158,6 +3178,49 @@ def set_time_limit():
     conn.commit()
     conn.close()
     return jsonify({'success': True, 'daily_limit_hours': hours})
+
+
+@app.route('/api/parent/nudge', methods=['POST'])
+def send_nudge():
+    """Parent sends a one-off nudge that pops up as a notification on the child's phone
+    (e.g. 'time for a break', 'please watch your language', or a custom message)."""
+    data    = request.get_json() or {}
+    user_id = data.get('user_id')
+    deny = guard(user_id)
+    if deny: return deny
+    message = (str(data.get('message') or '').strip())[:200]
+    if not user_id or not message:
+        return jsonify({'success': False, 'message': 'user_id and message required'}), 400
+    conn = get_db()
+    c    = conn.cursor()
+    c.execute("INSERT INTO child_nudges (user_id, message, kind) VALUES (?,?,?)",
+              (int(user_id), message, 'parent'))
+    conn.commit()
+    conn.close()
+    return jsonify({'success': True, 'message': 'Nudge sent'})
+
+
+@app.route('/api/child/nudges', methods=['GET'])
+def get_nudges():
+    """Child app polls for undelivered nudges; returns them and marks them delivered so
+    each pops up exactly once."""
+    user_id = request.args.get('user_id', type=int)
+    if user_id is None:
+        return jsonify({'success': False, 'message': 'user_id is required'}), 400
+    deny = guard(user_id)
+    if deny: return deny
+    conn = get_db()
+    c    = conn.cursor()
+    c.execute("SELECT id, message, kind, created_at FROM child_nudges "
+              "WHERE user_id=? AND delivered=0 ORDER BY id ASC LIMIT 10", (user_id,))
+    rows = [dict(r) for r in c.fetchall()]
+    if rows:
+        ids = [r['id'] for r in rows]
+        ph  = ','.join(['?'] * len(ids))
+        c.execute(f"UPDATE child_nudges SET delivered=1 WHERE id IN ({ph})", ids)
+        conn.commit()
+    conn.close()
+    return jsonify({'success': True, 'nudges': rows})
 
 
 @app.route('/api/child/get_limit', methods=['GET'])

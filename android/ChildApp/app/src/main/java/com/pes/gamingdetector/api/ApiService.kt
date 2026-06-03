@@ -47,6 +47,9 @@ interface ApiService {
     @GET("api/dashboard/child_enriched")
     suspend fun getChildEnriched(@Query("user_id") userId: Int): Response<ChildEnrichedResponse>
 
+    @GET("api/child/nudges")
+    suspend fun getNudges(@Query("user_id") userId: Int): Response<NudgesResponse>
+
     @POST("api/child/screen_event")
     suspend fun postScreenEvent(@Body body: Map<String, String>): Response<GenericResponse>
 

@@ -69,6 +69,7 @@ class ParentalDashboardActivity : AppCompatActivity() {
         binding.btnRecommendations.setOnClickListener {
             startActivity(Intent(this, RecommendationsActivity::class.java))
         }
+        binding.btnNudge.setOnClickListener { showNudgeDialog() }
         binding.btnEmotions.setOnClickListener {
             startActivity(Intent(this, EmotionInsightsActivity::class.java))
         }
@@ -113,6 +114,57 @@ class ParentalDashboardActivity : AppCompatActivity() {
             putExtra("server_url", prefs.serverUrl)
         }
         startService(intent)
+    }
+
+    // ── Send a nudge to the child (pops up as a notification on their phone) ──
+    private fun showNudgeDialog() {
+        val presets = arrayOf(
+            "Time to take a break 🙂",
+            "Please wrap up this game",
+            "Mind your language, please",
+            "Dinner's ready — pause the game",
+            "Write your own…"
+        )
+        AlertDialog.Builder(this)
+            .setTitle("Send a nudge to your child")
+            .setItems(presets) { _, which ->
+                if (which == presets.lastIndex) showCustomNudgeInput()
+                else sendNudge(presets[which])
+            }
+            .setNegativeButton("Cancel", null)
+            .show()
+    }
+
+    private fun showCustomNudgeInput() {
+        val input = EditText(this).apply { hint = "Your message" }
+        AlertDialog.Builder(this)
+            .setTitle("Custom nudge")
+            .setView(input)
+            .setPositiveButton("Send") { _, _ ->
+                val msg = input.text.toString().trim()
+                if (msg.isNotEmpty()) sendNudge(msg)
+            }
+            .setNegativeButton("Cancel", null)
+            .show()
+    }
+
+    private fun sendNudge(message: String) {
+        val childId = prefs.childUserId
+        if (childId == -1) {
+            Toast.makeText(this, "No child selected", Toast.LENGTH_SHORT).show(); return
+        }
+        lifecycleScope.launch {
+            try {
+                val api  = ApiClient.getInstance(prefs.serverUrl)
+                val resp = api.sendNudge(mapOf("user_id" to childId, "message" to message))
+                val ok   = resp.isSuccessful && resp.body()?.success == true
+                Toast.makeText(this@ParentalDashboardActivity,
+                    if (ok) "Nudge sent to your child 👍" else "Couldn't send nudge",
+                    Toast.LENGTH_SHORT).show()
+            } catch (e: Exception) {
+                Toast.makeText(this@ParentalDashboardActivity, "Network error", Toast.LENGTH_SHORT).show()
+            }
+        }
     }
 
     private fun loadDashboard(silent: Boolean = false) {
