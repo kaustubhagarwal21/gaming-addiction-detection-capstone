@@ -1,11 +1,14 @@
 package com.pes.parentmonitor.service
 
+import android.Manifest
 import android.app.PendingIntent
 import android.app.Service
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.os.IBinder
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
+import androidx.core.content.ContextCompat
 import com.pes.parentmonitor.R
 import com.pes.parentmonitor.activities.AlertsActivity
 import com.pes.parentmonitor.api.ApiClient
@@ -110,7 +113,10 @@ class AlertPollingService : Service() {
                 else NotificationCompat.PRIORITY_DEFAULT)
             .build()
 
-        NotificationManagerCompat.from(this).notify(Constants.NOTIF_ALERT, notif)
+        if (ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS)
+                == PackageManager.PERMISSION_GRANTED) {
+            NotificationManagerCompat.from(this).notify(Constants.NOTIF_ALERT, notif)
+        }
     }
 
     private fun sendRiskChangeNotification(risk: String, game: String?) {
@@ -123,7 +129,13 @@ class AlertPollingService : Service() {
             .setPriority(NotificationCompat.PRIORITY_HIGH)
             .build()
 
-        NotificationManagerCompat.from(this).notify(Constants.NOTIF_ALERT + 1, notif)
+        // Android 13+ requires POST_NOTIFICATIONS at runtime; without it notify() is a
+        // no-op (and lint-flagged). Guard inline so a denied permission never surfaces as
+        // an error. (On API < 33 checkSelfPermission returns granted automatically.)
+        if (ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS)
+                == PackageManager.PERMISSION_GRANTED) {
+            NotificationManagerCompat.from(this).notify(Constants.NOTIF_ALERT + 1, notif)
+        }
     }
 
     override fun onDestroy() {
