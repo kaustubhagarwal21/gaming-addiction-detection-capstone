@@ -1218,8 +1218,13 @@ def compute_behavioral_features(session_id: int) -> dict:
     return {**objective, **derive_psychometrics(**objective)}
 
 
-def run_prediction(session_id: int) -> dict:
-    """Run 3-model ensemble prediction and persist result."""
+def run_prediction(session_id: int, explain: bool = True) -> dict:
+    """Run 3-model ensemble prediction and persist result.
+
+    explain=False skips the SHAP attribution (the heaviest, most memory-hungry step)
+    for frequent live/intermediate predictions; the parent-facing "why this risk"
+    factors are still computed on the session-end prediction. This keeps peak memory
+    well under the free tier's 512 MB during an active session's burst of requests."""
     conn = get_db()
     c    = conn.cursor()
 
@@ -1265,7 +1270,7 @@ def run_prediction(session_id: int) -> dict:
             probs     = proba_model.predict_proba(X_arr)[0]
             b_score   = float(probs[1] * 0.5 + probs[2] * 1.0) if len(probs) > 2 else float(probs[-1])
             b_conf    = float(max(probs))
-            top_factors = _shap_explain_behavior(feat_dict)
+            top_factors = _shap_explain_behavior(feat_dict) if explain else []
             b_present = True
         except Exception as e:
             logger.error(f"Behaviour prediction error: {e}")
@@ -2355,7 +2360,7 @@ def predict_now(sid):
     deny = guard_session(sid)
     if deny: return deny
     _save_behavioral_snapshot(sid)
-    result = run_prediction(sid)
+    result = run_prediction(sid, explain=False)   # skip SHAP on frequent live predicts (memory)
     return jsonify({
         'success':    True,
         'risk_label': result['risk_category'],

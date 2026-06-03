@@ -52,4 +52,4 @@ HEALTHCHECK --interval=30s --timeout=5s --start-period=40s --retries=3 \
 # --workers only if you move to a plan with more RAM (e.g. WEB_CONCURRENCY).
 # --max-requests recycles the worker periodically to reclaim any memory creep.
 # sh -c so ${PORT} (set by the platform) is expanded at runtime.
-CMD ["sh", "-c", "gunicorn --bind 0.0.0.0:${PORT} --workers ${WEB_CONCURRENCY:-1} --threads 4 --timeout 120 --preload --max-requests 400 --max-requests-jitter 50 --access-logfile - --error-logfile - app:app"]
+CMD ["sh", "-c", "gunicorn --bind 0.0.0.0:${PORT} --workers ${WEB_CONCURRENCY:-1} --threads 2 --timeout 120 --preload --max-requests 50 --max-requests-jitter 10 --access-logfile - --error-logfile - app:app"]
