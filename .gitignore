@@ -64,3 +64,10 @@ data/improved/
 android/capstone-release.jks
 android/*/capstone-release.jks
 android/*/keystore.properties
+
+# LaTeX build artifacts
+*.aux
+*.log
+*.out
+*.toc
+docs/PROJECT_PAPER.pdf

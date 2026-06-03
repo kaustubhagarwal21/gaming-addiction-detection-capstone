@@ -1,0 +1,475 @@
+% =====================================================================
+%  AI-Driven Gaming Addiction Screening System
+%  PES University Capstone -- PW26_SJ_05  (UE23CS320B, Phase-2)
+%
+%  This paper describes the system AS ACTUALLY BUILT (native Android apps +
+%  cloud Flask backend + calibrated classical-ML ensemble). Metrics reported
+%  here are the honest, current numbers from model_metadata.json.
+%
+%  Compile:  pdflatex PROJECT_PAPER.tex   (twice, for the ToC/refs)
+% =====================================================================
+\documentclass[11pt,a4paper]{article}
+
+\usepackage[T1]{fontenc}
+\usepackage[utf8]{inputenc}
+\usepackage[margin=1in]{geometry}
+\usepackage{booktabs}
+\usepackage{tabularx}
+\usepackage{amsmath}
+\usepackage{enumitem}
+\usepackage{xcolor}
+\usepackage{listings}
+\usepackage{caption}
+\usepackage[hidelinks]{hyperref}
+
+\setlength{\parskip}{0.45em}
+\setlength{\parindent}{0pt}
+
+\lstset{
+  basicstyle=\ttfamily\small,
+  breaklines=true,
+  frame=single,
+  columns=fullflexible,
+  keepspaces=true,
+  showstringspaces=false,
+  xleftmargin=0.5em,
+}
+
+% Make underscores printable in text (so feature_names render cleanly)
+\catcode`\_=12
+
+\title{\textbf{AI-Driven Gaming Addiction Screening System}\\
+\large A Multimodal, Privacy-Conscious Mobile Platform for Early
+Detection and Parental Awareness}
+
+\author{
+Khushee P Kiran (PES1UG23CS303) \and
+Kanak Goyal (PES1UG23CS279) \and
+Vidisha Murali (PES1UG23CS681) \and
+Kaustubh Agarwal (PES1UG23CS291) \\[0.5em]
+\textit{Under the guidance of Prof. Suresh Jamadagni} \\
+\textit{Department of Computer Science and Engineering, PES University} \\
+\textit{Capstone Project PW26\_SJ\_05 (UE23CS320B), January--May 2026}
+}
+\date{}
+
+\begin{document}
+\maketitle
+
+% ---------------------------------------------------------------------
+\begin{abstract}
+\noindent
+Excessive mobile gaming is increasingly linked to disrupted sleep, mood and
+routine in adolescents, yet most existing tools track only raw screen time and
+miss the behavioural and emotional patterns that distinguish healthy play from
+problematic use. We present a deployed, multimodal screening platform that fuses
+three signals collected during real gameplay --- objective play behaviour, in-game
+chat toxicity, and voice emotion --- into a single calibrated risk band (Casual /
+At-Risk / Addicted). The system comprises two native Android applications (a Child
+monitoring app and a Parent dashboard) talking to a cloud Flask backend that serves
+a weighted ensemble of three classical machine-learning models. We deliberately
+favour calibrated, explainable classical models (Random Forest, Logistic Regression,
+Gradient Boosting) with SHAP attributions over heavyweight deep models, prioritising
+on-device privacy, deployability and honesty of evaluation. The platform is
+production-deployed (HTTPS, token authentication, parental consent, a durable
+managed database), ships a parent-feedback loop that converts real verdicts into
+training labels, and provides a parent-to-child nudge channel so the parent can
+intervene --- not merely observe. We report honest, calibrated metrics --- including a frank account
+of where the chat model over-flags on realistic data --- and frame the output
+explicitly as \emph{screening and awareness, not clinical diagnosis}.
+\end{abstract}
+
+\tableofcontents
+\vspace{1em}
+
+% =====================================================================
+\section{Introduction}
+% =====================================================================
+Mobile gaming is now a daily activity for most adolescents. While gaming is not
+inherently harmful, a minority of users develop patterns that the DSM-5 (Internet
+Gaming Disorder) and ICD-11 (Gaming Disorder) characterise behaviourally: impaired
+control over play, escalating priority of gaming over other activities, and
+continuation despite negative consequences. Conventional parental-control tools
+report \emph{how long} a phone was used but not \emph{how} the child played --- the
+late-night sessions, the rapid re-logins, the rising frustration in chat and voice.
+
+This project builds a system that captures those richer signals during gameplay and
+turns them into an interpretable risk band that a parent can act on with
+\emph{awareness rather than punishment}. Our key design stance is honesty and
+deployability: every claim in this paper reflects the system as actually built and
+running, and the models are chosen to be lightweight, explainable, and calibrated
+rather than to maximise a headline accuracy number.
+
+\subsection*{Contributions}
+\begin{enumerate}[leftmargin=1.4em]
+  \item A deployed three-tier platform: two native Android apps + a cloud Flask
+        backend serving a multimodal ML ensemble.
+  \item A behavioural feature pipeline that computes ten \emph{measured} features
+        from real session history and ten derived psychometric proxies through a
+        \emph{single shared function}, eliminating train/serve skew.
+  \item An availability-weighted ensemble that re-normalises over only the
+        modalities that produced data, with isotonic probability calibration and
+        per-prediction SHAP explanations.
+  \item Production engineering: token authentication, peppered PIN hashing,
+        HTTPS-only transport, encrypted on-device token storage, parental consent,
+        raw-audio deletion, and a durable managed database.
+  \item A parent-feedback loop that records real ``accurate / false-alarm''
+        verdicts --- the only source of genuine labels in an otherwise
+        synthetically-trained system --- enabling future retraining.
+  \item A parent-to-child nudge channel (preset or custom messages, plus an automatic
+        ``mind the language'' nudge on toxic chat) that turns the platform from passive
+        monitoring into two-way guidance.
+  \item An honest evaluation, including the realistic-stream precision of the chat
+        model and the synthetic-data caveat on the voice model.
+\end{enumerate}
+
+% =====================================================================
+\section{System Architecture with Explanation}
+% =====================================================================
+The platform follows a three-tier architecture (Figure-equivalent shown below):
+a \textbf{data-collection tier} (Child app), a \textbf{serving tier} (Flask backend +
+ML ensemble), and a \textbf{presentation tier} (Parent app).
+
+\begin{lstlisting}
+            CHILD APP (Android, Kotlin)                 PARENT APP (Android, Kotlin)
+   +------------------------------------+        +-------------------------------+
+   | UsageStatsManager  -> GameDetector |        | Risk band + SHAP "why"        |
+   | AccessibilityService -> typed chat |        | 14-day trend, alerts feed     |
+   | AudioRecord + Vosk  -> voice + STT  |        | Feedback: Accurate/False alarm|
+   | Behavioural feature engine          |        | Weekly PDF, limits, settings  |
+   +------------------+-----------------+        +---------------+---------------+
+                      |  HTTPS (token auth)              ^/v  HTTPS (poll + nudge)
+                      v                                          |
+        +-------------------------------------------------------------------+
+        |                 CLOUD BACKEND  (Flask, gunicorn)                  |
+        |  Session API | Chat/Voice ingest | Prediction engine | Alerts     |
+        |  Auth (signed tokens) | Consent | Retention purge | PDF report    |
+        +------------------------------+------------------------------------+
+                                       |
+            +--------------------------+--------------------------+
+            v                          v                          v
+     BEHAVIOUR (40%)            CHAT TOXICITY (30%)          VOICE EMOTION (30%)
+   RandomForest (3-class)     LogReg + TF-IDF             GradientBoosting (4-class)
+   + isotonic calibration     + keyword lexicon           + valence-arousal fusion
+   + SHAP explanations
+            \_________________________ weighted ensemble ____________________/
+                                       v
+                     Risk score 0..1  ->  Casual / At-Risk / Addicted
+                                       v
+                          Managed Postgres (Neon) / SQLite
+\end{lstlisting}
+
+\subsection{Data-collection tier (Child app)}
+The Child app runs always-on foreground services that:
+\begin{itemize}[leftmargin=1.4em]
+  \item detect the foreground gaming app via \texttt{UsageStatsManager} and a
+        layered detector (curated allow-list $\rightarrow$ deny-list $\rightarrow$
+        OS \texttt{CATEGORY\_GAME} + launchable check, with parent overrides), so
+        \emph{any} game is monitorable, not a fixed list;
+  \item capture typed in-game chat through an \texttt{AccessibilityService}
+        (keystroke buffer), avoiding fragile screenshot OCR;
+  \item record microphone audio (\texttt{AudioRecord}, 16~kHz mono) and run
+        \textbf{Vosk} on-device speech-to-text, so spoken words are transcribed
+        \emph{without raw audio leaving the device for transcription};
+  \item compute behavioural metrics from real session history.
+\end{itemize}
+
+\subsection{Serving tier (Flask backend + ML ensemble)}
+A Flask application (run under gunicorn) exposes a REST API for session lifecycle,
+chat/voice/behaviour ingestion, prediction, alerts, dashboards and a parent-feedback
+endpoint. It loads three serialised scikit-learn models and fuses them. The backend
+is \textbf{dual-dialect} --- the identical SQL runs on SQLite (local) or PostgreSQL
+(production) --- and is deployed on a managed host with a durable managed Postgres.
+
+\subsection{Presentation tier (Parent app)}
+The Parent app authenticates with a family code + PIN, shows the current risk band
+with its SHAP-derived ``why this level'' factors, a 14-day trend, an alerts feed, a
+weekly PDF report, and the \textbf{feedback controls} that let the parent mark each
+alert as accurate or a false alarm. It also offers a \textbf{``Send a nudge''} control
+--- a preset or custom message that appears as a notification on the child's phone.
+
+\subsection{Privacy and security design (as built)}
+\begin{itemize}[leftmargin=1.4em]
+  \item \textbf{Transport:} the released apps ship a network-security configuration
+        that forbids cleartext (HTTPS only); the backend is TLS-terminated.
+  \item \textbf{Authentication:} signed bearer tokens (HMAC, \texttt{itsdangerous})
+        issued at login; per-user authorisation (a parent can read only their own
+        children).
+  \item \textbf{Credentials:} PINs are stored only as keyed (peppered) hashes; raw
+        PINs are never persisted. Tokens are kept in Android
+        \texttt{EncryptedSharedPreferences}.
+  \item \textbf{Raw data:} microphone audio is deleted immediately after feature
+        extraction (\texttt{KEEP\_AUDIO=0}); a retention job purges old raw events.
+  \item \textbf{Consent:} the Child app gates monitoring behind an explicit consent
+        screen; data deletion is parent-controlled.
+\end{itemize}
+We note honestly that, unlike a fully on-device design, chat text and voice features
+\emph{are} sent to the cloud for inference; the mitigations above (TLS, token auth,
+raw-audio deletion, consent, retention limits) define the actual privacy posture.
+
+% =====================================================================
+\section{Methodology}
+% =====================================================================
+\subsection{Behavioural feature engineering (train/serve aligned)}
+The behaviour model consumes 20 features. \textbf{Ten objective features} are
+\emph{measured} from the user's real session history (not simulated from elapsed
+time): daily\_play\_time\_hours, weekly\_play\_time\_hours, sessions\_per\_day,
+avg\_session\_duration\_min, late\_night\_play\_ratio, days\_played\_per\_week,
+longest\_play\_streak\_days, binge\_sessions\_per\_week,
+avg\_break\_between\_sessions\_min and rapid\_relogin\_ratio.
+
+\textbf{Ten psychometric proxies} (urge, loss-of-time-awareness, control-loss,
+craving, tolerance, missed-sleep, fatigue, routine-disruption,
+neglect-responsibilities, gaming-priority) are derived deterministically from the
+objective ten. Crucially, this derivation lives in a \emph{single shared function}
+imported by both the trainer and the live backend, so the model is trained and
+served on the identical feature definition --- eliminating the train/serve skew that
+would otherwise invalidate the deployed predictions.
+
+\subsection{Datasets and honesty of data}
+The behaviour and voice models are trained on \emph{synthetic / illustrative} data
+with realistic class overlap; the chat model is trained on a public toxicity corpus.
+We are explicit that synthetic training proves \emph{internal validity and pipeline
+correctness}, not real-world accuracy. The parent-feedback loop is the designed path
+to genuine labels.
+
+\subsection{Model development}
+\begin{itemize}[leftmargin=1.4em]
+  \item \textbf{Behaviour:} \texttt{RandomForestClassifier} (3-class), features
+        standard-scaled; an isotonic \texttt{CalibratedClassifierCV} is fitted on a
+        held-out split so served probabilities are meaningful, while the raw forest
+        is retained for SHAP and feature importances.
+  \item \textbf{Chat:} \texttt{TfidfVectorizer} (1--2 grams) +
+        \texttt{LogisticRegression}, combined via \texttt{max()} with a curated
+        keyword-lexicon booster (with gaming hard-negatives removed so normal terms
+        like ``nice kill'' are not flagged).
+  \item \textbf{Voice:} \texttt{GradientBoostingClassifier} over 17 acoustic
+        features (13 MFCCs, pitch mean/std, energy mean/std), fused with text
+        valence and chat toxicity through a valence--arousal rule.
+\end{itemize}
+
+\subsection{Ensemble fusion}
+Let $b,c,v$ be the behaviour, chat and voice risk components and $w_b{=}0.40$,
+$w_c{=}0.30$, $w_v{=}0.30$ their priors. Fusion re-normalises over only the present
+modalities $P\subseteq\{b,c,v\}$:
+\[
+\text{risk} \;=\; g \cdot
+\frac{\sum_{m\in P} w_m\, s_m}{\sum_{m\in P} w_m},
+\]
+where $g$ is a game-genre risk multiplier. Behaviour dominates because gaming
+disorder is defined behaviourally; chat and voice are corroborating distress
+signals. The risk maps to bands \textbf{Casual} ($<0.33$), \textbf{At-Risk}
+($0.33$--$0.67$) and \textbf{Addicted} ($\geq 0.67$). Under an \emph{observation
+mode} (fewer than three sessions), the system refuses to assert the highest band, to
+avoid over-calling on sparse data.
+
+\subsection{Evaluation strategy}
+Each model is evaluated on a held-out split it never trained on. For the chat model
+we additionally report a \emph{realistic, naturally-imbalanced} held-out set, because
+balanced-split accuracy is misleading for a rare-positive problem. Probability
+calibration is measured by the multiclass Brier score.
+
+% =====================================================================
+\section{Implementation (Salient Modules)}
+% =====================================================================
+\subsection{Game detection and session lifecycle}
+\texttt{GameDetector} + \texttt{PassiveMonitorService} identify the foreground game
+and open a session via \texttt{POST /api/session/start}; the session id scopes all
+subsequent uploads. A server-side safety net auto-closes any session left open
+beyond a threshold (e.g.\ from a lost end-event), dating it at the last recorded
+activity, so a dropped network event never leaves a child shown as ``perpetually
+playing''.
+
+\subsection{Chat capture: Accessibility + on-device STT}
+Typed chat is captured by \texttt{ChatAccessibilityService} and posted with
+\texttt{source=keyboard}; spoken words are transcribed by Vosk and posted with
+\texttt{source=voice\_stt}. The prediction engine feeds \emph{typed} chat to the
+toxicity channel and routes spoken words through the voice/valence fusion, so the
+two are not double-counted.
+
+\subsection{Voice recording and emotion}
+\texttt{VoiceRecorderService} records PCM segments, extracts 17 acoustic features,
+and the backend classifies emotion (angry / excited / frustrated / neutral), mapping
+it to a risk weight and fusing it with transcript valence and toxicity. Foreground-
+service start, microphone-permission checks and Android-14 restrictions are handled
+defensively so a denied permission never crashes the app.
+
+\subsection{Prediction, calibration and explainability}
+On session end the backend computes the 20 features, runs the three models, fuses
+them, and stores the prediction with its component scores and a presence flag per
+modality. The served probability comes from the \emph{calibrated} behaviour model; a
+SHAP \texttt{TreeExplainer} produces the top signed factors shown to the parent.
+
+\subsection{Parent feedback loop}
+Each alert in the Parent app carries an ``\emph{Was this assessment accurate?}''
+control. A verdict is stored via \texttt{POST /api/feedback} together with a snapshot
+of the model's category and score at that moment, giving a growing set of real labels
+for future retraining; an aggregate \emph{agreement rate} is exposed as a real-world
+precision proxy.
+
+\subsection{Parent $\rightarrow$ child nudges}
+Beyond monitoring, the parent can \emph{act}. A ``Send a nudge'' control posts a message
+--- preset (e.g.\ \emph{take a break}, \emph{mind your language}) or custom --- via
+\texttt{POST /api/parent/nudge}. The child's always-on service polls
+\texttt{GET /api/child/nudges} and pops each up as a notification exactly once (marked
+delivered server-side). When the chat model detects confidently-toxic language the
+system also queues an automatic, rate-limited self-correction nudge to the child. This
+makes awareness \emph{two-way} --- the parent intervenes gently rather than only
+watching, in keeping with the project's ``guidance, not punishment'' goal.
+
+\subsection{Security and accounts}
+A family registers once and receives a unique family code; each child has a private
+PIN, and the parent signs in with the family code + a shared PIN. All protected
+endpoints enforce token authentication and per-user authorisation.
+
+\subsection{Parental dashboard and wellbeing}
+The Parent app shows risk, SHAP factors, a 14-day trend, alerts, anomaly flags, a
+weekly PDF report, daily-limit controls and notification handling. The Child app
+adds wellbeing features --- a rule-based ``Mira'' check-in companion, daily
+reflections (mood / sleep / energy), streaks, breathing resets and gentle break /
+limit nudges --- supporting awareness rather than hard restriction.
+
+% =====================================================================
+\section{Results}
+% =====================================================================
+We report the honest, current metrics from the deployed models. Headline accuracy is
+deliberately \emph{not} inflated; calibration and realistic-stream behaviour are
+reported alongside.
+
+\subsection{Behaviour model (primary, 3-class)}
+\begin{center}
+\begin{tabular}{lcccc}
+\toprule
+\textbf{Metric} & \textbf{Casual} & \textbf{At-Risk} & \textbf{Addicted} & \textbf{Overall} \\
+\midrule
+Precision & 0.943 & 0.916 & 0.913 & --- \\
+Recall    & 0.938 & 0.900 & 0.948 & --- \\
+F1        & 0.940 & 0.908 & 0.930 & --- \\
+\midrule
+Accuracy  & \multicolumn{4}{c}{\textbf{0.9243}} \\
+Macro-F1  & \multicolumn{4}{c}{0.9261} \\
+\bottomrule
+\end{tabular}
+\end{center}
+Errors only ever fall into an \emph{adjacent} band (never Casual$\leftrightarrow$
+Addicted). Probability calibration improves the multiclass Brier score from
+$0.1254$ (uncalibrated) to $0.1213$ (isotonic), so reported confidences are
+trustworthy. The accuracy is on a synthetic held-out split; the value of the result
+is the calibrated, train/serve-aligned pipeline, not the absolute number.
+
+\subsection{Chat toxicity model (honest, two views)}
+\begin{center}
+\begin{tabular}{lccc}
+\toprule
+\textbf{Evaluation set} & \textbf{Precision (toxic)} & \textbf{Recall (toxic)} & \textbf{Note} \\
+\midrule
+Balanced held-out & 0.887 & 0.931 & optimistic view \\
+Realistic stream @0.50 & 0.048 & 0.931 & 0.7\% toxic base rate \\
+Realistic stream @0.75 (alert) & 0.074 & 0.663 & operating threshold \\
+\bottomrule
+\end{tabular}
+\end{center}
+This is reported deliberately: on a realistic, rare-positive stream the model is
+high-recall but low-precision (it over-flags), which is why the parent-facing alert
+threshold is held high (0.75) and the UI labels borderline messages as ``borderline''
+rather than ``toxic''. The genuine fix is real gaming-chat data, not a different
+classifier --- a point we make explicit rather than hide behind the balanced number.
+
+\subsection{Voice emotion model (synthetic)}
+On a held-out split of synthetic acoustic features the model reaches $0.9925$
+accuracy and $0.9925$ macro-F1 across angry / excited / frustrated / neutral. We
+state plainly that this is \emph{internal validity on synthetic features}; real
+microphone accuracy is unproven, which is why voice carries a corroborating weight
+and is the first candidate for real-audio retraining.
+
+\subsection{System and engineering results}
+\begin{itemize}[leftmargin=1.4em]
+  \item Production-deployed cloud backend (HTTPS, token auth, consent, durable
+        managed Postgres); both apps build as signed release APKs.
+  \item A 35-test backend suite passes against an isolated database; both apps pass
+        Android Lint with zero errors.
+  \item Robustness: single-worker memory-safe serving, database-connection retry for
+        a serverless Postgres, graceful degradation when a modality is absent, and
+        a self-healing stale-session guard.
+\end{itemize}
+
+\subsection{Summary of features delivered}
+\begin{center}
+\begin{tabularx}{\linewidth}{lX}
+\toprule
+\textbf{Area} & \textbf{Delivered} \\
+\midrule
+Detection & Any-game detection (UsageStats + category), session lifecycle \\
+Capture & Accessibility typed-chat, on-device Vosk STT, voice features, real behavioural metrics \\
+ML & Calibrated RF behaviour + SHAP, LogReg/TF-IDF chat, GBM voice, availability-weighted fusion \\
+Credibility & Probability calibration, anomaly detection, observation mode, honest model card \\
+Parent value & Risk + ``why'' (SHAP), 14-day trend, alerts, weekly PDF, feedback loop, limits, send-nudge-to-child \\
+Child wellbeing & Mira check-in, reflections, streaks, breathing, break/limit nudges \\
+Privacy/Security & Token auth, peppered PIN hashes, HTTPS-only, encrypted token store, consent, raw-audio deletion, retention \\
+Engineering & Dual-dialect DB, signed APKs, 35 tests, lint-clean, deployed + durable DB \\
+\bottomrule
+\end{tabularx}
+\end{center}
+
+% =====================================================================
+\section{Conclusion}
+% =====================================================================
+We built and deployed a multimodal gaming-addiction \emph{screening} platform that
+moves beyond raw screen-time to measured behaviour, chat toxicity and voice emotion,
+fused into a calibrated, explainable risk band and surfaced to parents as awareness
+rather than punishment. The engineering is real: native Android apps, a secured cloud
+backend, a durable database, signed releases and a passing test suite. Our central
+methodological commitments --- train/serve feature alignment, probability
+calibration, SHAP explanations, availability-weighted fusion, and an honest account
+of synthetic-data limitations --- make the system's outputs trustworthy and
+defensible. Most importantly, the parent-feedback loop turns the platform from a
+frozen, synthetically-trained model into one that can learn from real verdicts,
+which is the credible path from a working prototype to a validated product.
+
+% =====================================================================
+\section{Future Work}
+% =====================================================================
+We list only enhancements that are \emph{worth adding} and would genuinely improve
+the apps, in priority order.
+
+\begin{enumerate}[leftmargin=1.4em]
+  \item \textbf{Feedback-driven retraining (highest value).} Accumulate the parent
+        ``accurate / false-alarm'' labels and periodically retrain --- first the
+        alert threshold and chat decision boundary, then learned ensemble weights and
+        per-user baselines. This is the single change that converts synthetic
+        accuracy into validated real-world performance.
+  \item \textbf{Real-audio voice model + VAD.} Retrain the voice model on real
+        labelled speech (e.g.\ RAVDESS) and add voice-activity detection so silence
+        and game audio are not classified as emotion. Voice is the weakest modality
+        and benefits most.
+  \item \textbf{Offline retry queue (reliability).} Persist failed uploads in a local
+        outbox with idempotent server-side de-duplication, so transient
+        connectivity loss never drops a sample.
+  \item \textbf{Per-user personalisation.} Once enough real per-child history exists,
+        flag deviations from a personal baseline rather than only global thresholds
+        (a professional player's ``normal'' differs from a student's).
+  \item \textbf{Chat context model.} If real gaming-chat data becomes available,
+        revisit a lightweight contextual text model to raise toxic precision on the
+        realistic stream (the current bottleneck is data, not the classifier).
+  \item \textbf{Cross-modal interaction features.} With real labels, add features
+        such as ``angry voice while late-night'' to the meta-model for sharper
+        multimodal escalation detection.
+  \item \textbf{Push reliability.} Complete the FCM configuration so high-risk events
+        push instantly rather than relying on polling, and add notification
+        preferences.
+\end{enumerate}
+
+We deliberately \emph{do not} pursue on-device TFLite conversion, transformer/CNN
+swaps, or federated learning at this stage: on synthetic data they add complexity and
+deployment risk without proven benefit, and the honest, calibrated classical ensemble
+is both defensible and shippable today.
+
+\vspace{1.5em}
+\hrule
+\vspace{0.5em}
+{\small \textit{All figures and metrics in this paper reflect the system as
+implemented and deployed; model metrics are the current values recorded in the
+project's model metadata. The system is a screening and awareness aid, not a
+clinical diagnostic instrument.}}
+
+\end{document}
