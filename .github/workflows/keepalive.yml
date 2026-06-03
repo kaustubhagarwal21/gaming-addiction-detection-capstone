@@ -1,0 +1,35 @@
+name: keep-backend-warm
+
+# Pings the Render backend so it doesn't sleep (free tier sleeps after ~15 min idle
+# -> the first request then takes 30-60s and can look like a 503 "crash"). Keeping it
+# warm removes the cold-start during active testing and right before a demo.
+#
+# COST NOTE: every-14-min on a PRIVATE repo uses ~1500 GitHub Actions minutes/month
+# (free allotment is 2000). If that's a concern, either:
+#   - disable the schedule below and just warm up manually before a demo (open the app
+#     or hit /api/health once), or
+#   - use a free external pinger (e.g. UptimeRobot, 5-min interval) which costs no GH
+#     minutes.
+# Also note: GitHub auto-disables scheduled workflows after 60 days of repo inactivity,
+# so for a long-dormant repo, re-enable it (or push any commit) ~a week before the demo.
+
+on:
+  schedule:
+    - cron: '*/14 * * * *'   # every 14 min (under the 15-min sleep threshold)
+  workflow_dispatch:          # manual "wake it now" button in the Actions tab
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Ping /api/health (with cold-start retries)
+        run: |
+          URL="https://gaming-addiction-api.onrender.com/api/health"
+          for i in 1 2 3 4; do
+            code=$(curl -s -o /dev/null -w "%{http_code}" --max-time 75 "$URL" || echo "000")
+            echo "attempt $i -> HTTP $code"
+            if [ "$code" = "200" ]; then exit 0; fi
+            sleep 20
+          done
+          # Don't fail the workflow on a transient miss (avoids noisy failure emails).
+          echo "health did not return 200 this run (likely cold-starting)"; exit 0

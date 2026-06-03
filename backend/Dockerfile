@@ -43,8 +43,13 @@ EXPOSE 5000
 HEALTHCHECK --interval=30s --timeout=5s --start-period=40s --retries=3 \
     CMD curl -fsS "http://localhost:${PORT}/api/health" || exit 1
 
-# Production: gunicorn with sync workers (Flask doesn't need async).
-# --preload loads the ML models once in the master before forking, so the 2
-# workers share that memory instead of each loading its own copy.
+# Production: gunicorn, threaded sync worker (Flask doesn't need async).
+# ONE worker on purpose: the free tier has only 512 MB and the process loads the
+# whole ML stack (RF + calibrator + chat + tfidf + voice + SHAP + numpy/sklearn).
+# Two workers each grew their own copy under load (SHAP explainer + numpy buffers
+# break --preload's copy-on-write sharing) and OOM-killed the instance -> 50x crash
+# loop. One worker + 4 threads handles the demo's concurrency comfortably; raise
+# --workers only if you move to a plan with more RAM (e.g. WEB_CONCURRENCY).
+# --max-requests recycles the worker periodically to reclaim any memory creep.
 # sh -c so ${PORT} (set by the platform) is expanded at runtime.
-CMD ["sh", "-c", "gunicorn --bind 0.0.0.0:${PORT} --workers 2 --threads 4 --timeout 120 --preload --access-logfile - --error-logfile - app:app"]
+CMD ["sh", "-c", "gunicorn --bind 0.0.0.0:${PORT} --workers ${WEB_CONCURRENCY:-1} --threads 4 --timeout 120 --preload --max-requests 400 --max-requests-jitter 50 --access-logfile - --error-logfile - app:app"]
