@@ -57,6 +57,10 @@
         <item name="android:paddingStart">24dp</item>
         <item name="android:paddingEnd">24dp</item>
         <item name="backgroundTint">@color/colorPrimary</item>
+        <!-- Force white label on the purple button; the theme default wasn't resolving
+             to colorOnPrimary, leaving the "Sign in" text near-invisible. -->
+        <item name="android:textColor">@color/colorOnPrimary</item>
+        <item name="iconTint">@color/colorOnPrimary</item>
         <item name="rippleColor">#33FFFFFF</item>
     </style>
 
