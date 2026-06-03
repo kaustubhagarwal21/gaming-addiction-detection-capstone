@@ -16,17 +16,22 @@
 \usepackage{booktabs}
 \usepackage{tabularx}
 \usepackage{amsmath}
+\usepackage{newtxtext}   % dark, readable Times text (replaces thin Computer Modern)
+\usepackage{newtxmath}   % matching math font; keeps real subscripts in formulae
 \usepackage{enumitem}
 \usepackage{xcolor}
 \usepackage{listings}
 \usepackage{caption}
 \usepackage[hidelinks]{hyperref}
+\usepackage{microtype}   % char protrusion + font expansion: far fewer words run off the margin
+\usepackage[strings]{underscore}  % printable underscores in text; subscripts still work in math
 
 \setlength{\parskip}{0.45em}
 \setlength{\parindent}{0pt}
+\setlength{\emergencystretch}{3em}  % last-resort stretch so lines don't overflow the right margin
 
 \lstset{
-  basicstyle=\ttfamily\small,
+  basicstyle=\ttfamily\footnotesize,
   breaklines=true,
   frame=single,
   columns=fullflexible,
@@ -34,9 +39,6 @@
   showstringspaces=false,
   xleftmargin=0.5em,
 }
-
-% Make underscores printable in text (so feature_names render cleanly)
-\catcode`\_=12
 
 \title{\textbf{AI-Driven Gaming Addiction Screening System}\\
 \large A Multimodal, Privacy-Conscious Mobile Platform for Early
