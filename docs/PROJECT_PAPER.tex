@@ -126,6 +126,36 @@ rather than to maximise a headline accuracy number.
 \end{enumerate}
 
 % =====================================================================
+\section{Related Work}
+% =====================================================================
+\textbf{AI-based monitoring of gaming disorder.} Reviews and cohort studies establish
+that gaming disorder is multifactorial --- behavioural, emotional and
+psychological~\cite{ergin2025,kaya2023} --- and that continuous, AI-based monitoring
+detects early warning signs more reliably than self-report surveys or raw screen-time
+tools~\cite{huang2024,jiang2024}. This motivates our continuous, multi-signal approach
+and our behaviour-dominant weighting.
+
+\textbf{Language and chat signals.} Short pieces of user text carry usable
+addiction-risk and emotional signal~\cite{strojny2024}, and sentiment models perform
+well on fast, informal, gaming-specific chat --- including multilingual
+settings~\cite{kina2024}. This grounds our chat-toxicity channel and our future-work
+direction of a multilingual/code-mixed model.
+
+\textbf{Voice and multimodal fusion.} Combining speech with text yields stronger
+emotional inference than any single stream~\cite{tyagi2024}, and acoustic cues (pitch,
+energy, timbre) carry emotional information usable for behavioural
+monitoring~\cite{schuller2013}. This supports our voice-emotion channel and the weighted
+fusion of behaviour, chat and voice.
+
+\textbf{On-device privacy and parental tools.} On-device processing supports
+personalisation while keeping sensitive data on the phone~\cite{chakraborty2025}, and
+prior work on parental-monitoring design stresses awareness and trust over
+surveillance~\cite{iftikhar2021}; commercial tools such as Bark~\cite{bark2025} show
+demand but are largely screen-time/keyword based. We position our system as
+\emph{screening and guidance, not punishment}, with privacy-conscious handling and
+explainable output.
+
+% =====================================================================
 \section{System Architecture with Explanation}
 % =====================================================================
 The platform follows a three-tier architecture (Figure-equivalent shown below):
@@ -254,8 +284,8 @@ to genuine labels.
 Let $b,c,v$ be the behaviour, chat and voice risk components with \emph{fixed prior}
 weights $w_b{=}0.40$, $w_c{=}0.30$, $w_v{=}0.30$. These are clinically-motivated priors,
 \emph{not} values fitted to labelled outcomes. Behaviour carries the largest weight
-because both DSM-5 (Internet Gaming Disorder) and ICD-11 (Gaming Disorder) define the
-condition \emph{behaviourally} --- impaired control, escalating priority of gaming over
+because both DSM-5 (Internet Gaming Disorder)~\cite{dsm5} and ICD-11 (Gaming
+Disorder)~\cite{icd11} define the condition \emph{behaviourally} --- impaired control, escalating priority of gaming over
 other activities, continuation despite harm --- and behaviour is also the only
 \emph{objective, measured} channel. Chat and voice are equal, secondary, corroborating
 emotional-distress signals and are noisier, so they share the remaining weight. We
@@ -332,7 +362,17 @@ defensively so a denied permission never crashes the app.
 On session end the backend computes the 20 features, runs the three models, fuses
 them, and stores the prediction with its component scores and a presence flag per
 modality. The served probability comes from the \emph{calibrated} behaviour model; a
-SHAP \texttt{TreeExplainer} produces the top signed factors shown to the parent.
+SHAP~\cite{shap2017} \texttt{TreeExplainer} produces the top signed factors shown to
+the parent.
+
+\subsection{Anomaly detection}
+Alongside the per-session risk band, the backend flags \emph{anomalies} --- a session
+that deviates sharply from the child's own recent history (e.g.\ a sudden spike in
+duration or late-night play). It computes a $z$-score of the current session against the
+mean and standard deviation of the user's prior sessions and raises a flag when the
+deviation is large. This catches unusual escalation that a static threshold on a single
+session might miss, and complements the global risk bands with a personalised
+``different from this child's normal'' signal.
 
 \subsection{Parent feedback loop}
 Each alert in the Parent app carries an ``\emph{Was this assessment accurate?}''
@@ -472,7 +512,7 @@ These need only the existing codebase and free tools and could be added before a
 release:
 \begin{itemize}[leftmargin=1.4em]
   \item \textbf{Real-audio voice model + VAD.} Retrain the voice model on free, real
-        labelled speech (RAVDESS) and add voice-activity detection (\texttt{webrtcvad})
+        labelled speech (RAVDESS~\cite{ravdess2018}) and add voice-activity detection (\texttt{webrtcvad})
         so silence and game audio are not classified as emotion. Voice is the weakest
         modality and benefits most; the data and tooling are freely available.
   \item \textbf{Offline retry queue (reliability).} Persist failed uploads in a local
@@ -533,5 +573,52 @@ is both defensible and shippable today.
 implemented and deployed; model metrics are the current values recorded in the
 project's model metadata. The system is a screening and awareness aid, not a
 clinical diagnostic instrument.}}
+
+% =====================================================================
+\begin{thebibliography}{99}
+\small
+\bibitem{huang2024} Y. Huang, R. Wu, Y. Huang, Y. Xiang, and W. Zhou,
+``Investigating mechanisms of Internet Gaming Disorder and developing intelligent
+monitoring models using artificial intelligence technologies,'' \emph{BMC Public
+Health}, 2024.
+\bibitem{jiang2024} Z. Jiang, ``A comparative analysis of contact and non-contact
+approaches using machine learning for gaming disorder detection,'' in \emph{Proc.\ Int.\
+Conf.\ Modern Logistics and Supply Chain Management (MLSCM)}, 2024.
+\bibitem{ergin2025} D. A. Ergin and C. A. Essau, ``Family factors and Internet Gaming
+Disorder among adolescents: A systematic review,'' \emph{Int.\ J.\ Developmental
+Science}, 2025.
+\bibitem{kaya2023} M. Kaya, A. Akg\"ul, and \"O. Kaya, ``Online gaming addiction and
+basic psychological needs: A study among adolescents,'' \emph{Int.\ J.\ Mental Health and
+Addiction}, 2023.
+\bibitem{strojny2024} P. Strojny, K. Kapela, N. Lipp, and S. Sikstr\"om, ``Use of four
+open-ended text responses to help identify people at risk of gaming disorder,'' \emph{JMIR
+Serious Games}, vol.\ 12, e56663, 2024.
+\bibitem{kina2024} E. Kina, U. G\"uven, and B. Kara, ``Multilingual sentiment analysis
+for mobile gaming: A comparative study of machine learning and hybrid deep learning
+approaches,'' \emph{SETSCI Conference Proceedings}, 2024.
+\bibitem{tyagi2024} S. Tyagi, A. S. Ansari, and A. Raina, ``Semantic speech analysis
+using machine learning and multimodal data processing,'' \emph{Multimedia Tools and
+Applications}, 2024.
+\bibitem{schuller2013} B. Schuller \emph{et al.}, ``Paralinguistics in speech and
+language --- State-of-the-art and the challenge,'' \emph{Computer Speech \& Language},
+2013.
+\bibitem{chakraborty2025} S. Chakraborty, ``Integrating machine learning on mobile
+applications using local data to personalize the experience for the customer,''
+ResearchGate Preprint, 2025.
+\bibitem{iftikhar2021} A. Iftikhar, M. Mobin, and M. Sarwar, ``Designing parental
+monitoring and control technology,'' in \emph{Proc.\ INTERACT}, 2021.
+\bibitem{bark2025} Bark Technologies, Inc., ``Bark parental control app --- AI-powered
+monitoring for texts, apps, and online activity,'' SafeWise Review, 2025.
+\bibitem{dsm5} American Psychiatric Association, \emph{Diagnostic and Statistical Manual
+of Mental Disorders (DSM-5)}, 5th ed., Internet Gaming Disorder (Section III), 2013.
+\bibitem{icd11} World Health Organization, \emph{International Classification of Diseases
+11th Revision (ICD-11)} --- Gaming disorder (6C51), 2019.
+\bibitem{shap2017} S. M. Lundberg and S.-I. Lee, ``A unified approach to interpreting
+model predictions,'' in \emph{Advances in Neural Information Processing Systems
+(NeurIPS)}, 2017.
+\bibitem{ravdess2018} S. R. Livingstone and F. A. Russo, ``The Ryerson Audio-Visual
+Database of Emotional Speech and Song (RAVDESS),'' \emph{PLoS ONE}, vol.\ 13, no.\ 5,
+2018.
+\end{thebibliography}
 
 \end{document}
