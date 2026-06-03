@@ -464,8 +464,20 @@ if os.path.exists(_meta_path):
 
 def _open_db():
     if USE_POSTGRES:
-        raw = psycopg2.connect(DATABASE_URL, cursor_factory=psycopg2.extras.RealDictCursor)
-        return _PgConnection(raw)
+        # Retry briefly: Neon (and similar serverless Postgres) "scales to zero" when
+        # idle, so the first connection after a quiet period can be refused or slow while
+        # it wakes. connect_timeout bounds each attempt so a worker thread never hangs.
+        last_err = None
+        for attempt in range(3):
+            try:
+                raw = psycopg2.connect(DATABASE_URL,
+                                       cursor_factory=psycopg2.extras.RealDictCursor,
+                                       connect_timeout=10)
+                return _PgConnection(raw)
+            except psycopg2.OperationalError as e:
+                last_err = e
+                time.sleep(0.6 * (attempt + 1))   # 0.6s then 1.2s — covers a waking DB
+        raise last_err
     conn = sqlite3.connect(DATABASE, timeout=30, check_same_thread=False)
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA journal_mode=WAL")
