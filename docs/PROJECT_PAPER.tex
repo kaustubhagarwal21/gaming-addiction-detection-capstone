@@ -251,19 +251,51 @@ to genuine labels.
 \end{itemize}
 
 \subsection{Ensemble fusion}
-Let $b,c,v$ be the behaviour, chat and voice risk components and $w_b{=}0.40$,
-$w_c{=}0.30$, $w_v{=}0.30$ their priors. Fusion re-normalises over only the present
-modalities $P\subseteq\{b,c,v\}$:
+Let $b,c,v$ be the behaviour, chat and voice risk components with \emph{fixed prior}
+weights $w_b{=}0.40$, $w_c{=}0.30$, $w_v{=}0.30$. These are clinically-motivated priors,
+\emph{not} values fitted to labelled outcomes. Behaviour carries the largest weight
+because both DSM-5 (Internet Gaming Disorder) and ICD-11 (Gaming Disorder) define the
+condition \emph{behaviourally} --- impaired control, escalating priority of gaming over
+other activities, continuation despite harm --- and behaviour is also the only
+\emph{objective, measured} channel. Chat and voice are equal, secondary, corroborating
+emotional-distress signals and are noisier, so they share the remaining weight. We
+deliberately do not fit the weights, because the training data is synthetic and fitting
+on it would be circular; calibrating them from real labels is future work (via the
+feedback loop).
+
+The fused score re-normalises over only the modalities $P\subseteq\{b,c,v\}$ that
+actually produced data, then applies a game-genre risk multiplier $g$:
 \[
-\text{risk} \;=\; g \cdot
-\frac{\sum_{m\in P} w_m\, s_m}{\sum_{m\in P} w_m},
+\text{risk} \;=\; g \cdot \frac{\sum_{m\in P} w_m\, s_m}{\sum_{m\in P} w_m}.
 \]
-where $g$ is a game-genre risk multiplier. Behaviour dominates because gaming
-disorder is defined behaviourally; chat and voice are corroborating distress
-signals. The risk maps to bands \textbf{Casual} ($<0.33$), \textbf{At-Risk}
-($0.33$--$0.67$) and \textbf{Addicted} ($\geq 0.67$). Under an \emph{observation
-mode} (fewer than three sessions), the system refuses to assert the highest band, to
-avoid over-calling on sparse data.
+The score maps to bands \textbf{Casual} ($<0.33$), \textbf{At-Risk} ($0.33$--$0.67$) and
+\textbf{Addicted} ($\geq 0.67$). These cut-points are even tertiles of the $0$--$1$ score
+--- again a transparent prior, not a fitted cut-off --- and they align with the score's
+own anchor points: a confidently-Casual prediction scores $\approx 0$, a
+confidently-At-Risk one $\approx 0.5$ (the behaviour score is $P(\text{at-risk})\cdot 0.5
++ P(\text{addicted})\cdot 1.0$), and a confidently-Addicted one $\approx 1.0$, so each
+``pure'' prediction falls inside its matching band. They are \emph{screening} bands for
+awareness, not diagnostic cut-offs.
+
+\paragraph{Fixed priors, dynamic result.}
+The constants above never change at run time; what adapts to each session is the value
+\emph{computed from} them, through three mechanisms:
+\begin{itemize}[leftmargin=1.4em]
+  \item \textbf{Availability re-weighting.} The weights are renormalised over only the
+        modalities present, so an absent one contributes nothing (e.g.\ with no voice,
+        behaviour and chat become $\approx$57\,\%/43\,\% for that session). This avoids a
+        missing modality injecting a placeholder value and capping behaviour-only
+        sessions below ``Addicted''.
+  \item \textbf{Game-genre multiplier ($g$).} The final score is scaled by a per-genre
+        risk factor (a competitive, chat-heavy game weighs more than a casual puzzle),
+        read from a fixed lookup.
+  \item \textbf{Observation mode.} For the first few sessions ($<3$) the band is capped
+        below ``Addicted'' regardless of score, so the system never over-calls on sparse
+        data.
+\end{itemize}
+Thus the same fixed priors yield a context-sensitive result; the priors and cut-points
+themselves would only \emph{change} by being re-learned from real feedback labels, which
+is future work.
 
 \subsection{Evaluation strategy}
 Each model is evaluated on a held-out split it never trained on. For the chat model
