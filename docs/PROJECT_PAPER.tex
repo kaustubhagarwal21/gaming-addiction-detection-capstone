@@ -438,6 +438,11 @@ the apps, in priority order.
         alert threshold and chat decision boundary, then learned ensemble weights and
         per-user baselines. This is the single change that converts synthetic
         accuracy into validated real-world performance.
+  \item \textbf{Expert / clinical validation.} Once real labelled sessions accumulate,
+        validate the risk bands against an established instrument (e.g.\ an Internet
+        Gaming Disorder scale) with input from a counsellor or psychologist --- the
+        honest path from a screening signal to a clinically-meaningful one, and the
+        natural complement to the feedback loop.
   \item \textbf{Real-audio voice model + VAD.} Retrain the voice model on real
         labelled speech (e.g.\ RAVDESS) and add voice-activity detection so silence
         and game audio are not classified as emotion. Voice is the weakest modality
@@ -454,6 +459,15 @@ the apps, in priority order.
   \item \textbf{Cross-modal interaction features.} With real labels, add features
         such as ``angry voice while late-night'' to the meta-model for sharper
         multimodal escalation detection.
+  \item \textbf{Multilingual / code-mixed chat.} Real gaming chat among the target
+        users is heavily code-mixed (e.g.\ Hinglish and romanised regional text), which
+        the current English TF-IDF model misses. A multilingual or code-mixed toxicity
+        model (cf.\ the multilingual sentiment work in our literature survey) would
+        match how children actually type.
+  \item \textbf{Sleep / wearable corroboration.} Late-night play is a core impact
+        signal; corroborating it with sleep data --- from a wearable, or richer
+        screen-off / device-idle patterns the app already logs --- would strengthen the
+        sleep-disruption features and reduce false positives.
   \item \textbf{Push reliability.} Complete the FCM configuration so high-risk events
         push instantly rather than relying on polling, and add notification
         preferences.
