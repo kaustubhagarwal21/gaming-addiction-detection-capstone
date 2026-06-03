@@ -431,49 +431,63 @@ which is the credible path from a working prototype to a validated product.
 % =====================================================================
 \section{Future Work}
 % =====================================================================
-We list only enhancements that are \emph{worth adding} and would genuinely improve
-the apps, in priority order.
+We group future enhancements by how feasible they are for the project team to build,
+distinguishing near-term engineering work from directions that need external data,
+partners, or hardware.
 
-\begin{enumerate}[leftmargin=1.4em]
-  \item \textbf{Feedback-driven retraining (highest value).} Accumulate the parent
-        ``accurate / false-alarm'' labels and periodically retrain --- first the
-        alert threshold and chat decision boundary, then learned ensemble weights and
-        per-user baselines. This is the single change that converts synthetic
-        accuracy into validated real-world performance.
-  \item \textbf{Expert / clinical validation.} Once real labelled sessions accumulate,
-        validate the risk bands against an established instrument (e.g.\ an Internet
-        Gaming Disorder scale) with input from a counsellor or psychologist --- the
-        honest path from a screening signal to a clinically-meaningful one, and the
-        natural complement to the feedback loop.
-  \item \textbf{Real-audio voice model + VAD.} Retrain the voice model on real
-        labelled speech (e.g.\ RAVDESS) and add voice-activity detection so silence
-        and game audio are not classified as emotion. Voice is the weakest modality
-        and benefits most.
+\textbf{Tier 1 --- Immediate, feasible extensions (engineering only).}
+These need only the existing codebase and free tools and could be added before a final
+release:
+\begin{itemize}[leftmargin=1.4em]
+  \item \textbf{Real-audio voice model + VAD.} Retrain the voice model on free, real
+        labelled speech (RAVDESS) and add voice-activity detection (\texttt{webrtcvad})
+        so silence and game audio are not classified as emotion. Voice is the weakest
+        modality and benefits most; the data and tooling are freely available.
   \item \textbf{Offline retry queue (reliability).} Persist failed uploads in a local
-        outbox with idempotent server-side de-duplication, so transient
-        connectivity loss never drops a sample.
-  \item \textbf{Per-user personalisation.} Once enough real per-child history exists,
-        flag deviations from a personal baseline rather than only global thresholds
-        (a professional player's ``normal'' differs from a student's).
-  \item \textbf{Chat context model.} If real gaming-chat data becomes available,
-        revisit a lightweight contextual text model to raise toxic precision on the
-        realistic stream (the current bottleneck is data, not the classifier).
-  \item \textbf{Cross-modal interaction features.} With real labels, add features
-        such as ``angry voice while late-night'' to the meta-model for sharper
-        multimodal escalation detection.
-  \item \textbf{Multilingual / code-mixed chat.} Real gaming chat among the target
-        users is heavily code-mixed (e.g.\ Hinglish and romanised regional text), which
-        the current English TF-IDF model misses. A multilingual or code-mixed toxicity
-        model (cf.\ the multilingual sentiment work in our literature survey) would
-        match how children actually type.
-  \item \textbf{Sleep / wearable corroboration.} Late-night play is a core impact
-        signal; corroborating it with sleep data --- from a wearable, or richer
-        screen-off / device-idle patterns the app already logs --- would strengthen the
-        sleep-disruption features and reduce false positives.
-  \item \textbf{Push reliability.} Complete the FCM configuration so high-risk events
-        push instantly rather than relying on polling, and add notification
-        preferences.
-\end{enumerate}
+        outbox (Room/SQLite) with idempotent server-side de-duplication, so transient
+        connectivity loss never drops a sample. Pure in-codebase work.
+  \item \textbf{Push reliability (FCM).} The push path is already scaffolded; finishing
+        it (a free Firebase project + configuration) makes high-risk alerts and parent
+        nudges instant rather than poll-based, and adds notification preferences.
+\end{itemize}
+
+\textbf{Tier 2 --- Data-dependent improvements.}
+The code for these is tractable, but their value depends on accumulating real usage
+data the prototype does not yet have:
+\begin{itemize}[leftmargin=1.4em]
+  \item \textbf{Feedback-driven retraining.} The feedback loop already records parent
+        ``accurate / false-alarm'' labels; a retrain script can ingest them to tune the
+        alert threshold and chat boundary, then learn ensemble weights. The pipeline is
+        buildable now, but meaningful accuracy gains need a real pilot at scale --- this
+        is the single change that converts synthetic accuracy into validated performance.
+  \item \textbf{Per-user personalisation.} Flag deviations from a child's personal
+        baseline rather than only global thresholds (a professional player's ``normal''
+        differs from a student's). Straightforward to code; needs weeks of real
+        per-child history to calibrate.
+  \item \textbf{Cross-modal interaction features.} Add features such as ``angry voice
+        while late-night'' to a meta-model for sharper escalation detection. Easy to
+        engineer; needs real labels to validate they help.
+  \item \textbf{Multilingual / code-mixed chat.} Real gaming chat among the target users
+        is heavily code-mixed (e.g.\ Hinglish and romanised regional text), which the
+        current English TF-IDF model misses (cf.\ the multilingual sentiment work in our
+        literature survey). Swapping in a pretrained multilingual model is feasible; the
+        blocker is labelled code-mixed gaming-chat data.
+\end{itemize}
+
+\textbf{Tier 3 --- Longer-term research directions.}
+These require partners, hardware, or scale beyond a capstone window and are described as
+direction rather than as work we can execute alone:
+\begin{itemize}[leftmargin=1.4em]
+  \item \textbf{Expert / clinical validation.} Validate the risk bands against an
+        established instrument (e.g.\ an Internet Gaming Disorder scale) with a
+        counsellor or psychologist and real subjects --- the honest path from a screening
+        signal to a clinically-meaningful one. This is a supervised research study (with
+        ethics approval), not a coding task.
+  \item \textbf{Sleep / wearable corroboration.} Corroborate late-night play with sleep
+        data from a wearable to strengthen the sleep-disruption signal. Needs hardware
+        and real users; the app already logs screen-off / device-idle patterns as a
+        lightweight proxy in the meantime.
+\end{itemize}
 
 We deliberately \emph{do not} pursue on-device TFLite conversion, transformer/CNN
 swaps, or federated learning at this stage: on synthetic data they add complexity and
