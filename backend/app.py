@@ -2071,6 +2071,31 @@ def start_session():
         'INSERT INTO sessions (user_id, game_name, start_time) VALUES (?,?,?)',
         (user_id, game_name, now),
         pk='session_id')
+    # Real-time awareness for the parent: raise a low-priority alert the moment gaming
+    # starts. The parent app's AlertPollingService picks it up (~60 s) and notifies.
+    # De-dupe: if the previous session began within the last 10 min (rapid app-switching
+    # / quick reopen of the same play bout) we skip it so the parent isn't spammed.
+    try:
+        c = conn.cursor()
+        c.execute('SELECT start_time FROM sessions WHERE user_id=? AND session_id<>? '
+                  'ORDER BY session_id DESC LIMIT 1', (user_id, sid))
+        prev   = c.fetchone()
+        recent = False
+        if prev and prev['start_time']:
+            try:
+                pdt    = datetime.fromisoformat(str(prev['start_time']).replace(' ', 'T')
+                                                .split('+')[0].split('Z')[0])
+                recent = (datetime.now() - pdt).total_seconds() < 600
+            except Exception:
+                recent = False
+        if not recent:
+            c.execute('SELECT name FROM users WHERE user_id=?', (user_id,))
+            urow  = c.fetchone()
+            cname = urow['name'] if (urow and urow['name']) else 'Your child'
+            c.execute('INSERT INTO alerts (user_id, type, message, severity) VALUES (?,?,?,?)',
+                      (user_id, 'session_start', f'{cname} just started playing {game_name}.', 'info'))
+    except Exception as e:
+        logger.warning(f"session_start alert skipped: {e}")
     conn.commit()
     conn.close()
     logger.info(f"Session {sid} started: {game_name}")

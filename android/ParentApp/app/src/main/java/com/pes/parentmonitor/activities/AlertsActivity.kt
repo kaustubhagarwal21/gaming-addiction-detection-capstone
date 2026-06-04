@@ -102,6 +102,14 @@ class AlertsActivity : AppCompatActivity() {
         }
 
         private fun bindFeedback(holder: VH, alert: Alert) {
+            // "Was this accurate?" feedback only makes sense for model *assessments*
+            // (risk / toxicity). Informational alerts like "started playing" carry no
+            // judgement to rate, so we hide the prompt for them.
+            if (alert.type.lowercase() !in setOf("risk", "toxicity")) {
+                holder.feedbackPrompt.visibility = View.GONE
+                holder.tvFeedbackGiven.visibility = View.GONE
+                return
+            }
             val given = alert.feedback
             if (given != null) {
                 holder.feedbackPrompt.visibility = View.GONE
