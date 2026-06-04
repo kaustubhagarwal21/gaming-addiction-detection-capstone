@@ -351,12 +351,33 @@ Typed chat is captured by \texttt{ChatAccessibilityService} and posted with
 toxicity channel and routes spoken words through the voice/valence fusion, so the
 two are not double-counted.
 
-\subsection{Voice recording and emotion}
-\texttt{VoiceRecorderService} records PCM segments, extracts 17 acoustic features,
-and the backend classifies emotion (angry / excited / frustrated / neutral), mapping
-it to a risk weight and fusing it with transcript valence and toxicity. Foreground-
-service start, microphone-permission checks and Android-14 restrictions are handled
-defensively so a denied permission never crashes the app.
+\subsection{Voice recording and emotion (valence--arousal fusion)}
+\texttt{VoiceRecorderService} records PCM segments and extracts 17 acoustic features
+(13 MFCCs, pitch mean/std, energy mean/std), which the backend classifies into
+angry / excited / frustrated / neutral. The acoustic model reliably separates
+\emph{arousal} (animated vs.\ quiet speech) but cannot judge \emph{valence} (positive
+vs.\ negative): loud-but-calm speech, or a child's naturally high-pitched voice, can be
+mis-read as ``angry''. The spoken \emph{words} supply the missing valence.
+
+The system therefore fuses the two on a valence--arousal plane. \emph{Arousal} is taken
+from the acoustic probability distribution, while \emph{valence} is a weighted blend of
+three signals computed on the Vosk transcript of the same segment: the acoustic
+distribution as a weak prior, a gaming-aware lexicon (positive \emph{and} negative
+words), and the \emph{trained chat-toxicity model} --- which detects hostility beyond the
+word list and contributes strong negative valence. The resulting
+$(\text{valence}, \text{arousal})$ point is mapped back to one of the four emotions, and
+then to a voice-risk weight. This corrects the child-pitch bias (high arousal $+$ neutral
+words $\rightarrow$ ``excited'', not ``angry'') and lets genuinely toxic spoken language
+pull the read toward distress even when the tone is calm. If no transcript is available,
+the system falls back to the acoustic label alone.
+
+This is where the voice and chat models cooperate: the chat-toxicity model is reused to
+score the \emph{spoken} words inside the voice fusion. Crucially, those transcribed words
+feed \emph{only} the voice channel through this fusion --- the typed-chat toxicity
+channel explicitly excludes them (\texttt{source = voice\_stt}) --- so a single utterance
+is never double-counted across two modalities. Foreground-service start,
+microphone-permission checks and Android-14 restrictions are handled defensively so a
+denied permission never crashes the app.
 
 \subsection{Prediction, calibration and explainability}
 On session end the backend computes the 20 features, runs the three models, fuses
