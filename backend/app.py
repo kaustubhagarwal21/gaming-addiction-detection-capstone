@@ -1698,9 +1698,15 @@ def _push_to_family(family_code: str, title: str, body: str):
 @app.route('/api/health', methods=['GET'])
 def health():
     all_loaded = all([behavior_model, chat_model, voice_model, tfidf_vectorizer, feature_scaler])
+    # Is an FCM credential available? Checked WITHOUT importing firebase/grpc (stays lazy):
+    # env var = Render, file = local. 'configured' just means a credential is present; the
+    # SDK is only actually loaded + validated on the first real push.
+    fcm_configured = bool(os.environ.get('FIREBASE_KEY_JSON', '').strip()) or os.path.exists(FIREBASE_KEY)
     return jsonify({
         'status':        'ok',
         'models_loaded': all_loaded,
+        'fcm_configured': fcm_configured,
+        'fcm_initialized': _firebase_app is not None,   # True only after the first push
         'models': {
             'behavior':            behavior_model      is not None,
             'behavior_calibrated': behavior_calibrated is not None,
