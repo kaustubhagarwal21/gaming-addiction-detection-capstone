@@ -220,19 +220,30 @@ def guard_session(sid):
     return guard(row['user_id'])
 
 
-# Firebase push — initialised from backend/firebase_key.json if present
+# Firebase push — credential resolved from (in order):
+#   1) FIREBASE_KEY_JSON env var holding the whole service-account JSON (best for Render —
+#      no file to mount), or
+#   2) backend/firebase_key.json on disk (best for local/dev; gitignored).
+# Until one is provided, push stays dormant and alerts are delivered by polling.
 FIREBASE_KEY  = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'firebase_key.json')
 _firebase_app = None
 
 def _init_firebase():
     global _firebase_app
-    if FIREBASE_SDK and os.path.exists(FIREBASE_KEY) and _firebase_app is None:
-        try:
+    if not FIREBASE_SDK or _firebase_app is not None:
+        return
+    try:
+        cred     = None
+        key_json = os.environ.get('FIREBASE_KEY_JSON', '').strip()
+        if key_json:
+            cred = fb_creds.Certificate(json.loads(key_json))
+        elif os.path.exists(FIREBASE_KEY):
             cred = fb_creds.Certificate(FIREBASE_KEY)
+        if cred is not None:
             _firebase_app = firebase_admin.initialize_app(cred)
             logging.getLogger(__name__).info("Firebase Admin SDK initialised")
-        except Exception as exc:
-            logging.getLogger(__name__).warning(f"Firebase init failed: {exc}")
+    except Exception as exc:
+        logging.getLogger(__name__).warning(f"Firebase init failed: {exc}")
 
 _init_firebase()
 
@@ -707,6 +718,15 @@ def init_db():
             delivered   INTEGER DEFAULT 0,
             created_at  TEXT    DEFAULT CURRENT_TIMESTAMP
         );
+
+        -- One row per guardian DEVICE (mum's phone, dad's phone, ...). Keyed by family so
+        -- a single alert can push to every guardian, not just the last one who logged in.
+        CREATE TABLE IF NOT EXISTS guardian_devices (
+            id          INTEGER PRIMARY KEY AUTOINCREMENT,
+            family_code TEXT    NOT NULL,
+            fcm_token   TEXT    NOT NULL UNIQUE,
+            updated_at  TEXT    DEFAULT CURRENT_TIMESTAMP
+        );
     '''
     if USE_POSTGRES:
         # Postgres dialect: SERIAL auto-increment, and a text-typed default for the
@@ -757,6 +777,7 @@ def init_db():
         CREATE INDEX IF NOT EXISTS idx_voice_session        ON voice_events(session_id);
         CREATE INDEX IF NOT EXISTS idx_predictions_session  ON predictions(session_id);
         CREATE INDEX IF NOT EXISTS idx_alerts_user          ON alerts(user_id);
+        CREATE INDEX IF NOT EXISTS idx_guardian_family      ON guardian_devices(family_code);
         CREATE INDEX IF NOT EXISTS idx_screen_user          ON screen_events(user_id);
         CREATE INDEX IF NOT EXISTS idx_notif_user           ON notification_events(user_id);
         CREATE INDEX IF NOT EXISTS idx_reflections_user     ON reflections(user_id);
@@ -1620,10 +1641,11 @@ def _update_streak(user_id: int, weekly_hours: float, risk_level: str) -> dict:
             'total_healthy_days': total, 'is_healthy_today': is_healthy}
 
 
-def _send_fcm_push(token: str, title: str, body: str):
-    """Send a Firebase Cloud Messaging push to a single device token."""
+def _send_fcm_push(token: str, title: str, body: str) -> str:
+    """Send a Firebase Cloud Messaging push to a single device token.
+    Returns: 'ok' | 'invalid' (token dead → caller should prune) | 'skip' | 'error'."""
     if not FIREBASE_SDK or _firebase_app is None or not token:
-        return
+        return 'skip'
     try:
         msg = fb_messaging.Message(
             notification=fb_messaging.Notification(title=title, body=body),
@@ -1632,8 +1654,34 @@ def _send_fcm_push(token: str, title: str, body: str):
         )
         fb_messaging.send(msg)
         logger.info("FCM push sent")
+        return 'ok'
     except Exception as exc:
-        logger.warning(f"FCM push failed: {exc}")
+        # A token that's been uninstalled / rotated returns Unregistered or
+        # SenderIdMismatch — those should be pruned so the table doesn't grow stale.
+        name = type(exc).__name__
+        logger.warning(f"FCM push failed ({name}): {exc}")
+        return 'invalid' if name in ('UnregisteredError', 'SenderIdMismatchError') else 'error'
+
+
+def _push_to_family(family_code: str, title: str, body: str):
+    """Push to EVERY guardian device registered for a family (both parents' phones, etc.),
+    pruning any dead tokens as we go. Falls back to legacy per-user tokens too."""
+    if not family_code:
+        return
+    conn = get_db()
+    c    = conn.cursor()
+    c.execute('SELECT fcm_token FROM guardian_devices WHERE family_code=?', (family_code,))
+    tokens = {r['fcm_token'] for r in c.fetchall() if r['fcm_token']}
+    # Legacy fallback: tokens written directly on family member rows before this table existed.
+    c.execute("SELECT fcm_token FROM users WHERE family_code=? "
+              "AND fcm_token IS NOT NULL AND fcm_token != ''", (family_code,))
+    tokens.update(r['fcm_token'] for r in c.fetchall() if r['fcm_token'])
+    stale = [t for t in tokens if _send_fcm_push(t, title, body) == 'invalid']
+    for t in stale:
+        c.execute('DELETE FROM guardian_devices WHERE fcm_token=?', (t,))
+    if stale:
+        conn.commit()
+    conn.close()
 
 # ═══════════════════════════ API ROUTES ══════════════════════════
 
@@ -1859,7 +1907,18 @@ def update_fcm_token():
     if deny: return deny
     conn = get_db()
     c    = conn.cursor()
-    c.execute('UPDATE users SET fcm_token=? WHERE user_id=?', (token, int(uid)))
+    c.execute('UPDATE users SET fcm_token=? WHERE user_id=?', (token, int(uid)))   # legacy/compat
+    # Register this DEVICE under its family so every guardian's phone gets pushes — not just
+    # whoever logged in last. Keyed by the unique token (re-register just refreshes the row).
+    c.execute('SELECT family_code FROM users WHERE user_id=?', (int(uid),))
+    frow = c.fetchone()
+    fam  = frow['family_code'] if frow else None
+    if fam:
+        c.execute('''INSERT INTO guardian_devices (family_code, fcm_token, updated_at)
+                     VALUES (?,?,?)
+                     ON CONFLICT(fcm_token) DO UPDATE SET family_code=excluded.family_code,
+                     updated_at=excluded.updated_at''',
+                  (fam, token, datetime.now().isoformat()))
     conn.commit()
     conn.close()
     return jsonify({'success': True})
@@ -2157,27 +2216,19 @@ def end_session(sid):
         weekly_h = float(wh_row['wh'] or 0) if wh_row else 0.0
         _update_streak(srow['user_id'], weekly_h, prediction.get('risk_category','casual'))
 
-        # FCM push to parent when child session is high-risk
+        # FCM push to EVERY guardian device when a child session is high-risk (both
+        # parents' phones, etc.) — not just whoever registered last.
         if prediction.get('risk_category') == 'addicted':
             conn2b = get_db()
             c2b    = conn2b.cursor()
-            # The parent's FCM token lives on a row in this child's family (the parent
-            # logs in as the family). Look it up by family_code — the legacy
-            # child_user_id link is never populated in the family-code model.
             c2b.execute('SELECT family_code FROM users WHERE user_id=?', (srow['user_id'],))
             _fc  = c2b.fetchone()
+            conn2b.close()
             fam  = _fc['family_code'] if _fc else None
             if fam:
-                c2b.execute("SELECT fcm_token FROM users WHERE family_code=? "
-                            "AND fcm_token IS NOT NULL AND fcm_token != '' LIMIT 1", (fam,))
-                parent_row = c2b.fetchone()
-            else:
-                parent_row = None
-            conn2b.close()
-            if parent_row and parent_row['fcm_token']:
                 score_pct = int(prediction['final_risk_score'] * 100)
-                _send_fcm_push(
-                    parent_row['fcm_token'],
+                _push_to_family(
+                    fam,
                     "High Gaming Risk Alert",
                     f"Your child's gaming risk reached {score_pct}% — check the app now."
                 )
@@ -2312,6 +2363,14 @@ def save_chat(sid):
 
     conn = get_db()
     c    = conn.cursor()
+    # De-dupe: the custom keyboard (IME) and the accessibility path can both observe the
+    # same typed line. Skip an identical message for this session seen in the last few
+    # seconds so it isn't scored/alerted twice.
+    c.execute("SELECT 1 FROM chat_messages WHERE session_id=? AND message=? AND timestamp>=? LIMIT 1",
+              (sid, message, (datetime.now() - timedelta(seconds=8)).isoformat()))
+    if c.fetchone():
+        conn.close()
+        return jsonify({'success': True, 'duplicate': True, 'toxicity_score': round(tox_score, 3)})
     c.execute('INSERT INTO chat_messages (session_id, message, source, confidence, timestamp) VALUES (?,?,?,?,?)',
               (sid, message, data.get('source', 'ocr'), round(tox_score, 3),
                datetime.now().isoformat()))
@@ -2396,6 +2455,15 @@ def save_voice(sid):
               (sid, emotion, intensity, duration, fname, datetime.now().isoformat()))
     conn.commit()
     conn.close()
+    # Re-score so a freshly-arrived voice emotion actually counts. The voice pipeline
+    # (record → buffer → analyse → fuse → upload) is slower than behaviour/chat, so on a
+    # short session the session-end prediction can be computed BEFORE the last voice
+    # segment lands — leaving voice marked "not captured". Re-running here (cheap, no
+    # SHAP) folds the new emotion into the latest stored prediction's voice flag + score.
+    try:
+        run_prediction(sid, explain=False)
+    except Exception as e:
+        logger.warning(f"voice re-prediction skipped: {e}")
     return jsonify({'success': True, 'emotion': emotion, 'intensity': intensity, 'duration': duration})
 
 
@@ -2559,6 +2627,47 @@ def parent_dashboard():
     lrow   = c.fetchone()
     latest = dict(lrow) if lrow else {}
 
+    # Headline risk as a per-DAY roll-up (most recent active day), DURATION-WEIGHTED so a
+    # brief session can't dominate — far more stable/representative for a parent than the
+    # single last session. (The child app stays per-session/live.) Falls back to a simple
+    # average if a day's sessions somehow total zero duration.
+    risk_period   = None
+    daily_signals = None
+    c.execute('''SELECT SUBSTR(start_time,1,10) AS d FROM sessions
+                 WHERE user_id=? AND final_risk_score IS NOT NULL
+                 ORDER BY start_time DESC LIMIT 1''', (user_id,))
+    drow = c.fetchone()
+    if drow and drow['d']:
+        day = drow['d']
+        c.execute('''SELECT final_risk_score AS s, COALESCE(duration_seconds,0) AS dur
+                     FROM sessions WHERE user_id=? AND SUBSTR(start_time,1,10)=?
+                     AND final_risk_score IS NOT NULL''', (user_id, day))
+        drows = c.fetchall()
+        if drows:
+            wsum  = sum(float(r['dur']) for r in drows)
+            score = (sum(float(r['s']) * float(r['dur']) for r in drows) / wsum
+                     if wsum > 0 else sum(float(r['s']) for r in drows) / len(drows))
+            latest['final_risk_score'] = round(score, 4)
+            latest['risk_category']    = ('casual' if score < RISK_T1 else
+                                          'at_risk' if score < RISK_T2 else 'addicted')
+            # Signals analysed across the WHOLE day (union): if ANY session that day had
+            # voice/chat, show it — not just whatever the last session happened to catch.
+            c.execute('''SELECT MAX(p.behavior_present) b, MAX(p.chat_present) ch, MAX(p.voice_present) v
+                         FROM predictions p JOIN sessions s ON s.session_id=p.session_id
+                         WHERE s.user_id=? AND SUBSTR(s.start_time,1,10)=?''', (user_id, day))
+            sg = c.fetchone()
+            if sg and sg['b'] is not None:
+                daily_signals = {'behavior': bool(sg['b']), 'chat': bool(sg['ch']),
+                                 'voice': bool(sg['v'])}
+            today = datetime.now().date()
+            try:
+                dd = datetime.fromisoformat(day).date()
+            except Exception:
+                dd = today
+            label = ('Today' if dd == today else
+                     'Yesterday' if dd == today - timedelta(days=1) else dd.strftime('%b %d'))
+            risk_period = {'label': label, 'date': day, 'sessions': len(drows)}
+
     # 14-day trend
     c.execute(f'''SELECT SUBSTR(start_time,1,10) AS date,
                  ROUND(AVG(final_risk_score),4) AS score,
@@ -2575,6 +2684,15 @@ def parent_dashboard():
                  FROM sessions WHERE user_id=? GROUP BY game_name ORDER BY hours DESC LIMIT 5''',
               (user_id,))
     top_games = [dict(r) for r in c.fetchall()]
+
+    # Recently played: distinct games ordered by most recent session. "Top games" is
+    # ranked by cumulative hours and capped at 5, so a brand-new short session (e.g. a
+    # 1-min Roblox try) can rank below it and stay hidden — this list surfaces it.
+    c.execute('''SELECT game_name AS game, MAX(start_time) AS last_played, COUNT(*) AS sessions,
+                 ROUND(SUM(duration_seconds)/60.0,1) AS minutes
+                 FROM sessions WHERE user_id=? GROUP BY game_name
+                 ORDER BY last_played DESC LIMIT 6''', (user_id,))
+    recent_games = [dict(r) for r in c.fetchall()]
 
     # Weekly total hours
     since7 = (datetime.now() - timedelta(days=7)).isoformat()
@@ -2653,6 +2771,11 @@ def parent_dashboard():
         }
     else:
         latest_signals = None
+    # The headline is per-day, so report which signals were analysed across the WHOLE day
+    # (union), not just the last session — otherwise a short final session could hide that
+    # chat/voice were captured earlier the same day.
+    if daily_signals is not None:
+        latest_signals = daily_signals
 
     # Child age for personalised suggestions
     child_age = profile.get('age', 15) or 15
@@ -2696,6 +2819,7 @@ def parent_dashboard():
         'alerts':              formatted_alerts,
         'trend_data':          trend,
         'top_games':           top_games,
+        'recent_games':        recent_games,
         'total_hours_week':    total_hours_week,
         'late_night_count':    late_night,
         'recommendations':     recs,
@@ -2707,6 +2831,7 @@ def parent_dashboard():
         'peer_comparison':       peer_comp,
         'sleep_impact':          sleep_impact,
         'risk_explanation':      risk_explanation,
+        'risk_period':           risk_period,
         'streak':                streak_data,
         'parent_set_limit':      parent_set_limit,
         'top_anomaly':           top_anomaly,
@@ -2775,8 +2900,9 @@ def chat_analysis_dashboard():
                  WHERE s.user_id=? AND cm.timestamp>=?''', (user_id, since))
     stats = dict(c.fetchone() or {})
 
-    # Recent chat samples
-    c.execute('''SELECT cm.message, cm.confidence, cm.timestamp, s.game_name
+    # Recent chat samples. cm.source tells the parent whether a line was typed in-game
+    # ('keyboard'/'ocr') or transcribed from speech ('voice_stt').
+    c.execute('''SELECT cm.message, cm.confidence, cm.source, cm.timestamp, s.game_name
                  FROM chat_messages cm JOIN sessions s ON s.session_id=cm.session_id
                  WHERE s.user_id=? ORDER BY cm.timestamp DESC LIMIT 20''', (user_id,))
     messages = [dict(r) for r in c.fetchall()]
@@ -3173,6 +3299,26 @@ def get_streak():
 
 # ─────────────── PARENT TIME LIMIT SETTER ────────────────────────
 
+@app.route('/api/parent/children', methods=['GET'])
+def parent_children():
+    """List the children in the authenticated parent's family so the parent app can switch
+    between them WITHOUT re-entering the family code. The bearer token already carries the
+    allowed child ids (set at login), so no family code/PIN is needed here."""
+    deny = guard()                       # authenticate; populates g.auth {role, uid, allowed}
+    if deny: return deny
+    allowed = (g.auth or {}).get('allowed') or []
+    if not allowed:
+        return jsonify({'success': True, 'children': []})
+    conn = get_db()
+    c    = conn.cursor()
+    ph   = ','.join(['?'] * len(allowed))
+    c.execute(f'SELECT user_id, name, age FROM users WHERE user_id IN ({ph}) ORDER BY user_id',
+              tuple(allowed))
+    children = [{'user_id': r['user_id'], 'name': r['name'], 'age': r['age']} for r in c.fetchall()]
+    conn.close()
+    return jsonify({'success': True, 'children': children})
+
+
 @app.route('/api/parent/set_limit', methods=['POST'])
 def set_time_limit():
     """Parent approves or sets a daily gaming time limit for a child."""
@@ -3196,10 +3342,16 @@ def set_time_limit():
                  ON CONFLICT(user_id) DO UPDATE SET daily_limit_hours=excluded.daily_limit_hours,
                  set_by_parent=1, updated_at=excluded.updated_at''',
               (int(user_id), hours, datetime.now().isoformat()))
-    # Create info alert for the child
-    c.execute('INSERT INTO alerts (user_id, type, message, severity) VALUES (?,?,?,?)',
-              (int(user_id), 'limit',
-               f'Your parent has set a {hours:.1f}h daily gaming limit for you.', 'info'))
+    # Notify the CHILD — the message is addressed to the child, and the child app reads
+    # child_nudges (the alerts table is the PARENT's feed, so writing it there meant the
+    # parent saw a message meant for the child). Keep only the latest pending limit nudge
+    # so repeated edits don't stack.
+    c.execute("DELETE FROM child_nudges WHERE user_id=? AND kind='limit' AND delivered=0",
+              (int(user_id),))
+    c.execute("INSERT INTO child_nudges (user_id, message, kind) VALUES (?,?,?)",
+              (int(user_id),
+               f'Your parent set a {hours:.1f}h daily gaming limit. Keep an eye on your playtime!',
+               'limit'))
     conn.commit()
     conn.close()
     return jsonify({'success': True, 'daily_limit_hours': hours})
@@ -3368,7 +3520,42 @@ def weekly_report_pdf():
 
     c.execute('SELECT * FROM streaks WHERE user_id=?', (user_id,))
     streak = c.fetchone()
+
+    # Weekly model averages — average each channel only over sessions where it was present,
+    # so absent-modality zeros don't drag the picture down. NULL = never captured this week.
+    c.execute('''SELECT AVG(CASE WHEN behavior_present=1 THEN behavior_score END) AS b,
+                        AVG(CASE WHEN chat_present=1     THEN chat_score     END) AS ch,
+                        AVG(CASE WHEN voice_present=1    THEN voice_score    END) AS v
+                 FROM predictions p JOIN sessions s ON s.session_id=p.session_id
+                 WHERE s.user_id=? AND s.start_time>=?''', (user_id, since7))
+    mrow = dict(c.fetchone() or {})
+
+    # Chat insights this week (chat_messages.timestamp is local isoformat, same as since7).
+    c.execute('''SELECT COUNT(*) AS total,
+                 SUM(CASE WHEN cm.confidence>=? THEN 1 ELSE 0 END) AS toxic
+                 FROM chat_messages cm JOIN sessions s ON s.session_id=cm.session_id
+                 WHERE s.user_id=? AND cm.timestamp>=?''', (CHAT_ALERT_T, user_id, since7))
+    crow = dict(c.fetchone() or {})
+
+    # Voice emotion distribution this week.
+    c.execute('''SELECT ve.emotion AS emotion, COUNT(*) AS n
+                 FROM voice_events ve JOIN sessions s ON s.session_id=ve.session_id
+                 WHERE s.user_id=? AND ve.timestamp>=? GROUP BY ve.emotion ORDER BY n DESC''',
+              (user_id, since7))
+    voice_rows = [dict(r) for r in c.fetchall()]
+
+    # Behavioural drivers (what's pushing the risk up/down) from the latest snapshot.
+    c.execute('''SELECT bd.* FROM behavioral_data bd JOIN sessions s ON s.session_id=bd.session_id
+                 WHERE s.user_id=? ORDER BY bd.id DESC LIMIT 1''', (user_id,))
+    brow = c.fetchone()
     conn.close()
+
+    drivers = []
+    if brow:
+        try:
+            drivers = _shap_explain_behavior({f: float(brow[f] or 0) for f in BEHAVIORAL_FEATURES})[:3]
+        except Exception:
+            drivers = []
 
     week_hours  = sum((s['duration_seconds'] or 0) for s in sessions) / 3600.0
     late_count  = sum(1 for s in sessions
@@ -3429,23 +3616,106 @@ def weekly_report_pdf():
         pdf.cell(0, 7, value, ln=True)
     pdf.ln(4)
 
-    # Model scores
-    if lp:
+    # Top games this week
+    games_week = {}
+    for s in sessions:
+        g = s['game_name'] or 'Unknown'
+        e = games_week.setdefault(g, [0.0, 0])
+        e[0] += (s['duration_seconds'] or 0) / 3600.0
+        e[1] += 1
+    top_games_week = sorted(games_week.items(), key=lambda kv: kv[1][0], reverse=True)[:5]
+    if top_games_week:
         pdf.set_font('Helvetica', 'B', 13)
-        pdf.cell(0, 8, 'AI Model Breakdown', ln=True)
+        pdf.cell(0, 8, 'Top Games This Week', ln=True)
         pdf.set_font('Helvetica', '', 11)
-        for label, score in [('Behavioral Score', lp['behavior_score']),
-                              ('Chat Toxicity Score', lp['chat_score']),
-                              ('Voice Emotion Score', lp['voice_score'])]:
-            # Row must fit the 170mm usable width: 70 + 70 + 20 = 160.
-            bar_w = int((score or 0) * 70)
+        for g, (hrs, cnt) in top_games_week:
             pdf.set_x(pdf.l_margin)
-            pdf.cell(70, 6, label + ':', ln=False)
-            pdf.set_fill_color(*risk_color)
-            pdf.cell(bar_w, 5, '', fill=True, ln=False)
-            pdf.set_fill_color(220,220,220)
-            pdf.cell(70-bar_w, 5, '', fill=True, ln=False)
-            pdf.cell(20, 5, f" {(score or 0)*100:.0f}%", ln=True)
+            pdf.cell(95, 6, _latin1(f"  {g}"), ln=False)
+            pdf.cell(0, 6, _latin1(f"{hrs:.1f} h  ({cnt} session{'s' if cnt != 1 else ''})"), ln=True)
+        pdf.ln(4)
+
+    # Daily activity pattern (last 7 days) — bars scaled to the busiest day.
+    pdf.set_font('Helvetica', 'B', 13)
+    pdf.cell(0, 8, 'Daily Activity Pattern', ln=True)
+    pdf.set_font('Helvetica', '', 11)
+    today_d = datetime.now().date()
+    daily, max_day = [], 0.001
+    for i in range(6, -1, -1):
+        d   = today_d - timedelta(days=i)
+        hrs = sum((s['duration_seconds'] or 0) / 3600.0
+                  for s in sessions if str(s['start_time'])[:10] == d.isoformat())
+        daily.append((d.strftime('%a %d'), hrs))
+        max_day = max(max_day, hrs)
+    for lbl, hrs in daily:
+        y = pdf.get_y()
+        pdf.set_x(pdf.l_margin)
+        pdf.cell(35, 6, lbl + ':', ln=False)
+        tx, tw = pdf.l_margin + 35, 105.0
+        pdf.set_fill_color(225, 225, 225)
+        pdf.rect(tx, y + 1.0, tw, 4.5, 'F')
+        if hrs > 0:
+            pdf.set_fill_color(33, 150, 243)
+            pdf.rect(tx, y + 1.0, tw * min(1.0, hrs / max_day), 4.5, 'F')
+        pdf.set_xy(tx + tw + 3, y)
+        pdf.cell(0, 6, f"{hrs:.1f} h", ln=True)
+    pdf.ln(4)
+
+    # AI Model Breakdown — weekly averages per channel (present-only). Bars are drawn with
+    # rect() at explicit coords because FPDF treats a 0-width cell() as "extend to the right
+    # margin", which previously made 0% (and 100%) scores render as a full-width bar.
+    pdf.set_font('Helvetica', 'B', 13)
+    pdf.cell(0, 8, 'AI Model Breakdown (weekly average)', ln=True)
+    pdf.set_font('Helvetica', '', 11)
+    for label, score in [('Behaviour', mrow.get('b')),
+                         ('Chat Toxicity', mrow.get('ch')),
+                         ('Voice Emotion', mrow.get('v'))]:
+        y = pdf.get_y()
+        pdf.set_x(pdf.l_margin)
+        pdf.cell(55, 6, label + ':', ln=False)
+        tx, tw = pdf.l_margin + 55, 95.0
+        pdf.set_fill_color(225, 225, 225)
+        pdf.rect(tx, y + 1.0, tw, 4.5, 'F')
+        if score is None:
+            pdf.set_xy(tx + tw + 3, y)
+            pdf.set_text_color(140, 140, 140)
+            pdf.cell(0, 6, 'not captured', ln=True)
+            pdf.set_text_color(33, 33, 33)
+        else:
+            s = max(0.0, min(1.0, float(score)))
+            if s > 0:
+                pdf.set_fill_color(*risk_color)
+                pdf.rect(tx, y + 1.0, tw * s, 4.5, 'F')
+            pdf.set_xy(tx + tw + 3, y)
+            pdf.cell(0, 6, f"{s * 100:.0f}%", ln=True)
+    pdf.ln(4)
+
+    # Chat & voice insights this week
+    chat_total = crow.get('total') or 0
+    chat_toxic = crow.get('toxic') or 0
+    pdf.set_font('Helvetica', 'B', 13)
+    pdf.cell(0, 8, 'Chat & Voice Insights', ln=True)
+    pdf.set_font('Helvetica', '', 11)
+    pdf.set_x(pdf.l_margin)
+    pdf.multi_cell(pdf.epw, 6, _latin1(
+        f"  Chat lines captured: {chat_total}    Flagged toxic (>={int(CHAT_ALERT_T * 100)}%): {chat_toxic}"))
+    pdf.set_x(pdf.l_margin)
+    if voice_rows:
+        emos = ", ".join(f"{r['emotion']} ({r['n']})" for r in voice_rows[:4])
+        pdf.multi_cell(pdf.epw, 6, _latin1(f"  Voice emotions detected: {emos}"))
+    else:
+        pdf.multi_cell(pdf.epw, 6, _latin1("  Voice emotions detected: none this week"))
+    pdf.ln(4)
+
+    # What's driving the risk (top behavioural factors)
+    if drivers:
+        pdf.set_font('Helvetica', 'B', 13)
+        pdf.cell(0, 8, "What's Driving the Risk", ln=True)
+        pdf.set_font('Helvetica', '', 11)
+        for d in drivers:
+            arrow = 'raises' if d.get('direction') == 'raises' else 'lowers'
+            pdf.set_x(pdf.l_margin)
+            pdf.multi_cell(pdf.epw, 6, _latin1(
+                f"  - {d['label']}: {d['value']}  ({arrow} risk, {d['contribution_pct']:.0f}% of impact)"))
         pdf.ln(4)
 
     # Recommendations

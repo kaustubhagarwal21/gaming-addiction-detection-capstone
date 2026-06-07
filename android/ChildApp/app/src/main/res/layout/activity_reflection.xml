@@ -46,6 +46,26 @@
                 android:textAppearance="@style/TextAppearance.App.BodySmall"
                 android:layout_marginTop="6dp" />
 
+            <!-- Gamified streak chip — grows each day the child checks in -->
+            <TextView
+                android:id="@+id/tvCheckinStreak"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text=""
+                android:textAppearance="@style/TextAppearance.App.Title"
+                android:textColor="@color/colorPrimary"
+                android:layout_marginTop="14dp"
+                android:visibility="gone" />
+
+            <!-- A prompt that changes daily so it never feels like the same form twice -->
+            <TextView
+                android:id="@+id/tvPrompt"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text=""
+                android:textAppearance="@style/TextAppearance.App.Body"
+                android:layout_marginTop="6dp" />
+
             <!-- MOOD -->
             <com.google.android.material.card.MaterialCardView
                 android:layout_width="match_parent"

@@ -70,15 +70,23 @@ class ChatAnalysisActivity : AppCompatActivity() {
                     // Real toxicity distribution + a few recent samples
                     val sb = StringBuilder()
                     if (tox != null) {
-                        sb.append("Recent messages: 🔴 ${tox.high} concerning · 🟡 ${tox.medium} borderline · 🟢 ${tox.safe} clean\n\n")
+                        sb.append("Recent messages: 🔴 ${tox.high} concerning · 🟡 ${tox.medium} borderline · 🟢 ${tox.safe} clean\n")
                     }
+                    // Show how the recent sample splits between text the child actually
+                    // typed in-game and speech that was transcribed to text, so the parent
+                    // can tell real chat apart from voice-to-text.
+                    val voiceCount = recent.count { isVoice(it.source) }
+                    val typedCount = recent.size - voiceCount
+                    sb.append("Channel mix: ⌨️ $typedCount typed · 🎙️ $voiceCount voice\n\n")
+
                     val flagged = recent.filter { (it.confidence ?: 0.0) > 0.3 }.take(5)
                     if (flagged.isNotEmpty()) {
                         sb.append("Flagged samples:\n")
                         flagged.forEach { m ->
                             val pct = "%.0f".format((m.confidence ?: 0.0) * 100)
                             val msg = (m.message ?: "").let { if (it.length > 50) it.take(47) + "…" else it }
-                            sb.append("• \"$msg\" ($pct%)\n")
+                            // Tag each line with its origin: ⌨️ typed chat vs 🎙️ voice-to-text.
+                            sb.append("• ${sourceLabel(m.source)} \"$msg\" ($pct%)\n")
                         }
                     } else {
                         sb.append("No concerning messages in the recent sample.")
@@ -96,6 +104,13 @@ class ChatAnalysisActivity : AppCompatActivity() {
             }
         }
     }
+
+    /** A line transcribed from the child's speech (Vosk STT) vs typed in-game text. */
+    private fun isVoice(source: String?): Boolean = source?.lowercase() == "voice_stt"
+
+    /** Short tag so the parent can tell typed chat apart from voice-to-text. */
+    private fun sourceLabel(source: String?): String =
+        if (isVoice(source)) "🎙️ Voice" else "⌨️ Typed"
 
     private fun buildKeywordGuidance(risk: String): String = when (risk.lowercase()) {
         "addicted" -> """

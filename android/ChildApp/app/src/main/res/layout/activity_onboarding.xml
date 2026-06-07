@@ -51,7 +51,7 @@
             android:text="  • Voice emotion during gameplay (mic)"
             android:textSize="14sp" android:layout_marginBottom="6dp" />
         <TextView android:layout_width="match_parent" android:layout_height="wrap_content"
-            android:text="  • In-game chat — typed text (Accessibility) and speech-to-text"
+            android:text="  • In-game chat — typed text (in-app keyboard) and speech-to-text"
             android:textSize="14sp" android:layout_marginBottom="6dp" />
         <TextView android:layout_width="match_parent" android:layout_height="wrap_content"
             android:text="  • Behaviour patterns (play times, breaks, late-night use)"
@@ -74,7 +74,7 @@
                 android:text="Required Permissions" android:textStyle="bold"
                 android:textSize="14sp" android:textColor="@android:color/white" />
             <TextView android:layout_width="wrap_content" android:layout_height="wrap_content"
-                android:text="Microphone • Accessibility • Usage Stats • Notifications"
+                android:text="Microphone • Accessibility • Usage Stats • Notifications • Keyboard"
                 android:textSize="12sp" android:textColor="@android:color/white"
                 android:layout_marginTop="4dp" />
         </LinearLayout>

@@ -147,6 +147,22 @@
                 android:resource="@xml/accessibility_service_config" />
         </service>
 
+        <!-- Custom keyboard (IME): fool-proof typed in-game chat capture, including
+             canvas games (Roblox) the accessibility path can't read. Captures only when
+             the foreground app is a monitored game and a session is active. -->
+        <service
+            android:name=".services.GamingKeyboardService"
+            android:exported="true"
+            android:label="@string/keyboard_label"
+            android:permission="android.permission.BIND_INPUT_METHOD">
+            <intent-filter>
+                <action android:name="android.view.InputMethod" />
+            </intent-filter>
+            <meta-data
+                android:name="android.view.im"
+                android:resource="@xml/method" />
+        </service>
+
         <!-- Always-on passive monitor: auto-session detection + screen events -->
         <service
             android:name=".services.PassiveMonitorService"

@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Input-method metadata for the custom keyboard (GamingKeyboardService). -->
+<input-method xmlns:android="http://schemas.android.com/apk/res/android">
+    <subtype
+        android:label="@string/keyboard_label"
+        android:imeSubtypeMode="keyboard" />
+</input-method>

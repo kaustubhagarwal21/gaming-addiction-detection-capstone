@@ -18,6 +18,9 @@ interface ApiService {
     @GET("api/dashboard/parent")
     suspend fun getParentalDashboard(@Query("user_id") userId: Int): Response<ParentalDashboard>
 
+    @GET("api/parent/children")
+    suspend fun getChildren(): Response<ChildrenResponse>
+
     @GET("api/alerts")
     suspend fun getAlerts(@Query("user_id") userId: Int): Response<AlertsResponse>
 

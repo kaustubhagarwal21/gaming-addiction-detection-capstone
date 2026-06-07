@@ -210,6 +210,17 @@ class ParentalDashboardActivity : AppCompatActivity() {
             .replaceFirstChar { it.uppercase() })
         binding.tvRiskScore.text    = "${"%.0f".format(score * 100)}%"
 
+        // The headline is a per-day roll-up — say so, so a 2-hour day and a 2-minute day
+        // aren't read as the same "current risk".
+        val period = dash.riskPeriod
+        if (period?.label != null) {
+            val n = period.sessions ?: 0
+            binding.tvRiskPeriod.text = "${period.label} · $n ${if (n == 1) "session" else "sessions"}"
+            binding.tvRiskPeriod.visibility = View.VISIBLE
+        } else {
+            binding.tvRiskPeriod.visibility = View.GONE
+        }
+
         val color = when (risk.lowercase()) {
             "casual"   -> getColor(R.color.risk_low)
             "at_risk"  -> getColor(R.color.risk_medium)
@@ -237,7 +248,7 @@ class ParentalDashboardActivity : AppCompatActivity() {
         binding.btnAlerts.text = if (unreadCount > 0) "Alerts ($unreadCount)" else "Alerts"
 
         dash.trendData?.let { setupTrendChart(it, animate) }
-        dash.topGames?.let  { setupTopGamesText(it) }
+        dash.topGames?.let  { setupTopGamesText(it, dash.recentGames) }
 
         val rec = dash.recommendations ?: emptyList()
         if (rec.isNotEmpty()) {
@@ -309,7 +320,9 @@ class ParentalDashboardActivity : AppCompatActivity() {
             if (sig != null) {
                 fun mark(b: Boolean?) = if (b == true) "✓ analysed" else "— not captured"
                 if (sb.isNotEmpty()) sb.append("\n")
-                sb.append("Signals used for this score:\n")
+                val sigHdr = dash.riskPeriod?.label?.let { "Signals analysed ($it):" }
+                    ?: "Signals used for this score:"
+                sb.append("$sigHdr\n")
                 sb.append("• Behaviour: ${mark(sig.behavior)}\n")
                 sb.append("• Chat: ${mark(sig.chat)}\n")
                 sb.append("• Voice: ${mark(sig.voice)}\n")
@@ -460,11 +473,30 @@ class ParentalDashboardActivity : AppCompatActivity() {
         }
     }
 
-    private fun setupTopGamesText(topGames: List<com.pes.parentmonitor.api.TopGame>) {
-        if (topGames.isEmpty()) { binding.tvTopGames.text = "No game data yet"; return }
+    private fun setupTopGamesText(
+        topGames: List<com.pes.parentmonitor.api.TopGame>,
+        recentGames: List<com.pes.parentmonitor.api.RecentGame>?
+    ) {
         val sb = StringBuilder()
-        topGames.take(5).forEachIndexed { i, g ->
-            sb.append("${i + 1}. ${g.game} — ${"%.1f".format(g.hours)} hrs (${g.sessions} sessions)\n")
+        if (topGames.isEmpty()) {
+            sb.append("No game data yet")
+        } else {
+            sb.append("Most played (by hours):\n")
+            topGames.take(5).forEachIndexed { i, g ->
+                sb.append("${i + 1}. ${g.game} — ${"%.1f".format(g.hours)} hrs (${g.sessions} sessions)\n")
+            }
+        }
+        // Recently played surfaces brand-new / short sessions that rank below the top-5.
+        val recent = recentGames.orEmpty().filter { !it.game.isNullOrBlank() }
+        if (recent.isNotEmpty()) {
+            sb.append("\nRecently played:\n")
+            recent.take(5).forEach { g ->
+                val mins = g.minutes ?: 0.0
+                val played = mins.let {
+                    if (it >= 60) "${"%.1f".format(it / 60)} hrs" else "${it.toInt()} min"
+                }
+                sb.append("• ${g.game} — $played total\n")
+            }
         }
         binding.tvTopGames.text = sb.toString().trimEnd()
     }
@@ -476,10 +508,7 @@ class ParentalDashboardActivity : AppCompatActivity() {
 
     override fun onOptionsItemSelected(item: MenuItem): Boolean = when (item.itemId) {
         R.id.action_switch_child -> {
-            prefs.childUserId = -1
-            prefs.childName   = ""
-            startActivity(Intent(this, LoginActivity::class.java))
-            finishAffinity()
+            switchChild()
             true
         }
         R.id.action_settings -> {
@@ -493,5 +522,42 @@ class ParentalDashboardActivity : AppCompatActivity() {
             true
         }
         else -> super.onOptionsItemSelected(item)
+    }
+
+    /** Switch to another child in the same family WITHOUT re-entering the family code —
+     *  the bearer token already authorizes the family's children. */
+    private fun switchChild() {
+        lifecycleScope.launch {
+            val list = try {
+                val resp = ApiClient.getInstance(prefs.serverUrl).getChildren()
+                if (resp.isSuccessful) resp.body()?.children.orEmpty() else emptyList()
+            } catch (e: Exception) { emptyList() }
+            when {
+                list.isEmpty() ->
+                    Toast.makeText(this@ParentalDashboardActivity,
+                        "Couldn't load your children", Toast.LENGTH_SHORT).show()
+                list.size == 1 ->
+                    Toast.makeText(this@ParentalDashboardActivity,
+                        "This family has only one child", Toast.LENGTH_SHORT).show()
+                else -> {
+                    val names = list.map { c ->
+                        if (c.userId == prefs.childUserId) "${c.name}  ✓" else c.name
+                    }.toTypedArray()
+                    AlertDialog.Builder(this@ParentalDashboardActivity)
+                        .setTitle("Switch child")
+                        .setItems(names) { _, which ->
+                            val chosen = list[which]
+                            if (chosen.userId != prefs.childUserId) {
+                                prefs.childUserId = chosen.userId
+                                prefs.childName   = chosen.name
+                                binding.tvChildName.text = chosen.name
+                                loadDashboard()
+                            }
+                        }
+                        .setNegativeButton("Cancel", null)
+                        .show()
+                }
+            }
+        }
     }
 }

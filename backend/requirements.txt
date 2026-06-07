@@ -13,4 +13,5 @@ anthropic==0.39.0
 flask-limiter==3.8.0
 sentry-sdk[flask]==2.14.0
 psycopg2-binary==2.9.9
+firebase-admin==6.5.0
 pytest==7.4.3

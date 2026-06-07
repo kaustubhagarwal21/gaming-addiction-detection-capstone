@@ -62,6 +62,15 @@ class PrefsManager(context: Context) {
         get() = prefs.getBoolean("consent_done", false)
         set(v) = prefs.edit().putBoolean("consent_done", v).apply()
 
+    // Daily check-in gamification (local): a streak the child grows by checking in each day.
+    var checkinStreak: Int
+        get() = prefs.getInt("checkin_streak", 0)
+        set(v) = prefs.edit().putInt("checkin_streak", v).apply()
+
+    var lastCheckinDate: String
+        get() = prefs.getString("last_checkin_date", "") ?: ""
+        set(v) = prefs.edit().putString("last_checkin_date", v).apply()
+
     // Policy version the user actually agreed to. When the shipped CONSENT_VERSION
     // is newer than this, consent is requested again (the policy materially changed).
     var consentVersion: String

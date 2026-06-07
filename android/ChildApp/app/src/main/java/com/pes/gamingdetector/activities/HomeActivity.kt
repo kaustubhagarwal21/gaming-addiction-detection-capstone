@@ -15,6 +15,7 @@ import android.view.Menu
 import android.view.MenuItem
 import android.view.View
 import android.view.ViewGroup
+import android.view.inputmethod.InputMethodManager
 import android.widget.TextView
 import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts
@@ -51,10 +52,21 @@ class HomeActivity : AppCompatActivity() {
     ) { _ -> checkRequiredPermissions() }
 
     private val uiHandler = Handler(Looper.getMainLooper())
+    private val TODAY_REFRESH_MS = 20_000L      // how often Home re-pulls today's snapshot
     private val bannerRefresh = object : Runnable {
         override fun run() {
             refreshBanner()
             uiHandler.postDelayed(this, 3_000L)
+        }
+    }
+
+    // Re-pull today's snapshot periodically (incl. a freshly parent-set limit) so the home
+    // screen updates on its own — previously it only refreshed in onResume(), so a limit
+    // change showed up only after navigating away and back.
+    private val todayRefresh = object : Runnable {
+        override fun run() {
+            loadToday()
+            uiHandler.postDelayed(this, TODAY_REFRESH_MS)
         }
     }
 
@@ -99,6 +111,7 @@ class HomeActivity : AppCompatActivity() {
         refreshBanner()
         loadToday()
         uiHandler.postDelayed(bannerRefresh, 3_000L)
+        uiHandler.postDelayed(todayRefresh, TODAY_REFRESH_MS)
         if (consentCurrent()) checkRequiredPermissions()
     }
 
@@ -113,21 +126,27 @@ class HomeActivity : AppCompatActivity() {
                     val played = b.playedTodayHours ?: 0.0
                     val goal   = (b.dailyGoalHours ?: 2.0).coerceAtLeast(0.1)
                     val over   = b.goalIsParentSet == true && played >= goal
-                    binding.tvTodayHours.text = "${"%.1f".format(played)}h played today"
-                    binding.todayProgress.progress = ((played / goal) * 100).toInt().coerceIn(0, 100)
-                    binding.tvTodayGoal.text = when {
+                    // Only touch a view when its value actually changed, so the periodic
+                    // refresh leaves the screen perfectly still unless something updated
+                    // (e.g. a freshly parent-set limit) — no flicker / jitter.
+                    fun upd(tv: TextView, s: String) { if (tv.text?.toString() != s) tv.text = s }
+
+                    upd(binding.tvTodayHours, "${"%.1f".format(played)}h played today")
+                    val pct = ((played / goal) * 100).toInt().coerceIn(0, 100)
+                    if (binding.todayProgress.progress != pct) binding.todayProgress.progress = pct
+                    upd(binding.tvTodayGoal, when {
                         over                      -> "Over your ${"%.1f".format(goal)}h limit — time for a break"
                         b.goalIsParentSet == true -> "of your ${"%.1f".format(goal)}h daily limit"
                         else                      -> "of a healthy ~${"%.1f".format(goal)}h a day"
-                    }
+                    })
                     binding.tvTodayGoal.setTextColor(
                         getColor(if (over) R.color.risk_high else R.color.text_secondary))
                     val streak = b.streak?.currentStreak ?: 0
-                    binding.tvStreak.text = if (streak > 0)
+                    upd(binding.tvStreak, if (streak > 0)
                         "🔥 $streak-day healthy streak"
                     else
-                        "🌱 Stay under your goal to start a healthy streak"
-                    binding.tvSelfAwareness.text = b.selfAwarenessMessage ?: ""
+                        "🌱 Stay under your goal to start a healthy streak")
+                    upd(binding.tvSelfAwareness, b.selfAwarenessMessage ?: "")
                 }
             } catch (_: Exception) { /* offline — keep last values */ }
         }
@@ -232,6 +251,7 @@ class HomeActivity : AppCompatActivity() {
     override fun onPause() {
         super.onPause()
         uiHandler.removeCallbacks(bannerRefresh)
+        uiHandler.removeCallbacks(todayRefresh)
     }
 
     override fun onDestroy() {
@@ -300,7 +320,18 @@ class HomeActivity : AppCompatActivity() {
             )
             !isNotificationListenerEnabled() -> showNotifListenerDialog()
             !isAccessibilityEnabled() -> showAccessibilityDialog()
+            !isCustomKeyboardEnabled() -> showKeyboardEnableDialog()
+            !isCustomKeyboardSelected() -> showKeyboardSelectDialog()
             else -> dismissPermDialog()   // everything granted → close any lingering box
+        }
+    }
+
+    /** Advance the permission chain to whichever keyboard step is still outstanding. */
+    private fun advanceToKeyboardStep() {
+        when {
+            !isCustomKeyboardEnabled() -> showKeyboardEnableDialog()
+            !isCustomKeyboardSelected() -> showKeyboardSelectDialog()
+            else -> dismissPermDialog()
         }
     }
 
@@ -323,8 +354,34 @@ class HomeActivity : AppCompatActivity() {
             title = "Allow Accessibility Access",
             message = "Captures chat messages sent during gaming sessions to detect toxic language and emotional stress.\n\nTap 'Open Settings', find 'GamingDetector', and toggle it ON.",
             settingsIntent = Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS),
-            onSkip = null
+            onSkip = { advanceToKeyboardStep() }
         )
+    }
+
+    private fun showKeyboardEnableDialog() {
+        showPermissionDialog(
+            title = "Enable the Wellbeing Keyboard",
+            message = "Some games (like Roblox) draw their chat box inside the game itself, where other tools can't read it. This app's own keyboard captures what's typed there reliably — and only the child's own typing, never other players' messages.\n\nTap 'Open Settings', then turn ON 'Gaming Wellbeing Keyboard'.",
+            settingsIntent = Intent(Settings.ACTION_INPUT_METHOD_SETTINGS),
+            onSkip = { if (!isCustomKeyboardSelected()) showKeyboardSelectDialog() else dismissPermDialog() }
+        )
+    }
+
+    private fun showKeyboardSelectDialog() {
+        if (isFinishing || isDestroyed) return
+        permDialog?.dismiss()
+        permDialog = AlertDialog.Builder(this)
+            .setTitle("Switch to the Wellbeing Keyboard")
+            .setMessage("Almost done — now set it as the active keyboard so typed in-game chat is captured.\n\nTap 'Choose Keyboard' and pick 'Gaming Wellbeing Keyboard'.")
+            .setCancelable(false)
+            .setPositiveButton("Choose Keyboard") { _, _ ->
+                try {
+                    (getSystemService(Context.INPUT_METHOD_SERVICE) as InputMethodManager)
+                        .showInputMethodPicker()
+                } catch (_: Exception) {}
+            }
+            .setNegativeButton("Skip") { _, _ -> dismissPermDialog() }
+            .show()
     }
 
     private fun showPermissionDialog(
@@ -375,6 +432,22 @@ class HomeActivity : AppCompatActivity() {
             Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES
         ) ?: return false
         return flat.contains(packageName, ignoreCase = true)
+    }
+
+    /** Our custom keyboard is in the device's list of enabled input methods. */
+    private fun isCustomKeyboardEnabled(): Boolean {
+        val enabled = Settings.Secure.getString(
+            contentResolver, Settings.Secure.ENABLED_INPUT_METHODS
+        ) ?: return false
+        return enabled.contains(packageName, ignoreCase = true)
+    }
+
+    /** Our custom keyboard is the currently-selected (active) input method. */
+    private fun isCustomKeyboardSelected(): Boolean {
+        val default = Settings.Secure.getString(
+            contentResolver, Settings.Secure.DEFAULT_INPUT_METHOD
+        ) ?: return false
+        return default.contains(packageName, ignoreCase = true)
     }
 
     private inner class GameAdapter(

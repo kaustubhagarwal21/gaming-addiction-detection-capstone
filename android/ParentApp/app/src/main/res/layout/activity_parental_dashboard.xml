@@ -119,6 +119,16 @@
                                 android:textColor="#DBE4FF"
                                 android:textSize="18sp" />
 
+                            <TextView
+                                android:id="@+id/tvRiskPeriod"
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:text=""
+                                android:textColor="#DBE4FF"
+                                android:textSize="13sp"
+                                android:layout_marginTop="2dp"
+                                android:visibility="gone" />
+
                             <View
                                 android:layout_width="match_parent"
                                 android:layout_height="1dp"

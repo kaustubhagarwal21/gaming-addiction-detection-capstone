@@ -12,6 +12,13 @@ data class ChildInfo(
     val name: String,
     val age: Int?
 )
+
+// Returned by GET /api/parent/children — the family's children, for switching without
+// re-entering the family code (the bearer token already authorizes them).
+data class ChildrenResponse(
+    val success: Boolean,
+    val children: List<ChildInfo>?
+)
 data class LoginResponse(
     val success: Boolean,
     @SerializedName("user_id") val userId: Int,
@@ -77,6 +84,7 @@ data class ParentalDashboard(
     val alerts: List<Alert>?,
     @SerializedName("trend_data") val trendData: List<TrendPoint>?,
     @SerializedName("top_games") val topGames: List<TopGame>?,
+    @SerializedName("recent_games") val recentGames: List<RecentGame>?,
     @SerializedName("total_hours_week") val totalHoursWeek: Double?,
     @SerializedName("late_night_count") val lateNightCount: Int?,
     @SerializedName("recommendations") val recommendations: List<String>?,
@@ -90,7 +98,16 @@ data class ParentalDashboard(
     val streak: StreakData?,
     @SerializedName("parent_set_limit") val parentSetLimit: Double?,
     @SerializedName("top_anomaly") val topAnomaly: AnomalyInfo?,
-    @SerializedName("latest_signals") val latestSignals: SignalAvailability?
+    @SerializedName("latest_signals") val latestSignals: SignalAvailability?,
+    // The headline risk is a per-day roll-up; this says which day and how many sessions.
+    @SerializedName("risk_period") val riskPeriod: RiskPeriod?
+)
+
+// Describes the day the headline risk aggregates over: "Today" / "Yesterday" / "Jun 03".
+data class RiskPeriod(
+    val label: String?,
+    val date: String?,
+    val sessions: Int?
 )
 
 // Which of the three signals were actually captured for the latest scored session.
@@ -130,6 +147,15 @@ data class TopGame(
     val game: String,
     val hours: Double,
     val sessions: Int
+)
+
+// Distinct games ordered by most-recently-played, so a just-played short session shows
+// even if its cumulative hours rank below the top-5 leaderboard.
+data class RecentGame(
+    val game: String,
+    @SerializedName("last_played") val lastPlayed: String?,
+    val sessions: Int,
+    val minutes: Double?
 )
 
 data class HealthResponse(
@@ -239,6 +265,8 @@ data class ToxicityDistribution(
 data class ChatMessageSample(
     val message: String?,
     val confidence: Double?,
+    // 'keyboard'/'ocr' = typed in-game text; 'voice_stt' = transcribed from speech.
+    val source: String?,
     val timestamp: String?,
     @SerializedName("game_name") val gameName: String?
 )

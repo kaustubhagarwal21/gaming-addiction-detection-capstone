@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "813181768440",
+    "project_id": "mindfulplay-5c998",
+    "storage_bucket": "mindfulplay-5c998.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:813181768440:android:8b14581f8250ddb838210d",
+        "android_client_info": {
+          "package_name": "com.pes.parentmonitor"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDS_YOwpz3bkUK3HxF7YFqte3Lxj4teA94"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

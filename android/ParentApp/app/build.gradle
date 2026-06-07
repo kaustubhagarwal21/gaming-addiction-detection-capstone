@@ -1,10 +1,8 @@
 plugins {
     id 'com.android.application'
     id 'org.jetbrains.kotlin.android'
-    // FCM SETUP: 1) Create Firebase project at console.firebase.google.com
-    //            2) Add Android app → download google-services.json → place in app/ folder
-    //            3) Uncomment the line below
-    // id 'com.google.gms.google-services'
+    // FCM: reads app/google-services.json (Firebase project mindfulplay-5c998).
+    id 'com.google.gms.google-services'
 }
 
 // Release signing — credentials live in keystore.properties (gitignored). If it's
