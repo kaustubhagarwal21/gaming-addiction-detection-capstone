@@ -56,14 +56,9 @@ try:
 except ImportError:
     _limiter_real = False
 
-# Optional Firebase Admin SDK for push notifications
-try:
-    import firebase_admin
-    from firebase_admin import credentials as fb_creds
-    from firebase_admin import messaging as fb_messaging
-    FIREBASE_SDK = True
-except ImportError:
-    FIREBASE_SDK = False
+# Firebase Admin SDK is imported LAZILY (see _ensure_firebase) — it pulls in grpc, which
+# is memory-heavy, and importing it at boot can OOM the 512 MB free tier. Nothing is loaded
+# until the first push actually fires; until then alerts are delivered by polling.
 
 # ─────────────────────────── APP SETUP ───────────────────────────
 
@@ -225,27 +220,42 @@ def guard_session(sid):
 #      no file to mount), or
 #   2) backend/firebase_key.json on disk (best for local/dev; gitignored).
 # Until one is provided, push stays dormant and alerts are delivered by polling.
-FIREBASE_KEY  = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'firebase_key.json')
-_firebase_app = None
+FIREBASE_KEY    = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'firebase_key.json')
+_firebase_app   = None
+_firebase_msg   = None     # firebase_admin.messaging module, imported on first use
+_firebase_tried = False    # remember a failed/credential-less init so we don't retry per push
 
-def _init_firebase():
-    global _firebase_app
-    if not FIREBASE_SDK or _firebase_app is not None:
-        return
+
+def _ensure_firebase() -> bool:
+    """Import + initialise the Firebase Admin SDK on FIRST use (not at boot — grpc is
+    memory-heavy and OOMs the free tier). Returns True if push is usable."""
+    global _firebase_app, _firebase_msg, _firebase_tried
+    if _firebase_app is not None:
+        return True
+    if _firebase_tried:
+        return False
+    _firebase_tried = True
     try:
+        import firebase_admin                                   # heavy import, deferred
+        from firebase_admin import credentials as fb_creds
+        from firebase_admin import messaging as fb_messaging
         cred     = None
         key_json = os.environ.get('FIREBASE_KEY_JSON', '').strip()
         if key_json:
             cred = fb_creds.Certificate(json.loads(key_json))
         elif os.path.exists(FIREBASE_KEY):
             cred = fb_creds.Certificate(FIREBASE_KEY)
-        if cred is not None:
-            _firebase_app = firebase_admin.initialize_app(cred)
-            logging.getLogger(__name__).info("Firebase Admin SDK initialised")
+        if cred is None:
+            logging.getLogger(__name__).info("Firebase credential not set — push disabled "
+                                             "(polling still delivers alerts)")
+            return False
+        _firebase_app = firebase_admin.initialize_app(cred)
+        _firebase_msg = fb_messaging
+        logging.getLogger(__name__).info("Firebase Admin SDK initialised (lazy)")
+        return True
     except Exception as exc:
         logging.getLogger(__name__).warning(f"Firebase init failed: {exc}")
-
-_init_firebase()
+        return False
 
 BASE_DIR    = os.path.dirname(os.path.abspath(__file__))
 # Env-overridable so the test suite can point at an isolated throwaway DB
@@ -1644,15 +1654,15 @@ def _update_streak(user_id: int, weekly_hours: float, risk_level: str) -> dict:
 def _send_fcm_push(token: str, title: str, body: str) -> str:
     """Send a Firebase Cloud Messaging push to a single device token.
     Returns: 'ok' | 'invalid' (token dead → caller should prune) | 'skip' | 'error'."""
-    if not FIREBASE_SDK or _firebase_app is None or not token:
+    if not token or not _ensure_firebase():     # lazily imports/inits Firebase on first push
         return 'skip'
     try:
-        msg = fb_messaging.Message(
-            notification=fb_messaging.Notification(title=title, body=body),
+        msg = _firebase_msg.Message(
+            notification=_firebase_msg.Notification(title=title, body=body),
             data={'type': 'risk_alert'},
             token=token,
         )
-        fb_messaging.send(msg)
+        _firebase_msg.send(msg)
         logger.info("FCM push sent")
         return 'ok'
     except Exception as exc:
