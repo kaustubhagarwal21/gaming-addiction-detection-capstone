@@ -46,6 +46,9 @@ class ParentalDashboardActivity : AppCompatActivity() {
             uiHandler.postDelayed(this, 30_000L)
         }
     }
+    // Last payload actually rendered — a silent tick that returns identical data is a no-op,
+    // so the screen (and the chart) stays perfectly still unless something really changed.
+    private var lastDash: ParentalDashboard? = null
 
     private val notifPermLauncher = registerForActivityResult(
         ActivityResultContracts.RequestPermission()
@@ -174,7 +177,12 @@ class ParentalDashboardActivity : AppCompatActivity() {
                 val api  = ApiClient.getInstance(prefs.serverUrl)
                 val resp = api.getParentalDashboard(prefs.childUserId)
                 if (resp.isSuccessful && resp.body()?.success == true) {
-                    renderDashboard(resp.body()!!, animate = !silent)
+                    val body = resp.body()!!
+                    // On a silent background tick, if nothing changed, leave the UI entirely
+                    // untouched (no re-render, no chart rebuild) — the dashboard stays still.
+                    if (silent && body == lastDash) return@launch
+                    lastDash = body
+                    renderDashboard(body, animate = !silent)
                 }
             } catch (e: Exception) {
                 // Don't interrupt the user with a toast on a silent background tick.
