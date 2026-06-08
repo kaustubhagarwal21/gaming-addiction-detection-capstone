@@ -12,6 +12,19 @@ interface ApiService {
     @POST("api/user/login")
     suspend fun login(@Body request: LoginRequest): Response<LoginResponse>
 
+    // Liveness ping so the server can flag the parent if monitoring goes silent
+    // (uninstalled / force-stopped / killed / offline).
+    @POST("api/child/heartbeat")
+    suspend fun heartbeat(@Body body: Map<String, Int>): Response<GenericResponse>
+
+    // Report a child-initiated tamper event (e.g. logout) so the parent is alerted.
+    @POST("api/child/tamper")
+    suspend fun reportTamper(@Body body: @JvmSuppressWildcards Map<String, Any>): Response<GenericResponse>
+
+    // Verify the family parent PIN to unlock logout/settings (checked server-side).
+    @POST("api/verify_parent_pin")
+    suspend fun verifyParentPin(@Body body: @JvmSuppressWildcards Map<String, Any>): Response<VerifyPinResponse>
+
     @POST("api/register")
     suspend fun register(@Body request: RegisterRequest): Response<LoginResponse>
 

@@ -11,6 +11,8 @@ import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
 import android.provider.Settings
+import android.text.InputType
+import android.widget.EditText
 import android.view.Menu
 import android.view.MenuItem
 import android.view.View
@@ -276,14 +278,49 @@ class HomeActivity : AppCompatActivity() {
 
     override fun onOptionsItemSelected(item: MenuItem): Boolean = when (item.itemId) {
         R.id.action_settings -> {
-            startActivity(Intent(this, SettingsActivity::class.java))
+            requireParentPin("open settings") {
+                startActivity(Intent(this, SettingsActivity::class.java))
+            }
             true
         }
         R.id.action_logout -> {
-            logoutChild()
+            requireParentPin("log out") { logoutChild() }
             true
         }
         else -> super.onOptionsItemSelected(item)
+    }
+
+    /** Gate a sensitive action (logout / settings) behind the family parent PIN, verified
+     *  server-side — the child never knows the PIN, so they can't quietly stop monitoring. */
+    private fun requireParentPin(action: String, onSuccess: () -> Unit) {
+        val input = EditText(this).apply {
+            inputType = InputType.TYPE_CLASS_NUMBER or InputType.TYPE_NUMBER_VARIATION_PASSWORD
+            hint = "Parent PIN"
+        }
+        AlertDialog.Builder(this)
+            .setTitle("Parent PIN required")
+            .setMessage("Ask your parent to enter their PIN to $action.")
+            .setView(input)
+            .setCancelable(false)
+            .setPositiveButton("Unlock") { _, _ ->
+                val pin = input.text?.toString()?.trim().orEmpty()
+                if (pin.isEmpty()) {
+                    Toast.makeText(this, "Enter the parent PIN", Toast.LENGTH_SHORT).show()
+                    return@setPositiveButton
+                }
+                lifecycleScope.launch {
+                    val ok = try {
+                        val resp = ApiClient.getInstance(prefs.serverUrl)
+                            .verifyParentPin(mapOf("user_id" to prefs.userId, "pin" to pin))
+                        resp.isSuccessful && resp.body()?.valid == true
+                    } catch (_: Exception) { false }
+                    if (ok) onSuccess()
+                    else Toast.makeText(this@HomeActivity,
+                        "Incorrect parent PIN", Toast.LENGTH_SHORT).show()
+                }
+            }
+            .setNegativeButton("Cancel", null)
+            .show()
     }
 
     /** Sign out cleanly: stop the monitoring services and close any open server
@@ -295,9 +332,17 @@ class HomeActivity : AppCompatActivity() {
         stopService(Intent(this, GameMonitorService::class.java))
         stopService(Intent(this, VoiceRecorderService::class.java))
         val sid = prefs.activeSessionId
+        val uid = prefs.userId          // capture before logout() clears it
         lifecycleScope.launch {
             if (sid != -1) {
                 try { ApiClient.getInstance(prefs.serverUrl).endSession(sid) } catch (_: Exception) {}
+            }
+            // Tell the parent the child signed out — while the token is still valid.
+            if (uid != -1) {
+                try {
+                    ApiClient.getInstance(prefs.serverUrl)
+                        .reportTamper(mapOf("user_id" to uid, "event" to "logout"))
+                } catch (_: Exception) {}
             }
             prefs.logout()
             startActivity(Intent(this@HomeActivity, LoginActivity::class.java))

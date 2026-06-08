@@ -439,6 +439,10 @@ RISK_T2 = 0.67   # below → at_risk (some concern); at/above → addicted (high
 CHAT_ALERT_T      = 0.75   # at/above → raise a toxicity alert
 CHAT_ALERT_HIGH_T = 0.85   # at/above → mark that alert 'high' severity (else 'medium')
 
+# Tamper watchdog: child app heartbeats ~every 5 min; if the server hasn't heard from it
+# for this long, flag it to the parent (uninstalled / force-stopped / killed / offline).
+HEARTBEAT_SILENT_MIN = 15
+
 
 def risk_category(score: float) -> str:
     """Map a fused 0..1 risk score to its band using the shared cutoffs."""
@@ -768,6 +772,10 @@ def init_db():
     # new families get a generated code so two families sharing a parent PIN can't
     # collide — the parent logs in with code + PIN.
     add_column(c, 'users', 'family_code',       'TEXT DEFAULT NULL')
+    # Tamper/uninstall detection: the child app heartbeats periodically; the server flags a
+    # sustained silence (uninstalled / force-stopped / killed / offline) to the parent.
+    add_column(c, 'users', 'last_seen',         'TEXT DEFAULT NULL')      # last child heartbeat (ISO)
+    add_column(c, 'users', 'offline_alerted',   'INTEGER DEFAULT 0')      # one alert per outage
 
     # Which signals actually fed each prediction. NULL on legacy rows ("unknown");
     # new predictions write explicit 1/0 so the UI can distinguish "captured and
@@ -2938,6 +2946,86 @@ def chat_analysis_dashboard():
     })
 
 
+def _check_heartbeat(c, user_id):
+    """If the child app has gone silent past the threshold, raise ONE 'offline' alert to the
+    parent (covers uninstall / force-stop / killed-from-recents / offline). Caller commits.
+    Best-effort: never raises into the request."""
+    try:
+        c.execute("SELECT last_seen, offline_alerted, name FROM users WHERE user_id=?", (user_id,))
+        row = c.fetchone()
+        if not row or not row['last_seen']:
+            return                  # never heartbeated (old app / not set up yet) — nothing to judge
+        last = datetime.fromisoformat(str(row['last_seen']).replace(' ', 'T').split('+')[0].split('Z')[0])
+        silent_min = (datetime.now() - last).total_seconds() / 60.0
+        if silent_min >= HEARTBEAT_SILENT_MIN and not row['offline_alerted']:
+            nm = row['name'] or 'Your child'
+            c.execute("INSERT INTO alerts (user_id, type, message, severity) VALUES (?,?,?,?)",
+                      (user_id, 'offline',
+                       f"{nm}'s monitoring app hasn't checked in for {int(silent_min)} min — it may be "
+                       f"offline, powered off, or have been closed/uninstalled.", 'high'))
+            c.execute("UPDATE users SET offline_alerted=1 WHERE user_id=?", (user_id,))
+    except Exception as e:
+        logger.warning(f"heartbeat check skipped: {e}")
+
+
+@app.route('/api/child/heartbeat', methods=['POST'])
+def child_heartbeat():
+    """Child app liveness ping (~every 5 min). Re-arms the watchdog for the next outage."""
+    data = request.get_json() or {}
+    uid  = data.get('user_id')
+    deny = guard(uid)
+    if deny: return deny
+    conn = get_db()
+    c    = conn.cursor()
+    c.execute("UPDATE users SET last_seen=?, offline_alerted=0 WHERE user_id=?",
+              (datetime.now().isoformat(), int(uid)))
+    conn.commit()
+    conn.close()
+    return jsonify({'success': True})
+
+
+@app.route('/api/child/tamper', methods=['POST'])
+def child_tamper():
+    """A child-initiated event the parent should know about (currently: logout)."""
+    data  = request.get_json() or {}
+    uid   = data.get('user_id')
+    event = str(data.get('event', '')).strip()
+    deny  = guard(uid)
+    if deny: return deny
+    messages = {'logout': "logged out of the monitoring app"}
+    if event not in messages:
+        return jsonify({'success': False, 'message': 'unknown event'}), 400
+    conn = get_db()
+    c    = conn.cursor()
+    c.execute("SELECT name FROM users WHERE user_id=?", (int(uid),))
+    r  = c.fetchone()
+    nm = r['name'] if (r and r['name']) else 'Your child'
+    c.execute("INSERT INTO alerts (user_id, type, message, severity) VALUES (?,?,?,?)",
+              (int(uid), 'tamper', f"{nm} {messages[event]}.", 'high'))
+    conn.commit()
+    conn.close()
+    return jsonify({'success': True})
+
+
+@app.route('/api/verify_parent_pin', methods=['POST'])
+@limiter.limit("6 per minute")
+def verify_parent_pin():
+    """Verify the family parent PIN so the child app can gate logout/settings behind it —
+    without the child ever knowing the PIN (checked server-side against the stored hash)."""
+    data = request.get_json() or {}
+    uid  = data.get('user_id')
+    pin  = str(data.get('pin', '')).strip()
+    deny = guard(uid)
+    if deny: return deny
+    conn = get_db()
+    c    = conn.cursor()
+    c.execute("SELECT parent_pin_hash FROM users WHERE user_id=?", (int(uid),))
+    row = c.fetchone()
+    conn.close()
+    valid = bool(row and row['parent_pin_hash'] and row['parent_pin_hash'] == hash_pin(pin))
+    return jsonify({'success': True, 'valid': valid})
+
+
 @app.route('/api/alerts', methods=['GET'])
 def get_alerts():
     user_id = request.args.get('user_id', 1, type=int)
@@ -2945,6 +3033,8 @@ def get_alerts():
     if deny: return deny
     conn    = get_db()
     c       = conn.cursor()
+    _check_heartbeat(c, user_id)   # raise an 'offline' alert if the child app went silent
+    conn.commit()
     c.execute('''SELECT a.*, f.label AS feedback_label
                  FROM alerts a
                  LEFT JOIN feedback f ON f.alert_id = a.id

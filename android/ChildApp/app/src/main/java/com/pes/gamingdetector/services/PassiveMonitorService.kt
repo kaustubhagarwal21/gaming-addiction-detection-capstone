@@ -57,6 +57,7 @@ class PassiveMonitorService : Service() {
     private val POLL_MS     = 5_000L    // 5s when it matters: near-instant detection
     private val IDLE_POLL_MS = 30_000L  // device locked + no session → nothing to detect, save battery
     private val NUDGE_POLL_MS = 20_000L // how often to check for parent->child nudges
+    private val HEARTBEAT_MS  = 300_000L // liveness ping every 5 min (tamper/uninstall watchdog)
 
     private var screenReceiver: BroadcastReceiver? = null
 
@@ -94,6 +95,7 @@ class PassiveMonitorService : Service() {
         registerScreenReceiver()
         scope.launch { usageStatsLoop() }
         scope.launch { nudgeLoop() }
+        scope.launch { heartbeatLoop() }
         return START_STICKY
     }
 
@@ -101,6 +103,36 @@ class PassiveMonitorService : Service() {
         scope.cancel()
         screenReceiver?.let { unregisterReceiver(it) }
         super.onDestroy()
+    }
+
+    /** Child swiped the app away from recents — best-effort relaunch so monitoring survives.
+     *  If even this fails, the server's heartbeat watchdog still alerts the parent. */
+    override fun onTaskRemoved(rootIntent: Intent?) {
+        try {
+            val restart = Intent(applicationContext, PassiveMonitorService::class.java)
+            val pi = PendingIntent.getService(
+                this, 1, restart,
+                PendingIntent.FLAG_ONE_SHOT or PendingIntent.FLAG_IMMUTABLE
+            )
+            val am = getSystemService(Context.ALARM_SERVICE) as android.app.AlarmManager
+            am.set(android.app.AlarmManager.RTC, System.currentTimeMillis() + 1_000, pi)
+        } catch (_: Exception) {}
+        super.onTaskRemoved(rootIntent)
+    }
+
+    // ── Tamper watchdog: liveness ping ────────────────────────────
+    // A periodic heartbeat so the server can tell the parent if monitoring goes silent
+    // (uninstalled / force-stopped / killed / offline). Runs as long as the service is
+    // alive; when the service dies the pings stop and the server raises the alert.
+    private suspend fun heartbeatLoop() {
+        while (true) {
+            try {
+                if (prefs.isLoggedIn() && prefs.userId != -1) {
+                    ApiClient.getInstance(prefs.serverUrl).heartbeat(mapOf("user_id" to prefs.userId))
+                }
+            } catch (_: Exception) { /* offline — server will infer silence */ }
+            delay(HEARTBEAT_MS)
+        }
     }
 
     override fun onBind(intent: Intent?): IBinder? = null

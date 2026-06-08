@@ -136,6 +136,8 @@ data class LivePrediction(
 
 data class GenericResponse(val success: Boolean, val message: String?)
 
+data class VerifyPinResponse(val success: Boolean, val valid: Boolean)
+
 data class ChildEnrichedResponse(
     val success: Boolean,
     val streak: StreakInfo?,
