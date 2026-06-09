@@ -442,6 +442,11 @@ CHAT_ALERT_HIGH_T = 0.85   # at/above → mark that alert 'high' severity (else 
 # Tamper watchdog: child app heartbeats ~every 5 min; if the server hasn't heard from it
 # for this long, flag it to the parent (uninstalled / force-stopped / killed / offline).
 HEARTBEAT_SILENT_MIN = 15
+# Quiet hours (child-local): a phone that's silent overnight is almost always just off or
+# asleep, not a tamper. Suppress the silence alert during this window to cut false alarms;
+# it still fires in the morning if the app is genuinely gone. Needs the device tz offset.
+HEARTBEAT_QUIET_START = 22   # 22:00 inclusive
+HEARTBEAT_QUIET_END   = 7    # 07:00 exclusive
 
 
 def risk_category(score: float) -> str:
@@ -776,6 +781,7 @@ def init_db():
     # sustained silence (uninstalled / force-stopped / killed / offline) to the parent.
     add_column(c, 'users', 'last_seen',         'TEXT DEFAULT NULL')      # last child heartbeat (ISO)
     add_column(c, 'users', 'offline_alerted',   'INTEGER DEFAULT 0')      # one alert per outage
+    add_column(c, 'users', 'tz_offset_min',     'INTEGER DEFAULT NULL')   # child device UTC offset (min)
 
     # Which signals actually fed each prediction. NULL on legacy rows ("unknown");
     # new predictions write explicit 1/0 so the UI can distinguish "captured and
@@ -2951,34 +2957,52 @@ def _check_heartbeat(c, user_id):
     parent (covers uninstall / force-stop / killed-from-recents / offline). Caller commits.
     Best-effort: never raises into the request."""
     try:
-        c.execute("SELECT last_seen, offline_alerted, name FROM users WHERE user_id=?", (user_id,))
+        c.execute("SELECT last_seen, offline_alerted, name, tz_offset_min FROM users WHERE user_id=?",
+                  (user_id,))
         row = c.fetchone()
         if not row or not row['last_seen']:
             return                  # never heartbeated (old app / not set up yet) — nothing to judge
         last = datetime.fromisoformat(str(row['last_seen']).replace(' ', 'T').split('+')[0].split('Z')[0])
         silent_min = (datetime.now() - last).total_seconds() / 60.0
-        if silent_min >= HEARTBEAT_SILENT_MIN and not row['offline_alerted']:
-            nm = row['name'] or 'Your child'
-            c.execute("INSERT INTO alerts (user_id, type, message, severity) VALUES (?,?,?,?)",
-                      (user_id, 'offline',
-                       f"{nm}'s monitoring app hasn't checked in for {int(silent_min)} min — it may be "
-                       f"offline, powered off, or have been closed/uninstalled.", 'high'))
-            c.execute("UPDATE users SET offline_alerted=1 WHERE user_id=?", (user_id,))
+        if silent_min < HEARTBEAT_SILENT_MIN or row['offline_alerted']:
+            return
+        # Quiet hours: if we know the child's timezone, don't alarm overnight (the phone is
+        # almost certainly just off/asleep). Skip WITHOUT setting the flag, so the alert
+        # still fires in the morning if the app is genuinely gone. Unknown tz → alert normally.
+        tz = row['tz_offset_min']
+        if tz is not None:
+            child_hour = (datetime.utcnow() + timedelta(minutes=int(tz))).hour
+            if child_hour >= HEARTBEAT_QUIET_START or child_hour < HEARTBEAT_QUIET_END:
+                return
+        nm  = row['name'] or 'Your child'
+        dur = f"{int(silent_min // 60)} hours" if silent_min >= 120 else f"{int(silent_min)} min"
+        c.execute("INSERT INTO alerts (user_id, type, message, severity) VALUES (?,?,?,?)",
+                  (user_id, 'offline',
+                   f"{nm}'s monitoring app hasn't checked in for {dur} — it may be offline, "
+                   f"powered off, or have been closed/uninstalled.", 'high'))
+        c.execute("UPDATE users SET offline_alerted=1 WHERE user_id=?", (user_id,))
     except Exception as e:
         logger.warning(f"heartbeat check skipped: {e}")
 
 
 @app.route('/api/child/heartbeat', methods=['POST'])
 def child_heartbeat():
-    """Child app liveness ping (~every 5 min). Re-arms the watchdog for the next outage."""
+    """Child app liveness ping (~every 5 min). Re-arms the watchdog for the next outage and
+    records the device's UTC offset so the watchdog can apply child-local quiet hours."""
     data = request.get_json() or {}
     uid  = data.get('user_id')
     deny = guard(uid)
     if deny: return deny
+    try:
+        tz = int(data.get('tz_offset_min'))
+    except (TypeError, ValueError):
+        tz = None
     conn = get_db()
     c    = conn.cursor()
-    c.execute("UPDATE users SET last_seen=?, offline_alerted=0 WHERE user_id=?",
-              (datetime.now().isoformat(), int(uid)))
+    # COALESCE keeps a previously-stored offset if this ping omitted it.
+    c.execute("UPDATE users SET last_seen=?, offline_alerted=0, tz_offset_min=COALESCE(?, tz_offset_min) "
+              "WHERE user_id=?",
+              (datetime.now().isoformat(), tz, int(uid)))
     conn.commit()
     conn.close()
     return jsonify({'success': True})

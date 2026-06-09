@@ -128,7 +128,11 @@ class PassiveMonitorService : Service() {
         while (true) {
             try {
                 if (prefs.isLoggedIn() && prefs.userId != -1) {
-                    ApiClient.getInstance(prefs.serverUrl).heartbeat(mapOf("user_id" to prefs.userId))
+                    // Send the device's UTC offset so the server can apply child-local quiet
+                    // hours (don't alarm the parent for a phone that's just off overnight).
+                    val tzMin = java.util.TimeZone.getDefault().getOffset(System.currentTimeMillis()) / 60000
+                    ApiClient.getInstance(prefs.serverUrl)
+                        .heartbeat(mapOf("user_id" to prefs.userId, "tz_offset_min" to tzMin))
                 }
             } catch (_: Exception) { /* offline — server will infer silence */ }
             delay(HEARTBEAT_MS)
