@@ -121,6 +121,14 @@ rather than to maximise a headline accuracy number.
   \item A parent-to-child nudge channel (preset or custom messages, plus an automatic
         ``mind the language'' nudge on toxic chat) that turns the platform from passive
         monitoring into two-way guidance.
+  \item A custom-keyboard (Input Method Editor) chat-capture path that reliably records
+        the child's typed in-game text even in canvas/engine games (e.g.\ Roblox) the
+        accessibility API cannot read --- without resorting to screen OCR --- while
+        capturing only the child's own typing.
+  \item Tamper resistance and resilient delivery: a self-restarting foreground service,
+        a parent-PIN lock on logout/settings, a server-side heartbeat watchdog that alerts
+        the parent when monitoring goes silent (uninstall / kill / offline), and real-time
+        alerts pushed to \emph{every} guardian device in a family.
   \item An honest evaluation, including the realistic-stream precision of the chat
         model and the synthetic-data caveat on the voice model.
 \end{enumerate}
@@ -198,8 +206,10 @@ The Child app runs always-on foreground services that:
         layered detector (curated allow-list $\rightarrow$ deny-list $\rightarrow$
         OS \texttt{CATEGORY\_GAME} + launchable check, with parent overrides), so
         \emph{any} game is monitorable, not a fixed list;
-  \item capture typed in-game chat through an \texttt{AccessibilityService}
-        (keystroke buffer), avoiding fragile screenshot OCR;
+  \item capture typed in-game chat through a custom keyboard (Input Method Editor)
+        \emph{and} an \texttt{AccessibilityService}, so even canvas/engine games
+        (e.g.\ Roblox) whose chat box exposes no text node are covered --- without
+        fragile screenshot OCR;
   \item record microphone audio (\texttt{AudioRecord}, 16~kHz mono) and run
         \textbf{Vosk} on-device speech-to-text, so spoken words are transcribed
         \emph{without raw audio leaving the device for transcription};
@@ -344,12 +354,23 @@ beyond a threshold (e.g.\ from a lost end-event), dating it at the last recorded
 activity, so a dropped network event never leaves a child shown as ``perpetually
 playing''.
 
-\subsection{Chat capture: Accessibility + on-device STT}
-Typed chat is captured by \texttt{ChatAccessibilityService} and posted with
-\texttt{source=keyboard}; spoken words are transcribed by Vosk and posted with
-\texttt{source=voice\_stt}. The prediction engine feeds \emph{typed} chat to the
-toxicity channel and routes spoken words through the voice/valence fusion, so the
-two are not double-counted.
+\subsection{Chat capture: custom keyboard, Accessibility + on-device STT}
+Typed chat is captured along two complementary paths (both posted with
+\texttt{source=keyboard}); spoken words are transcribed on-device by Vosk and posted
+with \texttt{source=voice\_stt}. For apps that expose a standard Android text field,
+\texttt{ChatAccessibilityService} reads the typed text. Many games, however, render
+their chat box inside their own canvas/engine surface (e.g.\ Roblox), where no Android
+text node exists and the accessibility path sees nothing. To close that gap
+deterministically --- and without the unreliability of screen OCR (which cannot know
+where each game draws its chat) --- the Child app ships its own \emph{Input Method
+Editor} (a custom keyboard). Because every keystroke passes through the keyboard before
+reaching the game, it captures exactly the child's own typed text in \emph{any} app,
+canvas games included, and never other players' messages or game UI. Capture is gated to
+monitored games with an active session (it records nothing in other apps such as banking
+or search), and an 8-second server-side de-duplicate prevents the keyboard and
+accessibility paths from logging the same line twice. The prediction engine feeds
+\emph{typed} chat to the toxicity channel and routes spoken words through the
+voice/valence fusion, so the two are never double-counted.
 
 \subsection{Voice recording and emotion (valence--arousal fusion)}
 \texttt{VoiceRecorderService} records PCM segments and extracts 17 acoustic features
@@ -384,7 +405,11 @@ On session end the backend computes the 20 features, runs the three models, fuse
 them, and stores the prediction with its component scores and a presence flag per
 modality. The served probability comes from the \emph{calibrated} behaviour model; a
 SHAP~\cite{shap2017} \texttt{TreeExplainer} produces the top signed factors shown to
-the parent.
+the parent. Because the voice pipeline (record $\rightarrow$ buffer $\rightarrow$
+analyse $\rightarrow$ fuse) is slower than the behaviour and chat paths, a voice segment
+can land \emph{after} a short session's end-of-session prediction; the server therefore
+re-scores the session when a late voice event arrives, so the voice modality still counts
+on brief sessions rather than being silently dropped.
 
 \subsection{Anomaly detection}
 Alongside the per-session risk band, the backend flags \emph{anomalies} --- a session
@@ -408,9 +433,35 @@ Beyond monitoring, the parent can \emph{act}. A ``Send a nudge'' control posts a
 \texttt{POST /api/parent/nudge}. The child's always-on service polls
 \texttt{GET /api/child/nudges} and pops each up as a notification exactly once (marked
 delivered server-side). When the chat model detects confidently-toxic language the
-system also queues an automatic, rate-limited self-correction nudge to the child. This
-makes awareness \emph{two-way} --- the parent intervenes gently rather than only
-watching, in keeping with the project's ``guidance, not punishment'' goal.
+system also queues an automatic, rate-limited self-correction nudge to the child. A
+daily time limit the parent sets is likewise delivered to the child as a nudge (rather
+than surfacing only in the parent's own alert feed). This makes awareness \emph{two-way}
+--- the parent intervenes gently rather than only watching, in keeping with the
+project's ``guidance, not punishment'' goal.
+
+\subsection{Real-time alerts and multi-guardian delivery}
+Material events raise a parent alert in real time: the start of a gaming session,
+confidently-toxic chat, an unusual-behaviour anomaly, and the tamper signals below.
+Alerts reach guardians by two complementary paths. Every guardian phone polls
+\texttt{GET /api/alerts} ($\sim$60\,s), and for high-risk events the server also sends a
+Firebase Cloud Messaging push. Because both parents may monitor the same family under the
+shared family code, push is delivered to \emph{all} registered guardian devices --- not
+just the last to sign in: device tokens are stored per device and dead tokens are pruned
+on send. To keep the free-tier memory footprint low, the Firebase SDK is imported and
+initialised \emph{lazily}, only on the first push.
+
+\subsection{Tamper resistance and reliability}
+Monitoring is designed to survive ordinary interference and to make interference
+visible. The data-collection service runs in the foreground, restarts itself if the
+child swipes the app away from recents, and resumes on device boot. A child cannot
+quietly disable it: logging out and changing settings require the family parent PIN,
+verified server-side so the PIN is never exposed to the child, and a logout itself
+raises a parent alert. Because Android gives an app no callback at its own uninstall,
+removal is detected \emph{indirectly}: the Child app emits a periodic heartbeat, and the
+server raises a single ``monitoring has gone silent'' alert when no heartbeat arrives for
+a set interval --- a catch-all covering uninstall, force-stop, being killed, or going
+offline --- re-arming once the app checks in again. Blocking uninstall outright (Android
+Device Admin) was considered but deferred as too intrusive for a consent-based model.
 
 \subsection{Security and accounts}
 A family registers once and receives a unique family code; each child has a private
@@ -418,11 +469,18 @@ PIN, and the parent signs in with the family code + a shared PIN. All protected
 endpoints enforce token authentication and per-user authorisation.
 
 \subsection{Parental dashboard and wellbeing}
-The Parent app shows risk, SHAP factors, a 14-day trend, alerts, anomaly flags, a
-weekly PDF report, daily-limit controls and notification handling. The Child app
-adds wellbeing features --- a rule-based ``Mira'' check-in companion, daily
-reflections (mood / sleep / energy), streaks, breathing resets and gentle break /
-limit nudges --- supporting awareness rather than hard restriction.
+The Parent app shows the day's risk --- a \emph{duration-weighted} roll-up of that
+day's sessions, so a brief session (e.g.\ a one-minute trial of a game) cannot dominate
+the headline the way a single last-session score would --- together with its SHAP
+factors, a 14-day trend, most- and recently-played games, alerts, anomaly flags, a
+weekly PDF report, daily-limit controls and notification handling; the chat view
+separates text the child \emph{typed} from speech that was transcribed. The dashboard
+auto-refreshes in the background without disturbing the view (it re-renders only when the
+data actually changes), and a parent can switch between children in the family without
+re-entering the family code. The Child app adds wellbeing features --- a rule-based
+``Mira'' check-in companion, a gamified daily check-in (mood / sleep / energy) with a
+check-in streak, reflections, breathing resets and gentle break / limit nudges ---
+supporting awareness rather than hard restriction.
 
 % =====================================================================
 \section{Results}
@@ -495,11 +553,12 @@ and is the first candidate for real-audio retraining.
 \textbf{Area} & \textbf{Delivered} \\
 \midrule
 Detection & Any-game detection (UsageStats + category), session lifecycle \\
-Capture & Accessibility typed-chat, on-device Vosk STT, voice features, real behavioural metrics \\
-ML & Calibrated RF behaviour + SHAP, LogReg/TF-IDF chat, GBM voice, availability-weighted fusion \\
+Capture & Custom-keyboard (IME) + Accessibility typed-chat (canvas games included), on-device Vosk STT, voice features, real behavioural metrics \\
+ML & Calibrated RF behaviour + SHAP, LogReg/TF-IDF chat, GBM voice, availability-weighted fusion, late-voice re-score \\
 Credibility & Probability calibration, anomaly detection, observation mode, honest model card \\
-Parent value & Risk + ``why'' (SHAP), 14-day trend, alerts, weekly PDF, feedback loop, limits, send-nudge-to-child \\
-Child wellbeing & Mira check-in, reflections, streaks, breathing, break/limit nudges \\
+Parent value & Per-day weighted risk + ``why'' (SHAP), 14-day trend, recently/most-played games, real-time alerts, weekly PDF, feedback loop, limits, send-nudge-to-child, switch child without re-login \\
+Child wellbeing & Mira check-in, gamified daily check-in + streak, reflections, breathing, break/limit nudges \\
+Reliability/anti-tamper & Heartbeat watchdog (uninstall/kill/offline alert), parent-PIN lock on logout/settings, logout alert, self-restart + boot resume, multi-guardian FCM push (lazy-init) \\
 Privacy/Security & Token auth, peppered PIN hashes, HTTPS-only, encrypted token store, consent, raw-audio deletion, retention \\
 Engineering & Dual-dialect DB, signed APKs, 35 tests, lint-clean, deployed + durable DB \\
 \bottomrule
@@ -513,7 +572,8 @@ We built and deployed a multimodal gaming-addiction \emph{screening} platform th
 moves beyond raw screen-time to measured behaviour, chat toxicity and voice emotion,
 fused into a calibrated, explainable risk band and surfaced to parents as awareness
 rather than punishment. The engineering is real: native Android apps, a secured cloud
-backend, a durable database, signed releases and a passing test suite. Our central
+backend, a durable database, signed releases, tamper-resistant background monitoring with
+real-time multi-guardian alerts, and a passing test suite. Our central
 methodological commitments --- train/serve feature alignment, probability
 calibration, SHAP explanations, availability-weighted fusion, and an honest account
 of synthetic-data limitations --- make the system's outputs trustworthy and
@@ -539,9 +599,16 @@ release:
   \item \textbf{Offline retry queue (reliability).} Persist failed uploads in a local
         outbox (Room/SQLite) with idempotent server-side de-duplication, so transient
         connectivity loss never drops a sample. Pure in-codebase work.
-  \item \textbf{Push reliability (FCM).} The push path is already scaffolded; finishing
-        it (a free Firebase project + configuration) makes high-risk alerts and parent
-        nudges instant rather than poll-based, and adds notification preferences.
+  \item \textbf{Hardened tamper-blocking (Device Admin).} The current heartbeat watchdog
+        \emph{detects} uninstall or disabling after the fact; registering as an Android
+        Device Administrator would \emph{block} casual uninstall and fire an instant alert
+        the moment removal is attempted. It was deferred deliberately --- the
+        ``device administrator'' permission is intrusive and changes the consent UX --- but
+        is a clean, codebase-only addition for families that want it.
+  \item \textbf{Smarter presence detection.} The silence watchdog cannot yet tell an
+        uninstalled app from a phone that is merely powered off or offline (at school, or
+        asleep). Restricting the alert to expected-active windows, or having the app flush
+        a ``going offline'' marker on a clean shutdown, would cut false alarms.
 \end{itemize}
 
 \textbf{Tier 2 --- Data-dependent improvements.}
