@@ -596,17 +596,16 @@ We group future enhancements by how feasible they are for the project team to bu
 distinguishing near-term engineering work from directions that need external data,
 partners, or hardware.
 
-\textbf{Tier 1 --- Immediate, feasible extensions (engineering only).}
-These need only the existing codebase and free tools and could be added before a final
-release:
+\textbf{Tier 1 --- Immediate, high-value extension (engineering only).}
+The one near-term enhancement genuinely worth building with the existing codebase and free
+tools --- one that adds visible value and can be implemented directly --- is:
 \begin{itemize}[leftmargin=1.4em]
   \item \textbf{Real-audio voice model + VAD.} Retrain the voice model on free, real
-        labelled speech (RAVDESS~\cite{ravdess2018}) and add voice-activity detection (\texttt{webrtcvad})
-        so silence and game audio are not classified as emotion. Voice is the weakest
-        modality and benefits most; the data and tooling are freely available.
-  \item \textbf{Offline retry queue (reliability).} Persist failed uploads in a local
-        outbox (Room/SQLite) with idempotent server-side de-duplication, so transient
-        connectivity loss never drops a sample. Pure in-codebase work.
+        labelled speech (RAVDESS~\cite{ravdess2018}) and add voice-activity detection
+        (\texttt{webrtcvad}) so silence and game audio are not classified as emotion. Voice
+        is the weakest modality and the \emph{only} one trained on synthetic data, so this
+        is the single change that most strengthens the system's credibility; the dataset
+        and tooling are freely available and the retraining pipeline already exists.
 \end{itemize}
 
 \textbf{Tier 2 --- Data-dependent improvements.}
