@@ -464,8 +464,12 @@ offline --- re-arming once the app checks in again. To keep this from crying wol
 watchdog respects the child's local \emph{quiet hours} (reported via the heartbeat's
 device-timezone offset): it does not raise the alert overnight, when a silent phone is
 almost certainly just off or asleep, but still fires by day if the app is genuinely gone.
-Blocking uninstall outright (Android Device Admin) was considered but deferred as too
-intrusive for a consent-based model.
+An \emph{optional} device-administrator mode goes further: once the family activates it,
+the app cannot be casually uninstalled (Android forces deactivation first) and the parent
+is alerted the \emph{instant} someone attempts to disable it (\texttt{onDisableRequested}
+fires before removal completes). It is strictly opt-in and requests \emph{no} lock/wipe
+policies --- only the uninstall block and the disable hook --- keeping it appropriate for
+a consent-based model rather than a punitive lockdown.
 
 \subsection{Security and accounts}
 A family registers once and receives a unique family code; each child has a private
@@ -562,7 +566,7 @@ ML & Calibrated RF behaviour + SHAP, LogReg/TF-IDF chat, GBM voice, availability
 Credibility & Probability calibration, anomaly detection, observation mode, honest model card \\
 Parent value & Per-day weighted risk + ``why'' (SHAP), 14-day trend, recently/most-played games, real-time alerts, weekly PDF, feedback loop, limits, send-nudge-to-child, switch child without re-login \\
 Child wellbeing & Mira check-in, gamified daily check-in + streak, reflections, breathing, break/limit nudges \\
-Reliability/anti-tamper & Heartbeat watchdog (uninstall/kill/offline alert), parent-PIN lock on logout/settings, logout alert, self-restart + boot resume, multi-guardian FCM push (lazy-init) \\
+Reliability/anti-tamper & Heartbeat watchdog (uninstall/kill/offline alert, child-local quiet hours), optional Device Admin (uninstall block + instant disable alert), parent-PIN lock on logout/settings, logout alert, self-restart + boot resume, multi-guardian FCM push (lazy-init) \\
 Privacy/Security & Token auth, peppered PIN hashes, HTTPS-only, encrypted token store, consent, raw-audio deletion, retention \\
 Engineering & Dual-dialect DB, signed APKs, 35 tests, lint-clean, deployed + durable DB \\
 \bottomrule
@@ -603,12 +607,6 @@ release:
   \item \textbf{Offline retry queue (reliability).} Persist failed uploads in a local
         outbox (Room/SQLite) with idempotent server-side de-duplication, so transient
         connectivity loss never drops a sample. Pure in-codebase work.
-  \item \textbf{Hardened tamper-blocking (Device Admin).} The current heartbeat watchdog
-        \emph{detects} uninstall or disabling after the fact; registering as an Android
-        Device Administrator would \emph{block} casual uninstall and fire an instant alert
-        the moment removal is attempted. It was deferred deliberately --- the
-        ``device administrator'' permission is intrusive and changes the consent UX --- but
-        is a clean, codebase-only addition for families that want it.
 \end{itemize}
 
 \textbf{Tier 2 --- Data-dependent improvements.}
