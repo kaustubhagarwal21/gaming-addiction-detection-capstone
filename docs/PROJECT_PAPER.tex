@@ -460,8 +460,12 @@ raises a parent alert. Because Android gives an app no callback at its own unins
 removal is detected \emph{indirectly}: the Child app emits a periodic heartbeat, and the
 server raises a single ``monitoring has gone silent'' alert when no heartbeat arrives for
 a set interval --- a catch-all covering uninstall, force-stop, being killed, or going
-offline --- re-arming once the app checks in again. Blocking uninstall outright (Android
-Device Admin) was considered but deferred as too intrusive for a consent-based model.
+offline --- re-arming once the app checks in again. To keep this from crying wolf, the
+watchdog respects the child's local \emph{quiet hours} (reported via the heartbeat's
+device-timezone offset): it does not raise the alert overnight, when a silent phone is
+almost certainly just off or asleep, but still fires by day if the app is genuinely gone.
+Blocking uninstall outright (Android Device Admin) was considered but deferred as too
+intrusive for a consent-based model.
 
 \subsection{Security and accounts}
 A family registers once and receives a unique family code; each child has a private
@@ -605,10 +609,6 @@ release:
         the moment removal is attempted. It was deferred deliberately --- the
         ``device administrator'' permission is intrusive and changes the consent UX --- but
         is a clean, codebase-only addition for families that want it.
-  \item \textbf{Smarter presence detection.} The silence watchdog cannot yet tell an
-        uninstalled app from a phone that is merely powered off or offline (at school, or
-        asleep). Restricting the alert to expected-active windows, or having the app flush
-        a ``going offline'' marker on a clean shutdown, would cut false alarms.
 \end{itemize}
 
 \textbf{Tier 2 --- Data-dependent improvements.}
