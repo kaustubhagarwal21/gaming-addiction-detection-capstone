@@ -31,6 +31,7 @@ import com.pes.gamingdetector.R
 import com.pes.gamingdetector.api.ApiClient
 import com.pes.gamingdetector.api.Game
 import com.pes.gamingdetector.databinding.ActivityHomeBinding
+import com.pes.gamingdetector.services.AdminReceiver
 import com.pes.gamingdetector.services.GameMonitorService
 import com.pes.gamingdetector.services.GameNotificationService
 import com.pes.gamingdetector.services.PassiveMonitorService
@@ -367,8 +368,40 @@ class HomeActivity : AppCompatActivity() {
             !isAccessibilityEnabled() -> showAccessibilityDialog()
             !isCustomKeyboardEnabled() -> showKeyboardEnableDialog()
             !isCustomKeyboardSelected() -> showKeyboardSelectDialog()
+            (!isDeviceAdminActive() && !prefs.deviceAdminOffered) -> {
+                prefs.deviceAdminOffered = true     // optional + offered once, so it doesn't nag
+                showDeviceAdminDialog()
+            }
             else -> dismissPermDialog()   // everything granted → close any lingering box
         }
+    }
+
+    private fun isDeviceAdminActive(): Boolean {
+        val dpm = getSystemService(Context.DEVICE_POLICY_SERVICE) as android.app.admin.DevicePolicyManager
+        return dpm.isAdminActive(ComponentName(this, AdminReceiver::class.java))
+    }
+
+    private fun showDeviceAdminDialog() {
+        if (isFinishing || isDestroyed) return
+        permDialog?.dismiss()
+        permDialog = AlertDialog.Builder(this)
+            .setTitle("Protect monitoring from removal (optional)")
+            .setMessage("Make this app a device administrator so it can't be casually " +
+                "uninstalled, and your parent is alerted the instant someone tries to turn " +
+                "it off. You can skip this.")
+            .setCancelable(false)
+            .setPositiveButton("Enable") { _, _ ->
+                try {
+                    val intent = Intent(android.app.admin.DevicePolicyManager.ACTION_ADD_DEVICE_ADMIN)
+                        .putExtra(android.app.admin.DevicePolicyManager.EXTRA_DEVICE_ADMIN,
+                            ComponentName(this, AdminReceiver::class.java))
+                        .putExtra(android.app.admin.DevicePolicyManager.EXTRA_ADD_EXPLANATION,
+                            "Keeps gaming-wellbeing monitoring active and alerts your parent if it's turned off.")
+                    startActivity(intent)
+                } catch (_: Exception) {}
+            }
+            .setNegativeButton("Skip", null)
+            .show()
     }
 
     /** Advance the permission chain to whichever keyboard step is still outstanding. */

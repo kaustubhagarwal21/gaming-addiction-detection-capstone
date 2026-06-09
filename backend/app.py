@@ -3016,7 +3016,10 @@ def child_tamper():
     event = str(data.get('event', '')).strip()
     deny  = guard(uid)
     if deny: return deny
-    messages = {'logout': "logged out of the monitoring app"}
+    messages = {
+        'logout':        "logged out of the monitoring app",
+        'admin_disable': "is trying to remove monitoring (turning off device administrator)",
+    }
     if event not in messages:
         return jsonify({'success': False, 'message': 'unknown event'}), 400
     conn = get_db()

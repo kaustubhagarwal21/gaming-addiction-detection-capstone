@@ -71,6 +71,11 @@ class PrefsManager(context: Context) {
         get() = prefs.getString("last_checkin_date", "") ?: ""
         set(v) = prefs.edit().putString("last_checkin_date", v).apply()
 
+    // Device-admin (uninstall protection) is optional and offered once, so it doesn't nag.
+    var deviceAdminOffered: Boolean
+        get() = prefs.getBoolean("device_admin_offered", false)
+        set(v) = prefs.edit().putBoolean("device_admin_offered", v).apply()
+
     // Policy version the user actually agreed to. When the shipped CONSENT_VERSION
     // is newer than this, consent is requested again (the policy materially changed).
     var consentVersion: String
