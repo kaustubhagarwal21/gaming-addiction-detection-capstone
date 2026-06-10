@@ -69,26 +69,42 @@ Then switch to the pre-seeded family for the data-rich story:
 
 ### A. Parent side — the "wow" (start here)
 1. Open **ParentApp** → sign in with family code **FAM789** + PIN **0000** → pick **Arjun**.
-2. **Dashboard**: addicted, 85% risk, ~17h/week, 14-day rising trend chart, contributing factors.
-3. **Alerts**: high-risk alerts firing.
-4. **Emotion Insights**: real emotion breakdown (angry/frustrated/excited) from voice.
-5. **Chat Analysis**: avg toxicity + flagged messages.
-6. **Weekly Report → Download PDF**: generates a shareable PDF report.
-7. (Optional) Switch child → **Priya** to show a milder, different pattern.
+2. **Dashboard**: addicted, 85% risk, ~17h/week, 14-day rising trend chart, contributing
+   factors — and the **live status strip** in the header ("🟢 Monitoring active", and
+   "🎮 Playing … now" whenever a session is live).
+3. **Alerts**: high-risk alerts with friendly ages ("2h ago"). **Rate one** — tap
+   *Accurate* or *False alarm* on a risk alert → the **agreement banner** appears at the
+   top ("based on your N verdicts…"). This is the feedback loop the paper describes.
+4. **Send a nudge**: Dashboard → *Send a nudge* → pick "Time to take a break 🙂" → it
+   pops up as a notification on the child's phone within ~20 s. Two-way, not just watching.
+5. **Emotion Insights**: real emotion breakdown (angry/frustrated/excited) from voice.
+6. **Chat Analysis**: avg toxicity + flagged messages (typed ⌨️ vs voice 🎙️ tagged).
+7. **Weekly Report → Download PDF**: generates a shareable PDF report.
+8. (Optional) Switch child → **Priya** (no re-login needed) for a milder pattern.
 
 ### B. Child side — how it's captured
 1. Open **ChildApp** (Arjun is logged in).
-2. **Dashboard**: the child's own view — streak, risk, history.
-3. **Mira (counselor)**: send a message → supportive reply.
-4. **Daily check-in**: submit mood/sleep/energy.
+2. **Home**: today-vs-goal progress, streak, "try instead" suggestions.
+3. **Dashboard**: the child's own view — streak, risk, history.
+4. **Mira (counselor)**: send a message → typing indicator → supportive reply.
+5. **Daily check-in**: submit mood/sleep/energy → streak celebration.
+6. (Optional tamper point) Tap **Logout** → it demands the **parent PIN** (server-verified;
+   wrong PIN refused) — the child can't quietly stop monitoring.
 
 ### C. Live capture (the impressive part — optional)
 1. Open **Roblox** → within ~5s a session auto-starts (no tapping).
 2. Type a chat message in-game, speak a sentence.
 3. Close Roblox → ~20s later the session auto-ends with a risk notification.
-4. Back in ParentApp dashboard → pull to refresh → the new session appears.
+4. Back in ParentApp dashboard → pull to refresh → the new session appears (during
+   play, the header strip showed "🎮 Playing Roblox now · N min" live).
 5. (Behind the scenes) `python verify_captures.py --limit 0` shows the captured
    chat + voice transcript + fused emotion for that session.
+
+### D. Tamper watchdog (strong closer — optional, needs ~20 min lead time)
+Force-stop the ChildApp (Android Settings → Apps → Force stop) ~20 min **before** Q&A;
+during Q&A, show the ParentApp: the header strip reads "🔴 No check-in for N min" and an
+**offline alert** ("monitoring app hasn't checked in…") sits in the alerts feed —
+uninstall/kill/offline detection working live.
 
 ---
 
