@@ -530,34 +530,43 @@ class HomeActivity : AppCompatActivity() {
     }
 
     private fun isNotificationListenerEnabled(): Boolean {
-        val flat = Settings.Secure.getString(contentResolver, "enabled_notification_listeners")
-            ?: return false
-        val myComponent = ComponentName(this, GameNotificationService::class.java).flattenToString()
-        return flat.split(":").any { it == myComponent }
+        return try {
+            val flat = Settings.Secure.getString(contentResolver, "enabled_notification_listeners")
+                ?: ""
+            val myComponent = ComponentName(this, GameNotificationService::class.java).flattenToString()
+            flat.split(":").any { it == myComponent }
+        } catch (_: Exception) { false }
     }
 
     private fun isAccessibilityEnabled(): Boolean {
-        val flat = Settings.Secure.getString(
-            contentResolver,
-            Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES
-        ) ?: return false
-        return flat.contains(packageName, ignoreCase = true)
+        return try {
+            val flat = Settings.Secure.getString(
+                contentResolver,
+                Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES
+            ) ?: ""
+            flat.contains(packageName, ignoreCase = true)
+        } catch (_: Exception) { false }
     }
 
-    /** Our custom keyboard is in the device's list of enabled input methods. */
-    private fun isCustomKeyboardEnabled(): Boolean {
-        val enabled = Settings.Secure.getString(
-            contentResolver, Settings.Secure.ENABLED_INPUT_METHODS
-        ) ?: return false
-        return enabled.contains(packageName, ignoreCase = true)
-    }
+    /** Our custom keyboard is in the device's list of enabled input methods.
+     *  Uses InputMethodManager, NOT Settings.Secure.ENABLED_INPUT_METHODS — that key
+     *  throws SecurityException for apps targeting SDK > 33 (Android 12+), which would
+     *  crash this check on every modern device. */
+    private fun isCustomKeyboardEnabled(): Boolean = try {
+        val imm = getSystemService(Context.INPUT_METHOD_SERVICE) as InputMethodManager
+        imm.enabledInputMethodList.any { it.packageName == packageName }
+    } catch (_: Exception) { false }
 
-    /** Our custom keyboard is the currently-selected (active) input method. */
+    /** Our custom keyboard is the currently-selected (active) input method.
+     *  DEFAULT_INPUT_METHOD is still readable, but wrap defensively so a future
+     *  restriction degrades to "re-prompt" rather than crashing the app. */
     private fun isCustomKeyboardSelected(): Boolean {
-        val default = Settings.Secure.getString(
-            contentResolver, Settings.Secure.DEFAULT_INPUT_METHOD
-        ) ?: return false
-        return default.contains(packageName, ignoreCase = true)
+        return try {
+            val default = Settings.Secure.getString(
+                contentResolver, Settings.Secure.DEFAULT_INPUT_METHOD
+            ) ?: ""
+            default.contains(packageName, ignoreCase = true)
+        } catch (_: Exception) { false }
     }
 
 }
