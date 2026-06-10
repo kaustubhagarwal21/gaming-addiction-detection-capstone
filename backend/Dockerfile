@@ -40,16 +40,21 @@ USER app
 
 EXPOSE 5000
 
-HEALTHCHECK --interval=30s --timeout=5s --start-period=40s --retries=3 \
-    CMD curl -fsS "http://localhost:${PORT}/api/health" || exit 1
+HEALTHCHECK --interval=30s --timeout=5s --start-period=40s --retries=3 CMD curl -fsS "http://localhost:${PORT}/api/health" || exit 1
 
 # Production: gunicorn, threaded sync worker (Flask doesn't need async).
 # ONE worker on purpose: the free tier has only 512 MB and the process loads the
 # whole ML stack (RF + calibrator + chat + tfidf + voice + SHAP + numpy/sklearn).
 # Two workers each grew their own copy under load (SHAP explainer + numpy buffers
 # break --preload's copy-on-write sharing) and OOM-killed the instance -> 50x crash
-# loop. One worker + 4 threads handles the demo's concurrency comfortably; raise
-# --workers only if you move to a plan with more RAM (e.g. WEB_CONCURRENCY).
-# --max-requests recycles the worker periodically to reclaim any memory creep.
+# loop. Raise --workers only on a plan with more RAM (e.g. WEB_CONCURRENCY).
+#
+# --threads 8: requests are I/O-bound (waiting on Neon round trips), so more threads
+#   give real concurrency at near-zero extra memory (they share the one model copy).
+#   The DB connection pool (PG_POOL_MAX=10) is sized above the thread count.
+# --max-requests 1000 (was 50): with three apps polling every 20-60 s, 50 recycled
+#   the worker every few MINUTES — each recycle stalled in-flight polls and re-warmed
+#   caches, which presented as "fails under load". 1000 still reclaims slow memory
+#   creep, just roughly hourly instead of constantly.
 # sh -c so ${PORT} (set by the platform) is expanded at runtime.
-CMD ["sh", "-c", "gunicorn --bind 0.0.0.0:${PORT} --workers ${WEB_CONCURRENCY:-1} --threads 2 --timeout 120 --preload --max-requests 50 --max-requests-jitter 10 --access-logfile - --error-logfile - app:app"]
+CMD ["sh", "-c", "gunicorn --bind 0.0.0.0:${PORT} --workers ${WEB_CONCURRENCY:-1} --threads 8 --timeout 120 --graceful-timeout 30 --keep-alive 5 --preload --max-requests 1000 --max-requests-jitter 100 --access-logfile - --error-logfile - app:app"]

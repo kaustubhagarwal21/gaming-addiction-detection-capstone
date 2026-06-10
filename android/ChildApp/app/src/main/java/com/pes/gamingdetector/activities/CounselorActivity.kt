@@ -71,16 +71,27 @@ class CounselorActivity : AppCompatActivity() {
         }
     }
 
+    // Guards against double-taps on Send firing duplicate messages while a reply
+    // is still in flight.
+    private var awaitingReply = false
+
     private fun sendMessage() {
         val text = binding.etInput.text.toString().trim()
-        if (text.isBlank()) return
+        if (text.isBlank() || awaitingReply) return
+        awaitingReply = true
+        binding.btnSend.isEnabled = false
 
         messages.add(CounselorMessage("user", text, null))
         adapter.notifyItemInserted(messages.size - 1)
-        binding.rvMessages.scrollToPosition(messages.size - 1)
         binding.etInput.text.clear()
 
+        // Typing indicator bubble — replaced by the real reply (or removed on failure).
+        messages.add(CounselorMessage("assistant", "…", null))
+        adapter.notifyItemInserted(messages.size - 1)
+        binding.rvMessages.scrollToPosition(messages.size - 1)
+
         lifecycleScope.launch {
+            val typingIdx = messages.size - 1
             try {
                 val api = ApiClient.getInstance(prefs.serverUrl)
                 val resp = api.counselorChat(mapOf(
@@ -88,13 +99,21 @@ class CounselorActivity : AppCompatActivity() {
                     "message" to text
                 ))
                 if (resp.isSuccessful && resp.body()?.success == true) {
-                    val reply = resp.body()!!.reply
-                    messages.add(CounselorMessage("assistant", reply, null))
-                    adapter.notifyItemInserted(messages.size - 1)
-                    binding.rvMessages.scrollToPosition(messages.size - 1)
+                    messages[typingIdx] = CounselorMessage("assistant", resp.body()!!.reply, null)
+                    adapter.notifyItemChanged(typingIdx)
+                } else {
+                    messages.removeAt(typingIdx)
+                    adapter.notifyItemRemoved(typingIdx)
+                    Toast.makeText(this@CounselorActivity, "Couldn't send message", Toast.LENGTH_SHORT).show()
                 }
             } catch (e: Exception) {
+                messages.removeAt(typingIdx)
+                adapter.notifyItemRemoved(typingIdx)
                 Toast.makeText(this@CounselorActivity, "Couldn't send message", Toast.LENGTH_SHORT).show()
+            } finally {
+                awaitingReply = false
+                binding.btnSend.isEnabled = true
+                if (messages.isNotEmpty()) binding.rvMessages.scrollToPosition(messages.size - 1)
             }
         }
     }

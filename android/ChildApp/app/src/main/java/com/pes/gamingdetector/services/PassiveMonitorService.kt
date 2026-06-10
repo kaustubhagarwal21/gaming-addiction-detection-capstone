@@ -16,6 +16,7 @@ import com.pes.gamingdetector.R
 import com.pes.gamingdetector.activities.HomeActivity
 import com.pes.gamingdetector.api.ApiClient
 import com.pes.gamingdetector.api.StartSessionRequest
+import com.pes.gamingdetector.util.ChatUploadQueue
 import com.pes.gamingdetector.util.Constants
 import com.pes.gamingdetector.util.ForegroundResolver
 import com.pes.gamingdetector.util.ForegroundTracker
@@ -60,6 +61,11 @@ class PassiveMonitorService : Service() {
     private val HEARTBEAT_MS  = 300_000L // liveness ping every 5 min (tamper/uninstall watchdog)
 
     private var screenReceiver: BroadcastReceiver? = null
+    // onStartCommand can fire repeatedly on a LIVE service (START_STICKY redelivery, or
+    // both BootReceiver and HomeActivity starting it). Without this guard each call would
+    // register another screen receiver (leaking the previous one) and launch a second copy
+    // of every loop — duplicate heartbeats/nudges and battery drain.
+    @Volatile private var loopsStarted = false
 
     // Packages a game legitimately hands off to mid-play — Google sign-in, Play Store
     // purchases, the Play Games overlay, or a Custom-Tab browser (rewarded ads / login).
@@ -91,17 +97,23 @@ class PassiveMonitorService : Service() {
         if (intent?.action == ACTION_STOP) { stopSelf(); return START_NOT_STICKY }
 
         prefs = PrefsManager(this)
-        startForeground(NOTIF_ID, buildNotification())
-        registerScreenReceiver()
-        scope.launch { usageStatsLoop() }
-        scope.launch { nudgeLoop() }
-        scope.launch { heartbeatLoop() }
+        startForeground(NOTIF_ID, buildNotification())   // must happen on EVERY start (5s rule)
+        // One-time setup, guarded so a repeat start doesn't leak a receiver or duplicate loops.
+        if (!loopsStarted) {
+            loopsStarted = true
+            registerScreenReceiver()
+            scope.launch { usageStatsLoop() }
+            scope.launch { nudgeLoop() }
+            scope.launch { heartbeatLoop() }
+        }
         return START_STICKY
     }
 
     override fun onDestroy() {
         scope.cancel()
-        screenReceiver?.let { unregisterReceiver(it) }
+        screenReceiver?.let { runCatching { unregisterReceiver(it) } }   // never throw on teardown
+        screenReceiver = null
+        loopsStarted = false
         super.onDestroy()
     }
 
@@ -156,13 +168,20 @@ class PassiveMonitorService : Service() {
                     }
                 }
             } catch (_: Exception) { /* network blip — try again next tick */ }
+            // Same cadence: retry any chat lines captured while offline (no-op when empty).
+            try { ChatUploadQueue.flush(this@PassiveMonitorService) } catch (_: Exception) {}
             delay(NUDGE_POLL_MS)
         }
     }
 
     private fun showNudge(message: String, kind: String?) {
         try {
-            val title = if (kind == "language") "A friendly reminder" else "Message from your parent"
+            val title = when (kind) {
+                "language" -> "A friendly reminder"
+                "limit"    -> "Daily limit updated"
+                "break"    -> "Time for a break"
+                else       -> "Message from your parent"
+            }
             val notif = NotificationCompat.Builder(this, Constants.CHANNEL_ALERTS)
                 .setSmallIcon(R.drawable.ic_launcher)
                 .setContentTitle(title)

@@ -76,6 +76,12 @@ class PrefsManager(context: Context) {
         get() = prefs.getBoolean("device_admin_offered", false)
         set(v) = prefs.edit().putBoolean("device_admin_offered", v).apply()
 
+    // Battery-optimisation exemption is asked once (it keeps monitoring alive under
+    // Doze/OEM power killers); declining shouldn't nag on every resume.
+    var batteryExemptOffered: Boolean
+        get() = prefs.getBoolean("battery_exempt_offered", false)
+        set(v) = prefs.edit().putBoolean("battery_exempt_offered", v).apply()
+
     // Policy version the user actually agreed to. When the shipped CONSENT_VERSION
     // is newer than this, consent is requested again (the policy materially changed).
     var consentVersion: String

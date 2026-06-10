@@ -93,12 +93,30 @@ class SessionActivity : AppCompatActivity() {
                         Toast.makeText(this@SessionActivity, "Session ended", Toast.LENGTH_SHORT).show()
                         finish()
                     }
+                } else {
+                    // Server error — without this branch the button stayed disabled
+                    // forever with no message. Restore the live view so the child can
+                    // retry (the passive monitor will also auto-end it later).
+                    Toast.makeText(this@SessionActivity,
+                        "Couldn't end the session (server ${resp.code()}) — try again.",
+                        Toast.LENGTH_LONG).show()
+                    restoreActiveView()
                 }
             } catch (e: Exception) {
                 Toast.makeText(this@SessionActivity, "Error ending session: ${e.message}", Toast.LENGTH_LONG).show()
+                restoreActiveView()
             } finally {
                 binding.progressBar.visibility = View.GONE
             }
+        }
+    }
+
+    /** Re-arm the live session screen after a failed end attempt. */
+    private fun restoreActiveView() {
+        binding.btnEndSession.isEnabled = true
+        if (prefs.hasActiveSession()) {
+            startTimer()
+            startLivePredictions()
         }
     }
 
@@ -106,7 +124,7 @@ class SessionActivity : AppCompatActivity() {
         binding.layoutActiveSession.visibility = View.GONE
         binding.layoutResult.visibility = View.VISIBLE
 
-        binding.tvRiskLabel.text = pred.riskLabel.uppercase()
+        binding.tvRiskLabel.text = pred.riskLabel.replace('_', ' ').uppercase()
         binding.tvRiskScore.text = "Score: ${"%.0f".format(pred.riskScore * 100)}%"
         binding.tvBehaviorScore.text = "Behavior: ${"%.0f".format(pred.behaviorScore * 100)}%"
         binding.tvChatScore.text = "Chat: ${"%.0f".format(pred.chatScore * 100)}%"
@@ -143,9 +161,23 @@ class SessionActivity : AppCompatActivity() {
         }
     }
 
+    /** The passive monitor can auto-end the session while this screen is open (game
+     *  closed, grace expired). Detect that and close the live view gracefully — the
+     *  timer would otherwise show elapsed-since-epoch garbage and the live poller
+     *  would query session id -1. */
+    private fun sessionEndedElsewhere(): Boolean {
+        if (prefs.hasActiveSession()) return false
+        timerJob?.cancel()
+        livePredictJob?.cancel()
+        Toast.makeText(this, "Session ended", Toast.LENGTH_SHORT).show()
+        finish()
+        return true
+    }
+
     private fun startTimer() {
         timerJob = lifecycleScope.launch {
             while (isActive) {
+                if (sessionEndedElsewhere()) return@launch
                 val elapsed = System.currentTimeMillis() - prefs.activeSessionStart
                 val h = elapsed / 3_600_000
                 val m = (elapsed % 3_600_000) / 60_000
@@ -161,12 +193,17 @@ class SessionActivity : AppCompatActivity() {
         // gameplay (when this screen isn't open); here we only show the live risk.
         livePredictJob = lifecycleScope.launch {
             while (isActive) {
+                if (sessionEndedElsewhere()) return@launch
                 try {
                     val api  = ApiClient.getInstance(prefs.serverUrl)
                     val resp = api.livePrediction(prefs.activeSessionId)
                     if (resp.isSuccessful && resp.body()?.success == true) {
                         val body  = resp.body()!!
-                        val label = body.riskLabel ?: "—"
+                        // risk_label is the internal category key (e.g. "at_risk") —
+                        // prettify it for display.
+                        val label = body.riskLabel
+                            ?.replace('_', ' ')
+                            ?.replaceFirstChar { it.uppercase() } ?: "—"
                         val score = body.riskScore?.let { "${"%.0f".format(it * 100)}%" } ?: ""
                         binding.tvLiveRisk.text = "Live: $label $score"
                     }

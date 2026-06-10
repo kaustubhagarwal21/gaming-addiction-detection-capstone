@@ -52,6 +52,8 @@ __MACOSX/
 .idea/
 *.iml
 *.swp
+.vscode/
+.history/
 
 # ── Old duplicate project copies (kept on disk, intentionally not in the repo) ──
 /capstone-main/
@@ -70,4 +72,6 @@ android/*/keystore.properties
 *.log
 *.out
 *.toc
+*.fls
+*.fdb_latexmk
 docs/PROJECT_PAPER.pdf

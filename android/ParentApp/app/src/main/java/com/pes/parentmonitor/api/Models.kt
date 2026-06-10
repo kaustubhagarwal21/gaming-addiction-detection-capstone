@@ -84,6 +84,9 @@ data class ParentalDashboard(
     val alerts: List<Alert>?,
     @SerializedName("trend_data") val trendData: List<TrendPoint>?,
     @SerializedName("top_games") val topGames: List<TopGame>?,
+    // This week only (top_games is the all-time leaderboard) — used by the Weekly Report.
+    @SerializedName("top_games_week") val topGamesWeek: List<TopGame>?,
+    @SerializedName("week_session_count") val weekSessionCount: Int?,
     @SerializedName("recent_games") val recentGames: List<RecentGame>?,
     @SerializedName("total_hours_week") val totalHoursWeek: Double?,
     @SerializedName("late_night_count") val lateNightCount: Int?,
@@ -100,7 +103,22 @@ data class ParentalDashboard(
     @SerializedName("top_anomaly") val topAnomaly: AnomalyInfo?,
     @SerializedName("latest_signals") val latestSignals: SignalAvailability?,
     // The headline risk is a per-day roll-up; this says which day and how many sessions.
-    @SerializedName("risk_period") val riskPeriod: RiskPeriod?
+    @SerializedName("risk_period") val riskPeriod: RiskPeriod?,
+    // Live strip: is the child playing right now / is the monitoring app checking in.
+    @SerializedName("live_status") val liveStatus: LiveStatus? = null,
+    val monitoring: MonitoringStatus? = null
+)
+
+data class LiveStatus(
+    @SerializedName("is_playing") val isPlaying: Boolean,
+    @SerializedName("current_game") val currentGame: String?,
+    @SerializedName("session_duration_mins") val sessionDurationMins: Int?
+)
+
+// Health of the child-side monitoring app, from its ~5-minute heartbeat.
+data class MonitoringStatus(
+    val online: Boolean?,
+    @SerializedName("minutes_since_checkin") val minutesSinceCheckin: Long?
 )
 
 // Describes the day the headline risk aggregates over: "Today" / "Yesterday" / "Jun 03".
@@ -125,10 +143,22 @@ data class Alert(
     val message: String,
     val severity: String,
     @SerializedName("created_at") val createdAt: String,
+    // Age computed server-side (same clock as created_at), so the app can render an
+    // accurate "2h ago" without knowing the server's timezone.
+    @SerializedName("age_minutes") val ageMinutes: Long? = null,
     val read: Boolean,
     // Parent verdict already given on this alert (null = not yet rated). Mutable so the
     // list can reflect a just-submitted rating without a server round-trip.
     var feedback: String? = null
+)
+
+// Aggregate of the parent's own accurate/false-alarm verdicts (GET /api/feedback/summary)
+// — the system's real-world precision proxy, shown atop the Alerts screen.
+data class FeedbackSummary(
+    val success: Boolean,
+    val total: Int?,
+    val counts: Map<String, Int>?,
+    @SerializedName("agreement_rate") val agreementRate: Double?
 )
 
 data class TrendPoint(

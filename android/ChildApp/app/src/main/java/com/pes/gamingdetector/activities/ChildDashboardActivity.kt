@@ -75,7 +75,10 @@ class ChildDashboardActivity : AppCompatActivity() {
                     binding.tvNoSessions.visibility = if (sessions.isEmpty()) View.VISIBLE else View.GONE
                     val sb = StringBuilder()
                     sessions.take(5).forEach { s ->
-                        sb.append("• ${s.gameName} — ${s.riskLabel} (${s.duration})\n")
+                        // risk_label is the internal key ("at_risk") — prettify for display
+                        val nice = s.riskLabel.replace("_", " ")
+                            .replaceFirstChar { it.uppercase() }
+                        sb.append("• ${s.gameName} — $nice (${s.duration})\n")
                     }
                     binding.tvRecentSessions.text = sb.toString().trimEnd()
                 }

@@ -229,6 +229,32 @@ class ParentalDashboardActivity : AppCompatActivity() {
             binding.tvRiskPeriod.visibility = View.GONE
         }
 
+        // ── Live status strip: playing-now + monitoring heartbeat health ──
+        val liveBits = mutableListOf<String>()
+        dash.liveStatus?.let { ls ->
+            if (ls.isPlaying) {
+                val mins = ls.sessionDurationMins
+                liveBits += "🎮 Playing ${ls.currentGame ?: "a game"} now" +
+                    (mins?.let { " · ${it} min" } ?: "")
+            }
+        }
+        dash.monitoring?.let { m ->
+            val mins = m.minutesSinceCheckin
+            liveBits += when {
+                m.online == true       -> "🟢 Monitoring active"
+                mins != null           -> "🔴 No check-in for " +
+                    (if (mins >= 120) "${mins / 60}h" else "${mins}m") +
+                    " — phone may be off or app closed"
+                else                   -> "🔴 Monitoring not checking in"
+            }
+        }
+        if (liveBits.isNotEmpty()) {
+            binding.tvLiveStatus.text = liveBits.joinToString("   ")
+            binding.tvLiveStatus.visibility = View.VISIBLE
+        } else {
+            binding.tvLiveStatus.visibility = View.GONE
+        }
+
         val color = when (risk.lowercase()) {
             "casual"   -> getColor(R.color.risk_low)
             "at_risk"  -> getColor(R.color.risk_medium)
@@ -559,6 +585,10 @@ class ParentalDashboardActivity : AppCompatActivity() {
                                 prefs.childUserId = chosen.userId
                                 prefs.childName   = chosen.name
                                 binding.tvChildName.text = chosen.name
+                                // Re-target the background poller too — otherwise it
+                                // keeps notifying about the PREVIOUS child until the
+                                // app is killed and restarted.
+                                startAlertPolling()
                                 loadDashboard()
                             }
                         }

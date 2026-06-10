@@ -62,9 +62,10 @@ class WeeklyReportActivity : AppCompatActivity() {
         val daysWithData = dash.dailyHoursWeek?.count { it.hours > 0 }?.takeIf { it > 0 } ?: 7
         val avgDaily     = weekHours / daysWithData
         val lateNight    = dash.lateNightCount ?: 0
-        // Real session count = sum of per-game session counts; trendData.size is
-        // the number of trend points (≈ days), not sessions.
-        val sessionCount = dash.topGames?.sumOf { it.sessions } ?: 0
+        // THIS week's session count from the server; the old fallback summed the
+        // all-time top-5 games' sessions, which isn't a weekly number at all.
+        val sessionCount = dash.weekSessionCount
+            ?: dash.topGames?.sumOf { it.sessions } ?: 0
 
         binding.tvWeekHours.text    = "%.1f".format(weekHours)
         binding.tvWeekSessions.text = sessionCount.toString()
@@ -83,8 +84,9 @@ class WeeklyReportActivity : AppCompatActivity() {
         binding.riskBar.setBackgroundColor(color)
         binding.tvRiskContext.text = "${"%.0f".format(score * 100)}% risk score"
 
-        // Top games
-        val games = dash.topGames
+        // Top games — this week's, not the all-time leaderboard (falls back for an
+        // older backend that doesn't send the weekly list yet).
+        val games = dash.topGamesWeek ?: dash.topGames
         if (games.isNullOrEmpty()) {
             binding.tvTopGames.text = "No game data this week"
         } else {

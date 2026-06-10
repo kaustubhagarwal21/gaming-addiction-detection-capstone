@@ -16,7 +16,6 @@ import android.widget.EditText
 import android.view.Menu
 import android.view.MenuItem
 import android.view.View
-import android.view.ViewGroup
 import android.view.inputmethod.InputMethodManager
 import android.widget.TextView
 import android.widget.Toast
@@ -25,11 +24,8 @@ import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.lifecycleScope
-import androidx.recyclerview.widget.GridLayoutManager
-import androidx.recyclerview.widget.RecyclerView
 import com.pes.gamingdetector.R
 import com.pes.gamingdetector.api.ApiClient
-import com.pes.gamingdetector.api.Game
 import com.pes.gamingdetector.databinding.ActivityHomeBinding
 import com.pes.gamingdetector.services.AdminReceiver
 import com.pes.gamingdetector.services.GameMonitorService
@@ -368,12 +364,48 @@ class HomeActivity : AppCompatActivity() {
             !isAccessibilityEnabled() -> showAccessibilityDialog()
             !isCustomKeyboardEnabled() -> showKeyboardEnableDialog()
             !isCustomKeyboardSelected() -> showKeyboardSelectDialog()
+            (!isBatteryExempt() && !prefs.batteryExemptOffered) -> {
+                prefs.batteryExemptOffered = true   // ask once; declining shouldn't nag
+                showBatteryExemptDialog()
+            }
             (!isDeviceAdminActive() && !prefs.deviceAdminOffered) -> {
                 prefs.deviceAdminOffered = true     // optional + offered once, so it doesn't nag
                 showDeviceAdminDialog()
             }
             else -> dismissPermDialog()   // everything granted → close any lingering box
         }
+    }
+
+    /** Already exempt from Doze/battery optimisation? Aggressive OEM power managers
+     *  killing the always-on monitor is the top real-world cause of silent monitoring. */
+    private fun isBatteryExempt(): Boolean {
+        val pm = getSystemService(Context.POWER_SERVICE) as android.os.PowerManager
+        return pm.isIgnoringBatteryOptimizations(packageName)
+    }
+
+    private fun showBatteryExemptDialog() {
+        if (isFinishing || isDestroyed) return
+        permDialog?.dismiss()
+        permDialog = AlertDialog.Builder(this)
+            .setTitle("Keep monitoring running")
+            .setMessage("Some phones aggressively close background apps to save battery, " +
+                "which silently stops gaming monitoring. Allow this app to ignore battery " +
+                "optimisation so monitoring stays reliable.")
+            .setCancelable(false)
+            .setPositiveButton("Allow") { _, _ ->
+                try {
+                    startActivity(Intent(
+                        Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS,
+                        android.net.Uri.parse("package:$packageName")))
+                } catch (_: Exception) {
+                    // Some OEMs hide the direct prompt — fall back to the list screen.
+                    try {
+                        startActivity(Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS))
+                    } catch (_: Exception) {}
+                }
+            }
+            .setNegativeButton("Skip", null)
+            .show()
     }
 
     private fun isDeviceAdminActive(): Boolean {
@@ -528,23 +560,4 @@ class HomeActivity : AppCompatActivity() {
         return default.contains(packageName, ignoreCase = true)
     }
 
-    private inner class GameAdapter(
-        private val games: List<Game>
-    ) : RecyclerView.Adapter<GameAdapter.VH>() {
-
-        inner class VH(v: View) : RecyclerView.ViewHolder(v) {
-            val tvName: TextView = v.findViewById(R.id.tvGameName)
-        }
-
-        override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): VH {
-            val v = layoutInflater.inflate(R.layout.item_game, parent, false)
-            return VH(v)
-        }
-
-        override fun onBindViewHolder(holder: VH, position: Int) {
-            holder.tvName.text = games[position].name
-        }
-
-        override fun getItemCount() = games.size
-    }
 }

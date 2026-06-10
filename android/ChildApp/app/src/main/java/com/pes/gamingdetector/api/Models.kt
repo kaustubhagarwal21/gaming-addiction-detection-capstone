@@ -75,13 +75,6 @@ data class Prediction(
     @SerializedName("short_session_note") val shortSessionNote: String?
 )
 
-data class Game(
-    val id: Int,
-    val name: String,
-    @SerializedName("package_name") val packageName: String?,
-    @SerializedName("icon_url") val iconUrl: String?
-)
-
 data class UserDashboard(
     val success: Boolean,
     val stats: DashboardStats?,
@@ -121,11 +114,6 @@ data class VoiceResponse(
 data class HealthResponse(
     val status: String,
     @SerializedName("models_loaded") val modelsLoaded: Boolean
-)
-
-data class GamesResponse(
-    val success: Boolean,
-    val games: List<Game>
 )
 
 data class LivePrediction(

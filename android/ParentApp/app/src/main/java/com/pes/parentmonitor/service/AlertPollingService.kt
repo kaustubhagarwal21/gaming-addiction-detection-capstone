@@ -18,16 +18,20 @@ import kotlinx.coroutines.*
 
 class AlertPollingService : Service() {
     private var parentId: Int = -1
-    private var childUserId: Int = -1
+    @Volatile private var childUserId: Int = -1
     private var serverUrl: String = Constants.BASE_URL
     private val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
     private lateinit var prefs: PrefsManager
+    // onStartCommand re-fires every time the dashboard opens (and on STICKY redelivery);
+    // only ONE poll loop must run — duplicates would double every notification.
+    @Volatile private var pollStarted = false
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         prefs = PrefsManager(this)
         // Fall back to prefs when extras are missing (e.g. START_STICKY redelivery
         // gives a null intent). Without this, childUserId becomes -1 and polling
-        // silently no-ops forever.
+        // silently no-ops forever. Fields are ALWAYS refreshed (even when the loop is
+        // already running) so a repeat start after "switch child" re-targets polling.
         val extraParent = intent?.getIntExtra("parent_id", -1) ?: -1
         val extraChild  = intent?.getIntExtra("child_user_id", -1) ?: -1
         parentId    = if (extraParent != -1) extraParent else prefs.parentId
@@ -45,7 +49,10 @@ class AlertPollingService : Service() {
                 .build()
         )
 
-        scope.launch { pollLoop() }
+        if (!pollStarted) {
+            pollStarted = true
+            scope.launch { pollLoop() }
+        }
         return START_STICKY
     }
 
@@ -140,6 +147,7 @@ class AlertPollingService : Service() {
 
     override fun onDestroy() {
         scope.cancel()
+        pollStarted = false
         super.onDestroy()
     }
 

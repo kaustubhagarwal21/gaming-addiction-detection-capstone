@@ -35,6 +35,11 @@
     <!-- Keep CPU awake during monitoring -->
     <uses-permission android:name="android.permission.WAKE_LOCK" />
 
+    <!-- Ask the user to exempt the app from Doze/battery optimisation: aggressive OEM
+         power managers killing the monitor is the top real-world cause of monitoring
+         going silent. (Play policy restricts this; fine for sideload distribution.) -->
+    <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
+
     <!-- Auto-restart on boot -->
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
 

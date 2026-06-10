@@ -34,6 +34,9 @@ class VoiceRecorderService : Service() {
     private var sessionId: Int = -1
     private var serverUrl: String = Constants.BASE_URL
     private val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
+    // Guards against a duplicate onStartCommand opening a SECOND AudioRecord on the same
+    // mic (two recorders contend and one fails / yields garbage).
+    @Volatile private var recording = false
 
     // Vosk requires 16kHz; librosa tone analysis works fine at 16kHz too
     private val sampleRate = 16000
@@ -76,7 +79,14 @@ class VoiceRecorderService : Service() {
             return START_NOT_STICKY
         }
 
-        scope.launch { recordLoop() }
+        // Already capturing — a repeat start (GameMonitorService re-invoking us) must not
+        // open a second recorder on the mic. The flag is cleared when the loop exits for
+        // ANY reason (mic busy, model failure), so a later session can try again.
+        if (recording) return START_NOT_STICKY
+        recording = true
+        scope.launch {
+            try { recordLoop() } finally { recording = false }
+        }
         return START_NOT_STICKY
     }
 
@@ -94,13 +104,28 @@ class VoiceRecorderService : Service() {
             return
         }
 
+        // The mic can be unavailable (held by the game / another app) — AudioRecord then
+        // stays UNINITIALIZED and startRecording() throws IllegalStateException. Degrade
+        // gracefully (no voice this session) instead of crashing the whole app from an
+        // unhandled coroutine exception.
+        try {
+            if (recorder.state != AudioRecord.STATE_INITIALIZED) throw IllegalStateException("AudioRecord not initialized")
+            recorder.startRecording()
+        } catch (e: Exception) {
+            Log.w("VoiceRecorder", "Could not start recording (mic busy?): ${e.message}")
+            recognizer?.close()
+            model?.close()
+            recorder.release()
+            return
+        }
+
         val chunkBuffer = ShortArray(bufferSize / 2)
-        val pcmAccumulator = mutableListOf<Byte>()
+        // Raw byte stream, not MutableList<Byte> — a 10s segment is ~320 KB, and boxing
+        // every byte cost ~16x that in allocations/GC churn on the audio hot path.
+        val pcmAccumulator = java.io.ByteArrayOutputStream()
         var segmentStart = System.currentTimeMillis()
 
         try {
-            recorder.startRecording()
-
             while (currentCoroutineContext().isActive) {
                 val read = recorder.read(chunkBuffer, 0, chunkBuffer.size)
                 if (read <= 0) continue
@@ -115,16 +140,16 @@ class VoiceRecorderService : Service() {
                     }
                 }
 
-                // Accumulate PCM bytes for periodic tone analysis upload
+                // Accumulate PCM bytes (little-endian) for periodic tone analysis upload
                 for (i in 0 until read) {
                     val s = chunkBuffer[i].toInt()
-                    pcmAccumulator.add((s and 0xff).toByte())
-                    pcmAccumulator.add((s shr 8 and 0xff).toByte())
+                    pcmAccumulator.write(s and 0xff)
+                    pcmAccumulator.write((s shr 8) and 0xff)
                 }
 
                 if (System.currentTimeMillis() - segmentStart >= Constants.VOICE_SEGMENT_DURATION_MS) {
                     val pcmCopy = pcmAccumulator.toByteArray()
-                    pcmAccumulator.clear()
+                    pcmAccumulator.reset()
                     segmentStart = System.currentTimeMillis()
                     if (pcmCopy.isNotEmpty()) {
                         scope.launch { uploadPcmAsWav(pcmCopy) }
@@ -140,7 +165,7 @@ class VoiceRecorderService : Service() {
         } finally {
             recognizer?.close()
             model?.close()
-            recorder.stop()
+            try { recorder.stop() } catch (_: Exception) {}
             recorder.release()
         }
     }
@@ -191,7 +216,11 @@ class VoiceRecorderService : Service() {
             try {
                 val api = ApiClient.getInstance(serverUrl)
                 api.uploadChat(sessionId, mapOf("message" to text, "source" to "voice_stt"))
-            } catch (_: Exception) {}
+            } catch (_: Exception) {
+                // Offline — queue the transcript line for retry.
+                com.pes.gamingdetector.util.ChatUploadQueue
+                    .enqueue(this@VoiceRecorderService, sessionId, text, "voice_stt")
+            }
         }
     }
 

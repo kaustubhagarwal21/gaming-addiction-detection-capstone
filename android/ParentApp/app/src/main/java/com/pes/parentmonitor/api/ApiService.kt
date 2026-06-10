@@ -30,6 +30,9 @@ interface ApiService {
     @POST("api/feedback")
     suspend fun submitFeedback(@Body request: FeedbackRequest): Response<GenericResponse>
 
+    @GET("api/feedback/summary")
+    suspend fun getFeedbackSummary(@Query("user_id") userId: Int): Response<FeedbackSummary>
+
     @GET("api/child/status")
     suspend fun getChildStatus(@Query("user_id") userId: Int): Response<ChildStatusResponse>
 

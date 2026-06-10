@@ -54,9 +54,6 @@ interface ApiService {
         @Body body: Map<String, String>
     ): Response<GenericResponse>
 
-    @GET("api/games")
-    suspend fun getGames(): Response<GamesResponse>
-
     @GET("api/dashboard/child_enriched")
     suspend fun getChildEnriched(@Query("user_id") userId: Int): Response<ChildEnrichedResponse>
 
@@ -95,13 +92,12 @@ interface ApiService {
         @Query("days") days: Int = 14
     ): Response<ReflectionsResponse>
 
-    // ── Privacy: consent + data deletion ───────────────────────────
+    // ── Privacy: consent ────────────────────────────────────────────
+    // (Data deletion is parent-controlled and lives in the Parent app only; the server
+    // rejects deletion requests made with a child token.)
     @GET("api/consent")
     suspend fun getConsent(@Query("user_id") userId: Int): Response<ConsentStatus>
 
     @POST("api/consent")
     suspend fun postConsent(@Body body: @JvmSuppressWildcards Map<String, Any>): Response<GenericResponse>
-
-    @POST("api/user/delete_data")
-    suspend fun deleteData(@Body body: Map<String, String>): Response<GenericResponse>
 }

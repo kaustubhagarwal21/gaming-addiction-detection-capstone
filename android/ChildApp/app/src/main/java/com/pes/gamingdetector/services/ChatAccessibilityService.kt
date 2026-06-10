@@ -6,6 +6,7 @@ import android.os.Handler
 import android.os.Looper
 import android.view.accessibility.AccessibilityEvent
 import com.pes.gamingdetector.api.ApiClient
+import com.pes.gamingdetector.util.ChatUploadQueue
 import com.pes.gamingdetector.util.Constants
 import com.pes.gamingdetector.util.ForegroundResolver
 import com.pes.gamingdetector.util.ForegroundTracker
@@ -152,7 +153,10 @@ class ChatAccessibilityService : AccessibilityService() {
             try {
                 val api = ApiClient.getInstance(prefs.serverUrl)
                 api.uploadChat(sessionId, mapOf("message" to message, "source" to source))
-            } catch (_: Exception) {}
+            } catch (_: Exception) {
+                // Offline — queue it; PassiveMonitorService flushes when back online.
+                ChatUploadQueue.enqueue(this@ChatAccessibilityService, sessionId, message, source)
+            }
         }
     }
 

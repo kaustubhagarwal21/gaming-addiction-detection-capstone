@@ -114,7 +114,10 @@ rather than to maximise a headline accuracy number.
         per-prediction SHAP explanations.
   \item Production engineering: token authentication, peppered PIN hashing,
         HTTPS-only transport, encrypted on-device token storage, parental consent,
-        raw-audio deletion, and a durable managed database.
+        raw-audio deletion, and a durable managed database --- plus free-tier load
+        engineering (pooled, validated connections to the serverless database,
+        per-client rate limiting behind the reverse proxy, and caching/throttling on
+        the polling hot paths) so the deployment survives real concurrent use.
   \item A parent-feedback loop that records real ``accurate / false-alarm''
         verdicts --- the only source of genuine labels in an otherwise
         synthetically-trained system --- enabling future retraining.
@@ -126,9 +129,14 @@ rather than to maximise a headline accuracy number.
         accessibility API cannot read --- without resorting to screen OCR --- while
         capturing only the child's own typing.
   \item Tamper resistance and resilient delivery: a self-restarting foreground service,
-        a parent-PIN lock on logout/settings, a server-side heartbeat watchdog that alerts
-        the parent when monitoring goes silent (uninstall / kill / offline), and real-time
-        alerts pushed to \emph{every} guardian device in a family.
+        a battery-optimisation exemption step (OEM power managers silently killing the
+        monitor are the most common real-world failure), a parent-PIN lock on
+        logout/settings with parent-role-only credential and data-deletion changes, a
+        server-side heartbeat watchdog that alerts the parent when monitoring goes silent
+        (uninstall / kill / offline), a live monitoring-health and ``playing right now''
+        indicator on the parent dashboard, an offline retry queue so chat captured
+        without connectivity is delivered later instead of lost, and real-time alerts
+        pushed to \emph{every} guardian device in a family.
   \item An honest evaluation, including the realistic-stream precision of the chat
         model and the synthetic-data caveat on the voice model.
 \end{enumerate}
@@ -223,6 +231,16 @@ endpoint. It loads three serialised scikit-learn models and fuses them. The back
 is \textbf{dual-dialect} --- the identical SQL runs on SQLite (local) or PostgreSQL
 (production) --- and is deployed on a managed host with a durable managed Postgres.
 
+Because both hosting tiers are free (a 512\,MB single-instance web service and a
+serverless Postgres that scales to zero when idle), the serving tier is engineered
+for load rather than assumed to have headroom: database connections are
+\emph{pooled and validated on borrow} (a connection the idle-scaled database silently
+killed is detected by a one-round-trip probe and replaced, instead of failing the
+request), rate limits are applied per real client IP behind the reverse proxy (not per
+proxy, which would make all users share one quota), SHAP explanations are memoised and
+the anomaly scan is throttled on the 30-second dashboard polling path, and the single
+threaded worker is sized so the whole ML stack stays within memory.
+
 \subsection{Presentation tier (Parent app)}
 The Parent app authenticates with a family code + PIN, shows the current risk band
 with its SHAP-derived ``why this level'' factors, a 14-day trend, an alerts feed, a
@@ -236,7 +254,9 @@ alert as accurate or a false alarm. It also offers a \textbf{``Send a nudge''} c
         that forbids cleartext (HTTPS only); the backend is TLS-terminated.
   \item \textbf{Authentication:} signed bearer tokens (HMAC, \texttt{itsdangerous})
         issued at login; per-user authorisation (a parent can read only their own
-        children).
+        children), plus \emph{role} restrictions on top: changing the family PIN and
+        deleting a child's data require a parent token, so a child's own token cannot
+        quietly disable the safeguards that monitor them.
   \item \textbf{Credentials:} PINs are stored only as keyed (peppered) hashes; raw
         PINs are never persisted. Tokens are kept in Android
         \texttt{EncryptedSharedPreferences}.
@@ -258,7 +278,11 @@ The behaviour model consumes 20 features. \textbf{Ten objective features} are
 time): daily\_play\_time\_hours, weekly\_play\_time\_hours, sessions\_per\_day,
 avg\_session\_duration\_min, late\_night\_play\_ratio, days\_played\_per\_week,
 longest\_play\_streak\_days, binge\_sessions\_per\_week,
-avg\_break\_between\_sessions\_min and rapid\_relogin\_ratio.
+avg\_break\_between\_sessions\_min and rapid\_relogin\_ratio. Hour-of-day signals
+(late-night play, and the sleep-impact view built on it) are evaluated in the
+\emph{child's local timezone} --- the device reports its UTC offset, and the server
+shifts stored timestamps accordingly --- so a cloud host running in UTC does not
+mis-time the night of a child in another timezone.
 
 \textbf{Ten psychometric proxies} (urge, loss-of-time-awareness, control-loss,
 craving, tolerance, missed-sleep, fatigue, routine-disruption,
@@ -372,6 +396,13 @@ accessibility paths from logging the same line twice. The prediction engine feed
 \emph{typed} chat to the toxicity channel and routes spoken words through the
 voice/valence fusion, so the two are never double-counted.
 
+Capture is also resilient to connectivity loss: a chat line whose upload fails on a
+network error is held in a small bounded queue on the device (encrypted preferences,
+capped and aged out after a day) and retried automatically once the phone is back
+online --- previously such lines were silently lost. Only \emph{network} failures are
+queued, never lines the server received and rejected, so retries cannot create
+duplicates beyond the server's own de-duplication window.
+
 \subsection{Voice recording and emotion (valence--arousal fusion)}
 \texttt{VoiceRecorderService} records PCM segments and extracts 17 acoustic features
 (13 MFCCs, pitch mean/std, energy mean/std), which the backend classifies into
@@ -390,7 +421,12 @@ $(\text{valence}, \text{arousal})$ point is mapped back to one of the four emoti
 then to a voice-risk weight. This corrects the child-pitch bias (high arousal $+$ neutral
 words $\rightarrow$ ``excited'', not ``angry'') and lets genuinely toxic spoken language
 pull the read toward distress even when the tone is calm. If no transcript is available,
-the system falls back to the acoustic label alone.
+the system falls back to the acoustic label alone. Before any of this, an RMS
+\emph{silence floor} rejects near-silent segments outright: the pipeline gain-normalises
+each clip so the energy features are microphone-gain-invariant, and without the floor
+that normalisation would amplify room noise up to speech level and classify the noise as
+an emotion. A silent segment is recorded as low-confidence neutral instead --- an interim
+form of the voice-activity detection planned in Future Work.
 
 This is where the voice and chat models cooperate: the chat-toxicity model is reused to
 score the \emph{spoken} words inside the voice fusion. Crucially, those transcribed words
@@ -425,7 +461,9 @@ Each alert in the Parent app carries an ``\emph{Was this assessment accurate?}''
 control. A verdict is stored via \texttt{POST /api/feedback} together with a snapshot
 of the model's category and score at that moment, giving a growing set of real labels
 for future retraining; an aggregate \emph{agreement rate} is exposed as a real-world
-precision proxy.
+precision proxy and shown back to the parent at the top of the alerts screen
+(``based on your $N$ verdicts, you've rated the model accurate $X\%$ of the time''),
+closing the loop visibly rather than collecting labels into a void.
 
 \subsection{Parent $\rightarrow$ child nudges}
 Beyond monitoring, the parent can \emph{act}. A ``Send a nudge'' control posts a message
@@ -442,6 +480,13 @@ project's ``guidance, not punishment'' goal.
 \subsection{Real-time alerts and multi-guardian delivery}
 Material events raise a parent alert in real time: the start of a gaming session,
 confidently-toxic chat, an unusual-behaviour anomaly, and the tamper signals below.
+Each alert carries a server-computed age, so the app shows accurate relative times
+(``2h ago'') regardless of the timezone gap between phone and server. Beyond discrete
+alerts, the dashboard header shows a \emph{live status strip}: whether the child is
+playing \emph{right now} (game and minutes elapsed, from the open session) and whether
+the monitoring app is healthy (time since its last heartbeat check-in) --- so a parent
+sees ``playing Roblox $\cdot$ 23 min'' or ``no check-in for 47 min'' at a glance instead
+of waiting for the next alert.
 Alerts reach guardians by two complementary paths. Every guardian phone polls
 \texttt{GET /api/alerts} ($\sim$60\,s), and for high-risk events the server also sends a
 Firebase Cloud Messaging push. Because both parents may monitor the same family under the
@@ -453,10 +498,16 @@ initialised \emph{lazily}, only on the first push.
 \subsection{Tamper resistance and reliability}
 Monitoring is designed to survive ordinary interference and to make interference
 visible. The data-collection service runs in the foreground, restarts itself if the
-child swipes the app away from recents, and resumes on device boot. A child cannot
-quietly disable it: logging out and changing settings require the family parent PIN,
-verified server-side so the PIN is never exposed to the child, and a logout itself
-raises a parent alert. Because Android gives an app no callback at its own uninstall,
+child swipes the app away from recents, and resumes on device boot; its setup flow also
+requests exemption from battery optimisation, because aggressive OEM power managers
+silently killing background services is the most common \emph{accidental} way monitoring
+dies in the field. Services are guarded against double-starts (boot receiver and app
+launch can both start them), so restarts never stack duplicate capture loops. A child
+cannot quietly disable monitoring: logging out and changing settings require the family
+parent PIN, verified server-side so the PIN is never exposed to the child, and a logout
+itself raises a parent alert; the family PIN can only be \emph{changed} with a
+parent-role token, and data deletion is likewise parent-only --- a child's own
+authenticated session cannot rewrite or erase its safeguards. Because Android gives an app no callback at its own uninstall,
 removal is detected \emph{indirectly}: the Child app emits a periodic heartbeat, and the
 server raises a single ``monitoring has gone silent'' alert when no heartbeat arrives for
 a set interval --- a catch-all covering uninstall, force-stop, being killed, or going
@@ -549,9 +600,18 @@ and is the first candidate for real-audio retraining.
         managed Postgres); both apps build as signed release APKs.
   \item A 35-test backend suite passes against an isolated database; both apps pass
         Android Lint with zero errors.
-  \item Robustness: single-worker memory-safe serving, database-connection retry for
-        a serverless Postgres, graceful degradation when a modality is absent, and
-        a self-healing stale-session guard.
+  \item Robustness under load on free-tier hosting: pooled, probe-validated connections
+        to the serverless Postgres (replacing per-request TLS handshakes; connections
+        killed by scale-to-zero are detected and replaced transparently), per-client
+        rate limiting behind the reverse proxy (previously all users shared one
+        per-proxy quota --- the cause of earlier failures under load), memoised SHAP
+        explanations and a throttled anomaly scan on the 30-second polling path, a
+        16\,MB request-body cap, and threaded single-worker serving sized to the
+        512\,MB instance. Verified with a concurrent smoke test (288 mixed requests
+        across 24 threads, zero errors).
+  \item Graceful degradation when a modality is absent, a self-healing stale-session
+        guard, and an on-device offline retry queue for chat captured without
+        connectivity.
 \end{itemize}
 
 \subsection{Summary of features delivered}
@@ -560,15 +620,15 @@ and is the first candidate for real-audio retraining.
 \toprule
 \textbf{Area} & \textbf{Delivered} \\
 \midrule
-Detection & Any-game detection (UsageStats + category), session lifecycle \\
-Capture & Custom-keyboard (IME) + Accessibility typed-chat (canvas games included), on-device Vosk STT, voice features, real behavioural metrics \\
-ML & Calibrated RF behaviour + SHAP, LogReg/TF-IDF chat, GBM voice, availability-weighted fusion, late-voice re-score \\
-Credibility & Probability calibration, anomaly detection, observation mode, honest model card \\
-Parent value & Per-day weighted risk + ``why'' (SHAP), 14-day trend, recently/most-played games, real-time alerts, weekly PDF, feedback loop, limits, send-nudge-to-child, switch child without re-login \\
-Child wellbeing & Mira check-in, gamified daily check-in + streak, reflections, breathing, break/limit nudges \\
-Reliability/anti-tamper & Heartbeat watchdog (uninstall/kill/offline alert, child-local quiet hours), optional Device Admin (uninstall block + instant disable alert), parent-PIN lock on logout/settings, logout alert, self-restart + boot resume, multi-guardian FCM push (lazy-init) \\
-Privacy/Security & Token auth, peppered PIN hashes, HTTPS-only, encrypted token store, consent, raw-audio deletion, retention \\
-Engineering & Dual-dialect DB, signed APKs, 35 tests, lint-clean, deployed + durable DB \\
+Detection & Any-game detection (UsageStats + category + parent overrides), session lifecycle with grace/ancillary handling \\
+Capture & Custom-keyboard (IME) + Accessibility typed-chat (canvas games included), on-device Vosk STT, voice features with silence floor, real behavioural metrics, offline chat retry queue \\
+ML & Calibrated RF behaviour + SHAP, LogReg/TF-IDF chat, GBM voice, availability-weighted fusion, valence--arousal voice/text fusion, genre weighting, late-voice re-score \\
+Credibility & Probability calibration, anomaly detection (date-keyed), observation mode, honest model card, child-local timezone for hour-of-day signals \\
+Parent value & Per-day weighted risk + ``why'' (SHAP), live ``playing now'' + monitoring-health strip, 14-day trend, recently/most-played games, real-time alerts with friendly ages + feedback agreement rate, weekly report (true weekly numbers) + PDF, limits, send-nudge-to-child, switch child without re-login \\
+Child wellbeing & Mira check-in (typing indicator, double-send guard), gamified daily check-in + streak, reflections, breathing, break/limit nudges, today-vs-goal progress \\
+Reliability/anti-tamper & Heartbeat watchdog (uninstall/kill/offline alert, child-local quiet hours), optional Device Admin (uninstall block + instant disable alert), battery-optimisation exemption, double-start-safe services, parent-PIN lock on logout/settings (server-verified, constant-time), parent-role-only PIN change + data deletion, logout alert, self-restart + boot resume, multi-guardian FCM push (lazy-init) \\
+Privacy/Security & Token auth + role checks, peppered PIN hashes, HTTPS-only, encrypted token store, consent (versioned), raw-audio deletion, retention purge, 16\,MB body cap \\
+Engineering & Dual-dialect DB with pooled validated Postgres connections, per-client rate limiting, hot-path caching/throttling, signed APKs, 35 tests + concurrency smoke, lint-clean, deployed + durable DB \\
 \bottomrule
 \end{tabularx}
 \end{center}
@@ -601,8 +661,10 @@ The one near-term enhancement genuinely worth building with the existing codebas
 tools --- one that adds visible value and can be implemented directly --- is:
 \begin{itemize}[leftmargin=1.4em]
   \item \textbf{Real-audio voice model + VAD.} Retrain the voice model on free, real
-        labelled speech (RAVDESS~\cite{ravdess2018}) and add voice-activity detection
-        (\texttt{webrtcvad}) so silence and game audio are not classified as emotion. Voice
+        labelled speech (RAVDESS~\cite{ravdess2018}) and add full voice-activity detection
+        (\texttt{webrtcvad}). The served pipeline already applies an RMS silence floor so
+        silent segments are not classified as emotion; real VAD additionally rejects
+        \emph{game audio and background speech}, which an energy floor cannot. Voice
         is the weakest modality and the \emph{only} one trained on synthetic data, so this
         is the single change that most strengthens the system's credibility; the dataset
         and tooling are freely available and the retraining pipeline already exists.

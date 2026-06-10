@@ -59,7 +59,7 @@
                                 android:layout_weight="1" android:orientation="vertical" android:gravity="center">
                                 <TextView android:id="@+id/tvWeekHours"
                                     android:layout_width="wrap_content" android:layout_height="wrap_content"
-                                    android:text="â€”" android:textSize="24sp" android:textStyle="bold" />
+                                    android:text="—" android:textSize="24sp" android:textStyle="bold" />
                                 <TextView android:layout_width="wrap_content" android:layout_height="wrap_content"
                                     android:text="hrs this week" android:textSize="11sp"
                                     android:textColor="@color/text_secondary" />
@@ -68,7 +68,7 @@
                                 android:layout_weight="1" android:orientation="vertical" android:gravity="center">
                                 <TextView android:id="@+id/tvWeekSessions"
                                     android:layout_width="wrap_content" android:layout_height="wrap_content"
-                                    android:text="â€”" android:textSize="24sp" android:textStyle="bold" />
+                                    android:text="—" android:textSize="24sp" android:textStyle="bold" />
                                 <TextView android:layout_width="wrap_content" android:layout_height="wrap_content"
                                     android:text="sessions" android:textSize="11sp"
                                     android:textColor="@color/text_secondary" />
@@ -77,7 +77,7 @@
                                 android:layout_weight="1" android:orientation="vertical" android:gravity="center">
                                 <TextView android:id="@+id/tvAvgDaily"
                                     android:layout_width="wrap_content" android:layout_height="wrap_content"
-                                    android:text="â€”" android:textSize="24sp" android:textStyle="bold" />
+                                    android:text="—" android:textSize="24sp" android:textStyle="bold" />
                                 <TextView android:layout_width="wrap_content" android:layout_height="wrap_content"
                                     android:text="hrs/day avg" android:textSize="11sp"
                                     android:textColor="@color/text_secondary" />
@@ -86,7 +86,7 @@
                                 android:layout_weight="1" android:orientation="vertical" android:gravity="center">
                                 <TextView android:id="@+id/tvLateNight"
                                     android:layout_width="wrap_content" android:layout_height="wrap_content"
-                                    android:text="â€”" android:textSize="24sp" android:textStyle="bold" />
+                                    android:text="—" android:textSize="24sp" android:textStyle="bold" />
                                 <TextView android:layout_width="wrap_content" android:layout_height="wrap_content"
                                     android:text="late nights" android:textSize="11sp"
                                     android:textColor="@color/text_secondary" />

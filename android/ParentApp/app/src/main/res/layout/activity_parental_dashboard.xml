@@ -129,6 +129,18 @@
                                 android:layout_marginTop="2dp"
                                 android:visibility="gone" />
 
+                            <!-- Live status: playing-now + monitoring heartbeat health -->
+                            <TextView
+                                android:id="@+id/tvLiveStatus"
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:text=""
+                                android:textColor="#FFFFFF"
+                                android:textSize="13sp"
+                                android:fontFamily="sans-serif-medium"
+                                android:layout_marginTop="8dp"
+                                android:visibility="gone" />
+
                             <View
                                 android:layout_width="match_parent"
                                 android:layout_height="1dp"

@@ -7,6 +7,7 @@ import android.view.View
 import android.view.inputmethod.EditorInfo
 import com.pes.gamingdetector.R
 import com.pes.gamingdetector.api.ApiClient
+import com.pes.gamingdetector.util.ChatUploadQueue
 import com.pes.gamingdetector.util.ForegroundResolver
 import com.pes.gamingdetector.util.GameDetector
 import com.pes.gamingdetector.util.PrefsManager
@@ -131,7 +132,10 @@ class GamingKeyboardService : InputMethodService(), KeyboardView.OnKeyboardActio
             try {
                 ApiClient.getInstance(prefs.serverUrl)
                     .uploadChat(sid, mapOf("message" to text, "source" to "keyboard"))
-            } catch (_: Exception) { /* best-effort; offline lines are simply skipped */ }
+            } catch (_: Exception) {
+                // Offline — queue for retry instead of losing the line.
+                ChatUploadQueue.enqueue(this@GamingKeyboardService, sid, text, "keyboard")
+            }
         }
     }
 

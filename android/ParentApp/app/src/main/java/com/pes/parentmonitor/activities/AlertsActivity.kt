@@ -60,11 +60,47 @@ class AlertsActivity : AppCompatActivity() {
                         api.markAlertsRead(MarkReadRequest(unreadIds))
                     }
                 }
+                loadFeedbackSummary(api)
             } catch (e: Exception) {
                 Toast.makeText(this@AlertsActivity, "Failed to load alerts", Toast.LENGTH_SHORT).show()
             } finally {
                 binding.swipeRefresh.isRefreshing = false
             }
+        }
+    }
+
+    /** Surface the agreement rate built from the parent's own verdicts — the system's
+     *  real-world accuracy signal — once at least one verdict exists. */
+    private suspend fun loadFeedbackSummary(api: com.pes.parentmonitor.api.ApiService) {
+        try {
+            val resp = api.getFeedbackSummary(prefs.childUserId)
+            val body = resp.body()
+            val acc  = body?.counts?.get("accurate") ?: 0
+            val fa   = body?.counts?.get("false_alarm") ?: 0
+            val rate = body?.agreementRate
+            if (resp.isSuccessful && body?.success == true && rate != null && acc + fa > 0) {
+                val n = acc + fa
+                binding.tvFeedbackSummary.text =
+                    "📊 Based on your ${n} verdict${if (n == 1) "" else "s"}, you've rated the " +
+                    "model accurate ${"%.0f".format(rate * 100)}% of the time. " +
+                    "Keep rating alerts — it helps tune future versions."
+                binding.tvFeedbackSummary.visibility = View.VISIBLE
+            } else {
+                binding.tvFeedbackSummary.visibility = View.GONE
+            }
+        } catch (_: Exception) { /* summary is optional — leave hidden */ }
+    }
+
+    /** "Just now" / "12m ago" / "3h ago" / "2d ago", from the server-computed age (the
+     *  raw created_at is in the server's clock and can't be diffed on the device). */
+    private fun friendlyAge(alert: Alert): String {
+        val m = alert.ageMinutes ?: return alert.createdAt.take(16).replace('T', ' ')
+        return when {
+            m < 1        -> "Just now"
+            m < 60       -> "${m}m ago"
+            m < 24 * 60  -> "${m / 60}h ago"
+            m < 7 * 24 * 60 -> "${m / (24 * 60)}d ago"
+            else         -> alert.createdAt.take(10)
         }
     }
 
@@ -87,7 +123,7 @@ class AlertsActivity : AppCompatActivity() {
         override fun onBindViewHolder(holder: VH, position: Int) {
             val alert = alerts[position]
             holder.tvMessage.text = alert.message
-            holder.tvTime.text = alert.createdAt
+            holder.tvTime.text = friendlyAge(alert)
             holder.tvSeverity.text = alert.severity.uppercase()
             val color = when (alert.severity.lowercase()) {
                 "high" -> getColor(R.color.risk_high)
@@ -95,8 +131,12 @@ class AlertsActivity : AppCompatActivity() {
                 else -> getColor(R.color.risk_low)
             }
             holder.tvSeverity.setTextColor(color)
+            // Always set both branches — recycled rows otherwise keep a previous
+            // alert's unread tint (stale highlight on scrolled lists).
             if (!alert.read) {
                 holder.itemView.setBackgroundColor(color and 0x22FFFFFF)
+            } else {
+                holder.itemView.setBackgroundColor(android.graphics.Color.TRANSPARENT)
             }
             bindFeedback(holder, alert)
         }

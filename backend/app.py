@@ -8,7 +8,7 @@ from flask import Flask, request, jsonify, g, has_request_context
 from flask_cors import CORS
 import sqlite3
 from datetime import datetime, timedelta
-from functools import wraps
+from functools import wraps, lru_cache
 import json
 import os
 import threading
@@ -64,7 +64,18 @@ except ImportError:
 
 app = Flask(__name__)
 CORS(app, resources={r"/api/*": {"origins": "*"}})
-app.config['MAX_CONTENT_LENGTH'] = 100 * 1024 * 1024  # 100 MB
+# Largest legitimate upload is a ~10s voice segment (~320 KB WAV). 16 MB caps any
+# runaway/abusive body well before it can pressure the free tier's 512 MB RAM.
+app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024
+
+# Behind Render's proxy the socket peer is the proxy, not the caller — without this
+# EVERY user shares one rate-limit bucket (e.g. ALL parents worldwide share login's
+# 10/min), so normal polling traffic triggered 429s under modest load. ProxyFix
+# restores the real client IP from X-Forwarded-For (1 trusted hop = Render's LB).
+# Set TRUST_PROXY=0 only if deploying without a reverse proxy.
+if os.environ.get('TRUST_PROXY', '1') == '1':
+    from werkzeug.middleware.proxy_fix import ProxyFix
+    app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1)
 
 # Postgres aggregates (AVG, ROUND, …) come back as Decimal, which Flask's default
 # JSON encoder can't serialize. Teach jsonify to emit Decimal/numpy scalars as
@@ -278,6 +289,7 @@ USE_POSTGRES = DATABASE_URL.startswith('postgresql')
 if USE_POSTGRES:
     import psycopg2
     import psycopg2.extras
+    import psycopg2.pool as _pg_pool_mod
     from psycopg2 import extensions as _pg_ext
     # Return SQL NUMERIC/DECIMAL as Python float (not Decimal), so arithmetic and JSON
     # behave exactly like SQLite's REAL. Without this, Postgres aggregates (SUM/AVG/…)
@@ -327,9 +339,12 @@ class _PgCursor:
 
 class _PgConnection:
     """Wraps a psycopg2 connection to mirror the sqlite3.Connection surface we use
-       (conn.execute(...), conn.cursor(), commit/rollback/close), with dict rows."""
+       (conn.execute(...), conn.cursor(), commit/rollback/close), with dict rows.
+       close() RETURNS the raw connection to the pool (idempotently — handlers close
+       explicitly and the request teardown closes again as a safety net)."""
     def __init__(self, raw):
         self._raw = raw
+        self._closed = False
 
     def cursor(self):
         return _PgCursor(self._raw.cursor())
@@ -346,7 +361,83 @@ class _PgConnection:
         self._raw.rollback()
 
     def close(self):
-        self._raw.close()
+        if self._closed:
+            return
+        self._closed = True
+        _pg_release(self._raw)
+
+
+# ── Postgres connection pool ────────────────────────────────────────────────
+# Opening a fresh TLS connection to Neon per request (often 2-4 per request across
+# helpers) was the main thing that buckled under load: each one costs several
+# cross-region round trips of handshake, and Neon's serverless tier also drops idle
+# connections when it scales to zero. The pool reuses warm connections; every borrow
+# is validated with a 1-round-trip probe so a connection Neon silently killed is
+# discarded and replaced instead of failing the request.
+_PG_POOL      = None
+_PG_POOL_LOCK = threading.Lock()
+PG_POOL_MAX   = int(os.environ.get('PG_POOL_MAX', '10'))   # > gunicorn threads (8) + slack
+
+
+def _pg_pool():
+    global _PG_POOL
+    if _PG_POOL is None:
+        with _PG_POOL_LOCK:
+            if _PG_POOL is None:
+                _PG_POOL = _pg_pool_mod.ThreadedConnectionPool(
+                    0, PG_POOL_MAX, DATABASE_URL,
+                    cursor_factory=psycopg2.extras.RealDictCursor,
+                    connect_timeout=10,
+                    # TCP keepalives so long-idle pooled connections are noticed dead
+                    # quickly rather than hanging a request on first reuse.
+                    keepalives=1, keepalives_idle=30,
+                    keepalives_interval=10, keepalives_count=3)
+    return _PG_POOL
+
+
+def _pg_acquire():
+    """Borrow a VALIDATED connection. Retries with backoff cover both a momentarily
+    exhausted pool and a Neon instance waking from scale-to-zero."""
+    last_err = None
+    for attempt in range(4):
+        try:
+            raw = _pg_pool().getconn()
+        except Exception as e:                       # pool exhausted or connect refused
+            last_err = e
+            time.sleep(0.3 * (attempt + 1))
+            continue
+        try:
+            if raw.closed:
+                raise psycopg2.OperationalError('pooled connection was closed')
+            cur = raw.cursor()
+            cur.execute('SELECT 1')
+            cur.fetchone()
+            cur.close()
+            raw.rollback()                           # clear the probe's transaction
+            return raw
+        except Exception as e:                       # stale/killed connection — replace it
+            last_err = e
+            try:
+                _pg_pool().putconn(raw, close=True)
+            except Exception:
+                pass
+            time.sleep(0.3 * (attempt + 1))          # also paces a waking Neon
+    raise last_err
+
+
+def _pg_release(raw):
+    """Return a connection to the pool clean; a broken one is closed, not pooled."""
+    try:
+        raw.rollback()                               # drop any uncommitted state
+        _pg_pool().putconn(raw)
+    except Exception:
+        try:
+            _pg_pool().putconn(raw, close=True)
+        except Exception:
+            try:
+                raw.close()
+            except Exception:
+                pass
 
 
 def add_column(c, table, name, decl):
@@ -454,6 +545,41 @@ def risk_category(score: float) -> str:
     return 'casual' if score < RISK_T1 else ('at_risk' if score < RISK_T2 else 'addicted')
 
 
+# ── Child-local time helpers ───────────────────────────────────────────────
+# All timestamps are stored in the SERVER's local clock (datetime.now()). In production
+# the server runs in UTC while the child's phone is e.g. IST (+5:30), so any hour-of-day
+# logic (late-night play, sleep impact) computed on the raw stored hour would be shifted
+# by the timezone gap: a 23:00 IST session is stored as 17:30 and wrongly read as evening.
+# The child app reports its UTC offset with every heartbeat (users.tz_offset_min); these
+# helpers translate stored times into the CHILD's wall clock before judging "late night".
+
+def _parse_ts(ts):
+    """Parse a stored timestamp string defensively (isoformat or 'YYYY-MM-DD HH:MM:SS')."""
+    return datetime.fromisoformat(str(ts).replace(' ', 'T').split('+')[0].split('Z')[0])
+
+
+def _tz_shift_min(c, user_id) -> int:
+    """Minutes to ADD to a stored (server-local) timestamp to read it in the child's
+    local time: child_utc_offset − server_utc_offset. 0 when the child's offset is
+    unknown (old app, never heartbeated) or server and child share a timezone."""
+    try:
+        c.execute('SELECT tz_offset_min FROM users WHERE user_id=?', (user_id,))
+        row = c.fetchone()
+        tz = row['tz_offset_min'] if row else None
+        if tz is None:
+            return 0
+        server_off = int(round((datetime.now() - datetime.utcnow()).total_seconds() / 60))
+        return int(tz) - server_off
+    except Exception:
+        return 0
+
+
+def _is_late_night(dt, shift_min: int = 0) -> bool:
+    """22:00–06:00 in the CHILD's local time (stored time + tz shift)."""
+    h = (dt + timedelta(minutes=shift_min)).hour
+    return h >= 22 or h < 6
+
+
 def load_models():
     global behavior_model, behavior_calibrated, chat_model, voice_model, tfidf_vectorizer, feature_scaler
     mapping = {
@@ -494,20 +620,10 @@ if os.path.exists(_meta_path):
 
 def _open_db():
     if USE_POSTGRES:
-        # Retry briefly: Neon (and similar serverless Postgres) "scales to zero" when
-        # idle, so the first connection after a quiet period can be refused or slow while
-        # it wakes. connect_timeout bounds each attempt so a worker thread never hangs.
-        last_err = None
-        for attempt in range(3):
-            try:
-                raw = psycopg2.connect(DATABASE_URL,
-                                       cursor_factory=psycopg2.extras.RealDictCursor,
-                                       connect_timeout=10)
-                return _PgConnection(raw)
-            except psycopg2.OperationalError as e:
-                last_err = e
-                time.sleep(0.6 * (attempt + 1))   # 0.6s then 1.2s — covers a waking DB
-        raise last_err
+        # Pooled + validated borrow (see _pg_acquire): reuses warm connections instead
+        # of a fresh TLS handshake per request, and transparently replaces connections
+        # Neon killed while scaled to zero.
+        return _PgConnection(_pg_acquire())
     conn = sqlite3.connect(DATABASE, timeout=30, check_same_thread=False)
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA journal_mode=WAL")
@@ -948,6 +1064,21 @@ def _shap_per_class(sv):
 
 
 def _shap_explain_behavior(feat_dict: dict, top_n: int = 4) -> list:
+    """Cached front-end for SHAP attribution. The parent dashboard polls every 30 s and
+    re-explains the SAME latest behavioural row each time — on the free tier's ~0.1 CPU
+    that repeated TreeExplainer pass was a real load multiplier. SHAP is deterministic
+    for a given input, so memoising on the (rounded) feature vector is lossless."""
+    key = tuple(round(float(feat_dict.get(f, 0) or 0), 4) for f in BEHAVIORAL_FEATURES)
+    # Return deep copies so callers can't mutate the cached entries.
+    return [dict(f) for f in _shap_explain_cached(key, top_n)]
+
+
+@lru_cache(maxsize=256)
+def _shap_explain_cached(key: tuple, top_n: int) -> tuple:
+    return tuple(_shap_explain_impl(dict(zip(BEHAVIORAL_FEATURES, key)), top_n))
+
+
+def _shap_explain_impl(feat_dict: dict, top_n: int = 4) -> list:
     """Per-prediction SHAP attribution: which behaviours pushed the risk up or down.
        Signed and local (unlike global feature importances). Falls back gracefully."""
     explainer = _get_behavior_explainer()
@@ -1009,8 +1140,14 @@ def extract_audio_features(audio_path):
         # VOICE_RMS_TARGET. Set VOICE_DEBUG=1 to print the feature values used.
         rms_target = float(os.environ.get('VOICE_RMS_TARGET', '0.045'))
         cur_rms = float(np.sqrt(np.mean(y ** 2)))
-        if cur_rms > 1e-6:
-            y = y * (rms_target / cur_rms)
+        # Silence floor: a segment with essentially no speech must NOT be gain-boosted —
+        # normalisation would amplify room/mic noise up to speech level and the model
+        # would read the noise as an emotion. Treat it as "no voice" instead (the event
+        # falls back to a low-confidence neutral). This is the cheap interim form of the
+        # VAD step planned in Future Work.
+        if cur_rms < float(os.environ.get('VOICE_SILENCE_RMS', '0.0015')):
+            return None, duration
+        y = y * (rms_target / cur_rms)
 
         mfcc      = np.mean(librosa.feature.mfcc(y=y, sr=sr, n_mfcc=13), axis=1).tolist()
         try:
@@ -1090,9 +1227,11 @@ def _lexical_valence(text):
        Confidence rises with how many sentiment words matched (saturates ~3)."""
     if not text:
         return 0.0, 0.0
+    # t is padded with spaces on both ends, so " w " matches a word at the start, middle
+    # or end. (A bare " w" prefix test would wrongly match "win" inside "winter".)
     t   = " " + text.lower().strip() + " "
-    pos = sum(1 for w in _POS_WORDS if (" " + w + " ") in t or (" " + w) in t)
-    neg = sum(1 for w in _NEG_WORDS if (" " + w + " ") in t or (" " + w) in t)
+    pos = sum(1 for w in _POS_WORDS if (" " + w + " ") in t)
+    neg = sum(1 for w in _NEG_WORDS if (" " + w + " ") in t)
     total = pos + neg
     if total == 0:
         return 0.0, 0.0
@@ -1215,10 +1354,14 @@ def compute_behavioral_features(session_id: int) -> dict:
     all_durs = [s['duration_seconds'] for s in past if s['duration_seconds']] + [int(elapsed)]
     avg_session_duration_min = round(float(np.mean(all_durs)) / 60.0, 2)
 
+    # Judge "late night" on the CHILD's wall clock, not the server's — on a UTC cloud
+    # host an IST child's 23:00 session is stored as 17:30 and would otherwise be missed
+    # (and morning sessions wrongly flagged). This feature also drives the craving /
+    # missed-sleep / fatigue psychometric proxies, so the shift matters for the model.
+    tz_shift   = _tz_shift_min(c, user_id)
     all_starts = past + [{'start_time': srow['start_time']}]
     late_cnt   = sum(1 for s in all_starts
-                     if datetime.fromisoformat(s['start_time']).hour >= 22
-                     or datetime.fromisoformat(s['start_time']).hour < 6)
+                     if _is_late_night(datetime.fromisoformat(s['start_time']), tz_shift))
     late_night_play_ratio = round(late_cnt / max(len(all_starts), 1), 4)
 
     played_dates = {datetime.fromisoformat(s['start_time']).date() for s in week_sess}
@@ -1464,22 +1607,28 @@ def run_prediction(session_id: int, explain: bool = True) -> dict:
 
 # ──────────────────────── ALERT HELPERS ──────────────────────────
 
+def _insert_alert(cursor, user_id, atype, message, severity):
+    """Insert an alert with an EXPLICIT local timestamp. The created_at column DEFAULT
+    differs by engine (SQLite's CURRENT_TIMESTAMP is UTC, Postgres' now() is
+    server-local), which skewed alert ages/ordering against every other timestamp the
+    app writes via datetime.now()."""
+    cursor.execute('INSERT INTO alerts (user_id, type, message, severity, created_at) '
+                   'VALUES (?,?,?,?,?)',
+                   (user_id, atype, message, severity, datetime.now().isoformat()))
+
+
 def _maybe_create_alert(cursor, user_id: int, prediction: dict):
     """Insert an alert row when risk is elevated or changes."""
     risk = prediction.get('risk_category', 'casual')
     score = prediction.get('final_risk_score', 0.0)
     if risk == 'addicted':
-        cursor.execute(
-            'INSERT INTO alerts (user_id, type, message, severity) VALUES (?,?,?,?)',
-            (user_id, 'risk',
-             f'High addiction risk detected — score {score:.0%}. Immediate attention recommended.',
-             'high'))
+        _insert_alert(cursor, user_id, 'risk',
+                      f'High addiction risk detected — score {score:.0%}. Immediate attention recommended.',
+                      'high')
     elif risk == 'at_risk':
-        cursor.execute(
-            'INSERT INTO alerts (user_id, type, message, severity) VALUES (?,?,?,?)',
-            (user_id, 'risk',
-             f'At-risk gaming patterns detected — score {score:.0%}. Monitor gaming time.',
-             'medium'))
+        _insert_alert(cursor, user_id, 'risk',
+                      f'At-risk gaming patterns detected — score {score:.0%}. Monitor gaming time.',
+                      'medium')
 
 
 def _build_recommendations(risk_level: str) -> list:
@@ -1566,6 +1715,9 @@ def _sleep_impact_analysis(user_id: int, conn) -> dict:
     """
     c = conn.cursor()
     since = (datetime.now() - timedelta(days=30)).isoformat()
+    # All hour-of-day judgements below use the CHILD's wall clock (stored server time
+    # + tz shift) — otherwise a UTC host mislabels an IST child's whole night.
+    tz_shift = _tz_shift_min(c, user_id)
 
     # Prefer screen_events — these fire even when no session is running
     c.execute('''SELECT COUNT(*) AS n FROM screen_events WHERE user_id=? AND timestamp>=?''',
@@ -1573,14 +1725,19 @@ def _sleep_impact_analysis(user_id: int, conn) -> dict:
     has_screen_events = c.fetchone()['n'] > 0
 
     if has_screen_events:
-        c.execute('''SELECT SUBSTR(timestamp,1,10) AS day,
-                            COUNT(*) AS wakes
-                     FROM screen_events
-                     WHERE user_id=? AND event_type='screen_on' AND timestamp>=?
-                       AND (CAST(SUBSTR(timestamp,12,2) AS INTEGER) >= 22
-                            OR CAST(SUBSTR(timestamp,12,2) AS INTEGER) < 6)
-                     GROUP BY day ORDER BY day ASC''', (user_id, since))
-        late_rows = [dict(r) for r in c.fetchall()]
+        c.execute('''SELECT timestamp FROM screen_events
+                     WHERE user_id=? AND event_type='screen_on' AND timestamp>=?''',
+                  (user_id, since))
+        wakes_by_day = {}
+        for r in c.fetchall():
+            try:
+                dt = _parse_ts(r['timestamp']) + timedelta(minutes=tz_shift)
+            except Exception:
+                continue
+            if dt.hour >= 22 or dt.hour < 6:
+                d = dt.date().isoformat()
+                wakes_by_day[d] = wakes_by_day.get(d, 0) + 1
+        late_rows = [{'day': d, 'wakes': n} for d, n in sorted(wakes_by_day.items())]
 
         c.execute('''SELECT COUNT(DISTINCT SUBSTR(timestamp,1,10)) AS total
                      FROM screen_events WHERE user_id=? AND timestamp>=?''', (user_id, since))
@@ -1592,13 +1749,20 @@ def _sleep_impact_analysis(user_id: int, conn) -> dict:
         disruption    = sum(1 for r in late_rows if r['wakes'] >= 3)
         source        = 'screen_events'
     else:
-        # Fallback: session timestamps
-        c.execute('''SELECT SUBSTR(start_time,1,10) AS day,
-                            MIN(CAST(SUBSTR(start_time,12,2) AS INTEGER)) AS first_hour,
-                            MAX(CAST(SUBSTR(start_time,12,2) AS INTEGER)) AS last_hour
-                     FROM sessions WHERE user_id=? AND start_time>=?
-                     GROUP BY day ORDER BY day ASC''', (user_id, since))
-        rows = [dict(r) for r in c.fetchall()]
+        # Fallback: session timestamps, bucketed per child-local day
+        c.execute('''SELECT start_time FROM sessions WHERE user_id=? AND start_time>=?''',
+                  (user_id, since))
+        hours_by_day = {}
+        for r in c.fetchall():
+            try:
+                dt = _parse_ts(r['start_time']) + timedelta(minutes=tz_shift)
+            except Exception:
+                continue
+            d = dt.date().isoformat()
+            lo, hi = hours_by_day.get(d, (dt.hour, dt.hour))
+            hours_by_day[d] = (min(lo, dt.hour), max(hi, dt.hour))
+        rows = [{'day': d, 'first_hour': lo, 'last_hour': hi}
+                for d, (lo, hi) in sorted(hours_by_day.items())]
         if len(rows) < 3:
             return {'available': False, 'message': 'Not enough data yet for sleep analysis'}
         late_night_rows = [r for r in rows if r['last_hour'] >= 22 or r['last_hour'] < 4]
@@ -1984,6 +2148,16 @@ def update_profile():
     if 'pin' in data:
         c.execute("UPDATE users SET pin_hash=?, pin='' WHERE user_id=?", (hash_pin(str(data['pin'])), user_id))
     if 'parent_pin' in data:
+        # Only a PARENT may change the family PIN. A child's own token passes the
+        # ownership guard above (it's their row), but letting them rewrite parent_pin
+        # would defeat the parent-PIN gate on logout/settings — the exact tamper
+        # protection it exists for. (Role is unknown only for legacy shadow-mode
+        # callers without a token, which production's AUTH_ENFORCE already rejects.)
+        role = (g.auth or {}).get('role')
+        if role is not None and role != 'parent':
+            conn.close()
+            return jsonify({'success': False,
+                            'message': 'Only a parent can change the family PIN'}), 403
         c.execute("UPDATE users SET parent_pin_hash=?, parent_pin='' WHERE user_id=?",
                   (hash_pin(str(data['parent_pin'])), user_id))
     conn.commit()
@@ -2073,11 +2247,17 @@ def get_consent():
 @app.route('/api/user/delete_data', methods=['POST'])
 def delete_user_data():
     """Erase a child's collected data ('data'), or the whole account ('account').
-       Authorized to the parent or the user themselves."""
+       PARENT-controlled (per the privacy design): a child's own token must not be able
+       to wipe the monitoring history — that would be a quiet-tamper loophole. Role is
+       unknown only for token-less shadow-mode callers, which production rejects."""
     data    = request.get_json() or {}
     user_id = data.get('user_id')
     deny = guard(user_id)
     if deny: return deny
+    role = (g.auth or {}).get('role')
+    if role is not None and role != 'parent':
+        return jsonify({'success': False,
+                        'message': 'Data deletion is managed from the Parent app'}), 403
     if not user_id:
         return jsonify({'success': False, 'message': 'user_id required'}), 400
     scope = str(data.get('scope', 'data')).lower()
@@ -2181,8 +2361,8 @@ def start_session():
             c.execute('SELECT name FROM users WHERE user_id=?', (user_id,))
             urow  = c.fetchone()
             cname = urow['name'] if (urow and urow['name']) else 'Your child'
-            c.execute('INSERT INTO alerts (user_id, type, message, severity) VALUES (?,?,?,?)',
-                      (user_id, 'session_start', f'{cname} just started playing {game_name}.', 'info'))
+            _insert_alert(c, user_id, 'session_start',
+                          f'{cname} just started playing {game_name}.', 'info')
     except Exception as e:
         logger.warning(f"session_start alert skipped: {e}")
     conn.commit()
@@ -2412,10 +2592,9 @@ def save_chat(sid):
         srow = c.fetchone()
         if srow:
             snippet = message[:60] + ('…' if len(message) > 60 else '')
-            c.execute('INSERT INTO alerts (user_id, type, message, severity) VALUES (?,?,?,?)',
-                      (srow['user_id'], 'toxicity',
-                       f'Toxic language detected during gaming: "{snippet}"',
-                       'high' if tox_score >= CHAT_ALERT_HIGH_T else 'medium'))
+            _insert_alert(c, srow['user_id'], 'toxicity',
+                          f'Toxic language detected during gaming: "{snippet}"',
+                          'high' if tox_score >= CHAT_ALERT_HIGH_T else 'medium')
             # Gentle self-correction nudge to the CHILD too — but at most one pending at a
             # time so a toxic streak doesn't spam them.
             c.execute("SELECT 1 FROM child_nudges WHERE user_id=? AND kind='language' AND delivered=0 LIMIT 1",
@@ -2439,7 +2618,13 @@ def save_voice(sid):
         fname  = f"voice_{sid}_{int(time.time())}.wav"
         fpath  = os.path.join(AUDIO_DIR, fname)
         audio_file.save(fpath)
-        acoustic, intensity, duration, probs = analyse_audio(fpath)
+        try:
+            acoustic, intensity, duration, probs = analyse_audio(fpath)
+        except Exception as e:
+            # A malformed clip or model hiccup must not 500 the upload (the app would
+            # lose the segment) or leak the temp WAV on the small ephemeral disk.
+            logger.warning(f"analyse_audio failed for session {sid}: {e}")
+            acoustic, intensity, duration, probs = 'neutral', 0.2, 0.0, None
         # Multimodal fusion: pull the words spoken in this segment (Vosk STT, uploaded
         # as voice_stt chat in the last ~20s) and fuse their valence with the acoustic
         # distribution (valence–arousal). Falls back to the acoustic label when no
@@ -2504,11 +2689,14 @@ def predict_now(sid):
     if deny: return deny
     _save_behavioral_snapshot(sid)
     result = run_prediction(sid, explain=False)   # skip SHAP on frequent live predicts (memory)
+    # Spread result FIRST so the explicit keys win: risk_label must be the internal
+    # category (casual/at_risk/addicted) to match the /end response that clients
+    # pattern-match on — result's own risk_label is the human display string.
     return jsonify({
+        **result,
         'success':    True,
         'risk_label': result['risk_category'],
         'risk_score': result['final_risk_score'],
-        **result,
     })
 
 # ─────────────── CHAT ANALYSIS ───────────────────────────────────
@@ -2650,6 +2838,37 @@ def parent_dashboard():
     c.execute('SELECT name, age FROM users WHERE user_id=?', (user_id,))
     profile = dict(c.fetchone() or {})
 
+    # Self-heal lost end-events before reading live state, so this dashboard never
+    # shows a child "perpetually playing" a session whose end never arrived.
+    _close_stale_sessions(c, user_id)
+    conn.commit()
+
+    # ── Live status strip ────────────────────────────────────────────
+    # Is the child playing RIGHT NOW, and is the monitoring app checking in?
+    # last_seen is written by the ~5-minute heartbeat, so <=10 min means healthy;
+    # beyond that the app is likely killed/offline (the watchdog alert follows later).
+    monitoring = None
+    c.execute('SELECT last_seen FROM users WHERE user_id=?', (user_id,))
+    lsrow = c.fetchone()
+    if lsrow and lsrow['last_seen']:
+        try:
+            mins = max(0, int((datetime.now() - _parse_ts(lsrow['last_seen'])).total_seconds() // 60))
+            monitoring = {'online': mins <= 10, 'minutes_since_checkin': mins}
+        except Exception:
+            monitoring = None
+    c.execute('''SELECT game_name, start_time FROM sessions
+                 WHERE user_id=? AND end_time IS NULL ORDER BY session_id DESC LIMIT 1''',
+              (user_id,))
+    lrow_live = c.fetchone()
+    live_status = {'is_playing': False, 'current_game': None, 'session_duration_mins': None}
+    if lrow_live:
+        try:
+            live_min = max(0, int((datetime.now() - _parse_ts(lrow_live['start_time'])).total_seconds() // 60))
+        except Exception:
+            live_min = None
+        live_status = {'is_playing': True, 'current_game': lrow_live['game_name'],
+                       'session_duration_mins': live_min}
+
     # Latest risk prediction
     c.execute('''SELECT p.risk_category, p.final_risk_score, p.timestamp
                  FROM predictions p JOIN sessions s ON s.session_id=p.session_id
@@ -2698,14 +2917,17 @@ def parent_dashboard():
                      'Yesterday' if dd == today - timedelta(days=1) else dd.strftime('%b %d'))
             risk_period = {'label': label, 'date': day, 'sessions': len(drows)}
 
-    # 14-day trend
+    # 14-day trend. The window filter matters: without it, ORDER BY date ASC LIMIT 14
+    # returns the OLDEST 14 days in history, so the chart would freeze at the child's
+    # first two weeks forever once more history accumulates.
     c.execute(f'''SELECT SUBSTR(start_time,1,10) AS date,
                  ROUND(AVG(final_risk_score),4) AS score,
                  (CASE WHEN AVG(final_risk_score) < {RISK_T1} THEN 'casual'
                        WHEN AVG(final_risk_score) < {RISK_T2} THEN 'at_risk'
                        ELSE 'addicted' END) AS label
-                 FROM sessions WHERE user_id=? AND final_risk_score IS NOT NULL
-                 GROUP BY date ORDER BY date ASC LIMIT 14''', (user_id,))
+                 FROM sessions WHERE user_id=? AND start_time>=? AND final_risk_score IS NOT NULL
+                 GROUP BY date ORDER BY date ASC LIMIT 14''',
+              (user_id, (datetime.now() - timedelta(days=14)).isoformat()))
     trend = [dict(r) for r in c.fetchall()]
 
     # Top games
@@ -2731,11 +2953,31 @@ def parent_dashboard():
     weekly_row  = c.fetchone()
     total_hours_week = float(weekly_row['h'] or 0) if weekly_row else 0.0
 
-    # Late-night count
-    c.execute('''SELECT COUNT(*) AS n FROM sessions
-                 WHERE user_id=? AND (CAST(SUBSTR(start_time,12,2) AS INTEGER) >= 22
-                 OR CAST(SUBSTR(start_time,12,2) AS INTEGER) < 6)''', (user_id,))
-    late_night = c.fetchone()['n']
+    # Weekly variants for the Weekly Report screen. top_games above is the all-time
+    # leaderboard ("most played"); the weekly screen needs THIS week's games and the
+    # real session count (it previously summed the all-time top-5's sessions).
+    c.execute('''SELECT game_name AS game, COUNT(*) AS sessions,
+                 ROUND(SUM(duration_seconds)/3600.0,2) AS hours
+                 FROM sessions WHERE user_id=? AND start_time>=? GROUP BY game_name
+                 ORDER BY hours DESC LIMIT 5''', (user_id, since7))
+    top_games_week = [dict(r) for r in c.fetchall()]
+    c.execute('SELECT COUNT(*) AS n FROM sessions WHERE user_id=? AND start_time>=?',
+              (user_id, since7))
+    week_session_count = c.fetchone()['n']
+
+    # Late-night count — last 7 days (it sits beside "Weekly hours" in the app header,
+    # so it must cover the same window), evaluated in the child's local time (see
+    # _tz_shift_min) so a UTC-hosted server still counts a 23:00-IST session.
+    tz_shift = _tz_shift_min(c, user_id)
+    c.execute('SELECT start_time FROM sessions WHERE user_id=? AND start_time>=?',
+              (user_id, since7))
+    late_night = 0
+    for r in c.fetchall():
+        try:
+            if r['start_time'] and _is_late_night(_parse_ts(r['start_time']), tz_shift):
+                late_night += 1
+        except Exception:
+            pass
 
     # Observation mode: has the child played enough sessions?
     c.execute('SELECT COUNT(*) AS n FROM sessions WHERE user_id=?', (user_id,))
@@ -2849,6 +3091,8 @@ def parent_dashboard():
         'alerts':              formatted_alerts,
         'trend_data':          trend,
         'top_games':           top_games,
+        'top_games_week':      top_games_week,
+        'week_session_count':  week_session_count,
         'recent_games':        recent_games,
         'total_hours_week':    total_hours_week,
         'late_night_count':    late_night,
@@ -2866,6 +3110,8 @@ def parent_dashboard():
         'parent_set_limit':      parent_set_limit,
         'top_anomaly':           top_anomaly,
         'latest_signals':        latest_signals,
+        'monitoring':            monitoring,
+        'live_status':           live_status,
     })
 
 
@@ -2939,9 +3185,11 @@ def chat_analysis_dashboard():
 
     conn.close()
 
-    # Toxicity label distribution
-    high_tox  = sum(1 for m in messages if float(m.get('confidence') or 0) > 0.6)
-    mid_tox   = sum(1 for m in messages if 0.3 < float(m.get('confidence') or 0) <= 0.6)
+    # Toxicity label distribution — same bands the rest of the system uses ('toxic'
+    # at the alert threshold, 'borderline' at 0.4; see analyse_chat), so this screen
+    # can't call a message concerning that would never have raised an alert.
+    high_tox  = sum(1 for m in messages if float(m.get('confidence') or 0) >= CHAT_ALERT_T)
+    mid_tox   = sum(1 for m in messages if 0.4 <= float(m.get('confidence') or 0) < CHAT_ALERT_T)
     safe_msg  = len(messages) - high_tox - mid_tox
 
     return jsonify({
@@ -2976,10 +3224,9 @@ def _check_heartbeat(c, user_id):
                 return
         nm  = row['name'] or 'Your child'
         dur = f"{int(silent_min // 60)} hours" if silent_min >= 120 else f"{int(silent_min)} min"
-        c.execute("INSERT INTO alerts (user_id, type, message, severity) VALUES (?,?,?,?)",
-                  (user_id, 'offline',
-                   f"{nm}'s monitoring app hasn't checked in for {dur} — it may be offline, "
-                   f"powered off, or have been closed/uninstalled.", 'high'))
+        _insert_alert(c, user_id, 'offline',
+                      f"{nm}'s monitoring app hasn't checked in for {dur} — it may be offline, "
+                      f"powered off, or have been closed/uninstalled.", 'high')
         c.execute("UPDATE users SET offline_alerted=1 WHERE user_id=?", (user_id,))
     except Exception as e:
         logger.warning(f"heartbeat check skipped: {e}")
@@ -2990,7 +3237,10 @@ def child_heartbeat():
     """Child app liveness ping (~every 5 min). Re-arms the watchdog for the next outage and
     records the device's UTC offset so the watchdog can apply child-local quiet hours."""
     data = request.get_json() or {}
-    uid  = data.get('user_id')
+    try:
+        uid = int(data.get('user_id'))
+    except (TypeError, ValueError):
+        return jsonify({'success': False, 'message': 'user_id required'}), 400
     deny = guard(uid)
     if deny: return deny
     try:
@@ -3027,8 +3277,7 @@ def child_tamper():
     c.execute("SELECT name FROM users WHERE user_id=?", (int(uid),))
     r  = c.fetchone()
     nm = r['name'] if (r and r['name']) else 'Your child'
-    c.execute("INSERT INTO alerts (user_id, type, message, severity) VALUES (?,?,?,?)",
-              (int(uid), 'tamper', f"{nm} {messages[event]}.", 'high'))
+    _insert_alert(c, int(uid), 'tamper', f"{nm} {messages[event]}.", 'high')
     conn.commit()
     conn.close()
     return jsonify({'success': True})
@@ -3049,7 +3298,7 @@ def verify_parent_pin():
     c.execute("SELECT parent_pin_hash FROM users WHERE user_id=?", (int(uid),))
     row = c.fetchone()
     conn.close()
-    valid = bool(row and row['parent_pin_hash'] and row['parent_pin_hash'] == hash_pin(pin))
+    valid = bool(row and verify_pin(pin, row['parent_pin_hash']))   # constant-time compare
     return jsonify({'success': True, 'valid': valid})
 
 
@@ -3069,8 +3318,19 @@ def get_alerts():
     rows    = [dict(r) for r in c.fetchall()]
     conn.close()
     unread  = sum(1 for r in rows if not r['read'])
+
+    def _age_min(ts):
+        """Alert age in minutes, computed server-side so the phone can render an
+        accurate '2h ago' without knowing the server's timezone (created_at is
+        server-local; diffing it against device time would be off by the tz gap)."""
+        try:
+            return max(0, int((datetime.now() - _parse_ts(ts)).total_seconds() // 60))
+        except Exception:
+            return None
+
     alerts  = [{'id': r['id'], 'type': r['type'], 'message': r['message'],
                 'severity': r['severity'], 'created_at': r['created_at'],
+                'age_minutes': _age_min(r['created_at']),
                 'read': bool(r['read']), 'feedback': r.get('feedback_label')} for r in rows]
     return jsonify({'success': True, 'alerts': alerts, 'unread_count': unread})
 
@@ -3286,9 +3546,9 @@ def weekly_report():
 
     week_hours = sum((s['duration_seconds'] or 0) for s in week_sessions) / 3600.0
     avg_daily  = week_hours / 7.0
+    tz_shift   = _tz_shift_min(c, user_id)
     late_count = sum(1 for s in week_sessions
-                     if datetime.fromisoformat(s['start_time']).hour >= 22
-                     or datetime.fromisoformat(s['start_time']).hour < 6)
+                     if _is_late_night(datetime.fromisoformat(s['start_time']), tz_shift))
 
     # Top games this week
     game_agg = {}
@@ -3638,6 +3898,7 @@ def weekly_report_pdf():
     c       = conn.cursor()
     c.execute('SELECT name, age FROM users WHERE user_id=?', (user_id,))
     profile = dict(c.fetchone() or {})
+    pdf_tz_shift = _tz_shift_min(c, user_id)   # child-local hours for the late-night stat
 
     since7 = (datetime.now() - timedelta(days=7)).isoformat()
     c.execute('''SELECT session_id, game_name, start_time, duration_seconds,
@@ -3692,8 +3953,7 @@ def weekly_report_pdf():
 
     week_hours  = sum((s['duration_seconds'] or 0) for s in sessions) / 3600.0
     late_count  = sum(1 for s in sessions
-                      if datetime.fromisoformat(s['start_time']).hour >= 22
-                      or datetime.fromisoformat(s['start_time']).hour < 6)
+                      if _is_late_night(datetime.fromisoformat(s['start_time']), pdf_tz_shift))
     avg_daily   = week_hours / 7.0
     risk_level  = lp['risk_category'] if lp else 'casual'
     risk_score  = lp['final_risk_score'] if lp else 0.0
@@ -3884,12 +4144,24 @@ def weekly_report_pdf():
 # ANOMALY DETECTION (statistical baseline on per-day session hours)
 # ═════════════════════════════════════════════════════════════════
 
-def _detect_anomalies(user_id: int):
+# The dashboard refreshes every 30 s per parent; re-scanning 28 days of sessions (plus
+# de-dup reads and possible writes) each tick is wasted load — daily-hours anomalies
+# can't meaningfully change minute-to-minute. Throttled per child; /api/anomalies
+# bypasses the throttle (force=True) so an explicit refresh stays fully live.
+_ANOMALY_TTL_S    = 300
+_anomaly_last_run: dict = {}
+
+
+def _detect_anomalies(user_id: int, force: bool = False):
     """Detect statistically unusual patterns in a child's session history.
 
     Uses simple z-score on daily hours over the trailing 28 days. Returns a
     list of anomaly dicts. Severity: 'high' if z >= 2.5, 'medium' if >= 1.8.
     """
+    now_mono = time.monotonic()
+    if not force and now_mono - _anomaly_last_run.get(user_id, 0) < _ANOMALY_TTL_S:
+        return []
+    _anomaly_last_run[user_id] = now_mono
     conn = get_db()
     cutoff_28d = (datetime.now() - timedelta(days=28)).isoformat()
     rows = conn.execute('''
@@ -3906,12 +4178,19 @@ def _detect_anomalies(user_id: int):
     hours = [r['hours'] for r in rows]
     mean = float(np.mean(hours))
     std = float(np.std(hours)) or 0.001
-    today_hours = hours[-1]
-    yesterday_hours = hours[-2] if len(hours) >= 2 else 0
+
+    # rows[-1] is the latest day WITH sessions, which is not necessarily today — a big
+    # day from last week must not keep raising "Today's playtime is +X%" all week. Key
+    # the checks on the actual calendar dates instead.
+    by_day        = {r['d']: float(r['hours']) for r in rows}
+    today_str     = datetime.now().strftime('%Y-%m-%d')
+    yesterday_str = (datetime.now().date() - timedelta(days=1)).isoformat()
+    today_hours     = by_day.get(today_str, 0.0)
+    yesterday_hours = by_day.get(yesterday_str, 0.0)
     z_today = (today_hours - mean) / std
 
     out = []
-    if z_today >= 1.8:
+    if today_hours > 0 and z_today >= 1.8:
         sev = 'high' if z_today >= 2.5 else 'medium'
         delta_pct = ((today_hours - mean) / max(mean, 0.1)) * 100
         msg = (f"Today's playtime ({today_hours:.1f}h) is {delta_pct:+.0f}% "
@@ -3923,17 +4202,18 @@ def _detect_anomalies(user_id: int):
             'z_score': round(z_today, 2),
         })
 
-    # Sudden 2-day jump
-    if len(hours) >= 3:
-        last2 = hours[-1] + hours[-2]
-        prev_avg = float(np.mean(hours[:-2])) if len(hours) > 2 else 0
-        if last2 > 0 and prev_avg > 0 and last2 / 2 > prev_avg * 1.75:
+    # Sudden 2-day jump (today + yesterday vs the baseline of the days before them)
+    baseline = [h for d, h in by_day.items() if d not in (today_str, yesterday_str)]
+    if baseline and (today_hours > 0 or yesterday_hours > 0):
+        last2_avg = (today_hours + yesterday_hours) / 2
+        prev_avg  = float(np.mean(baseline))
+        if prev_avg > 0 and last2_avg > prev_avg * 1.75:
             out.append({
                 'kind': 'sustained_increase',
                 'severity': 'medium',
-                'message': f"Gaming has averaged {last2/2:.1f}h over the last 2 days vs. "
+                'message': f"Gaming has averaged {last2_avg:.1f}h over the last 2 days vs. "
                            f"{prev_avg:.1f}h baseline — a sustained jump.",
-                'z_score': round((last2/2 - prev_avg) / std, 2),
+                'z_score': round((last2_avg - prev_avg) / std, 2),
             })
 
     # Persist new anomalies (de-dup by message + same day)
@@ -3961,7 +4241,7 @@ def get_anomalies():
     if deny: return deny
     if not user_id:
         return jsonify({'success': False, 'error': 'user_id required'}), 400
-    fresh = _detect_anomalies(user_id)
+    fresh = _detect_anomalies(user_id, force=True)   # explicit fetch: bypass the throttle
     conn = get_db()
     rows = conn.execute('''
         SELECT id, kind, severity, message, z_score, detected_at, resolved
@@ -4036,22 +4316,26 @@ _COUNSELOR_REPLIES = {
 
 
 def _classify_intent(text: str) -> str:
+    # Single keywords are matched as WHOLE words (substring matching misrouted e.g.
+    # "this" → greeting via 'hi', "made" → angry via 'mad'); multi-word phrases are
+    # still matched as substrings of the lowered text.
     t = text.lower()
-    if any(w in t for w in ['hi', 'hello', 'hey', 'mira']):
+    words = set(re.findall(r"[a-z']+", t))
+    if words & {'hi', 'hello', 'hey', 'mira'}:
         return 'greeting'
-    if any(w in t for w in ['tired', 'exhausted', 'sleepy', 'fatigued']):
+    if words & {'tired', 'exhausted', 'sleepy', 'fatigued'}:
         return 'tired'
-    if any(w in t for w in ['angry', 'mad', 'rage', 'pissed', 'frustrated']):
+    if words & {'angry', 'mad', 'rage', 'pissed', 'frustrated'}:
         return 'angry'
-    if any(w in t for w in ['sad', 'lonely', 'down', 'depressed', 'upset']):
+    if words & {'sad', 'lonely', 'down', 'depressed', 'upset'}:
         return 'sad'
-    if any(w in t for w in ['happy', 'great', 'good day', 'excited', 'awesome']):
+    if words & {'happy', 'great', 'excited', 'awesome'} or 'good day' in t:
         return 'happy'
-    if any(w in t for w in ['urge', 'craving', 'want to play', 'cant stop', "can't stop"]):
+    if words & {'urge', 'craving'} or any(p in t for p in ('want to play', 'cant stop', "can't stop")):
         return 'craving'
-    if any(w in t for w in ['sleep', 'night', 'late', 'bed']):
+    if words & {'sleep', 'night', 'late', 'bed'}:
         return 'sleep'
-    if any(w in t for w in ['limit', 'cut down', 'reduce', 'stop playing']):
+    if words & {'limit', 'reduce'} or any(p in t for p in ('cut down', 'stop playing')):
         return 'limit'
     return 'default'
 

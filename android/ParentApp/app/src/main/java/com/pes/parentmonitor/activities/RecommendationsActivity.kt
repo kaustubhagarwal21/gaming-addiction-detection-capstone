@@ -38,7 +38,8 @@ class RecommendationsActivity : AppCompatActivity() {
                     val recs = dash.recommendations ?: emptyList()
                     val risk = dash.currentRisk ?: "casual"
 
-                    binding.tvRiskContext.text = "Child's current risk: ${risk.uppercase()}"
+                    binding.tvRiskContext.text =
+                        "Child's current risk: ${risk.replace("_", " ").uppercase()}"
 
                     if (recs.isEmpty()) {
                         binding.tvNoRecs.visibility = View.VISIBLE
