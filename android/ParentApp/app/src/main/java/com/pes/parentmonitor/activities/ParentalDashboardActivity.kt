@@ -290,7 +290,12 @@ class ParentalDashboardActivity : AppCompatActivity() {
             binding.tvRecommendationPreview.visibility = View.VISIBLE
         }
 
-        prefs.lastRiskLevel = risk
+        // Deliberately NOT writing prefs.lastRiskLevel here. That value belongs to
+        // AlertPollingService, which compares it against /api/child/status (latest-
+        // session risk). This dashboard's headline is the DAY roll-up — a different
+        // aggregation — and writing it here made the two fight whenever they fell in
+        // different bands (roll-up "casual" vs latest "at_risk"), so every poll saw a
+        // "change" and re-fired the Risk Level Changed notification in a loop.
 
         // ── Time limit suggestion ──────────────────────────────
         dash.timeLimitSuggestion?.let { tl ->

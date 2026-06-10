@@ -25,6 +25,9 @@ class AlertPollingService : Service() {
     // onStartCommand re-fires every time the dashboard opens (and on STICKY redelivery);
     // only ONE poll loop must run — duplicates would double every notification.
     @Volatile private var pollStarted = false
+    // Last time each risk level was notified (in-memory; resets with the service).
+    private val riskNotifiedAt = HashMap<String, Long>()
+    private val RISK_RENOTIFY_MS = 30 * 60 * 1000L
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         prefs = PrefsManager(this)
@@ -87,7 +90,14 @@ class AlertPollingService : Service() {
                     val status = statusResp.body()!!
                     val newRisk = status.currentRisk ?: ""
                     if (newRisk.isNotEmpty() && newRisk != prefs.lastRiskLevel) {
-                        if (newRisk.lowercase() in listOf("at_risk", "addicted")) {
+                        // Cooldown: when consecutive sessions score either side of a band
+                        // cut-off, the level genuinely flips back and forth — notifying
+                        // each flip would ping the parent every few minutes. One alert
+                        // per level per cooldown window is plenty.
+                        val now = System.currentTimeMillis()
+                        if (newRisk.lowercase() in listOf("at_risk", "addicted") &&
+                            now - (riskNotifiedAt[newRisk] ?: 0L) > RISK_RENOTIFY_MS) {
+                            riskNotifiedAt[newRisk] = now
                             sendRiskChangeNotification(newRisk, status.currentGame)
                         }
                         prefs.lastRiskLevel = newRisk
