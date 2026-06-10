@@ -51,7 +51,7 @@ class HomeActivity : AppCompatActivity() {
     ) { _ -> checkRequiredPermissions() }
 
     private val uiHandler = Handler(Looper.getMainLooper())
-    private val TODAY_REFRESH_MS = 20_000L      // how often Home re-pulls today's snapshot
+    private val TODAY_REFRESH_MS = 12_000L      // how often Home re-pulls today's snapshot (instant-feel)
     private val bannerRefresh = object : Runnable {
         override fun run() {
             refreshBanner()
@@ -362,16 +362,23 @@ class HomeActivity : AppCompatActivity() {
             )
             !isNotificationListenerEnabled() -> showNotifListenerDialog()
             !isAccessibilityEnabled() -> showAccessibilityDialog()
-            !isCustomKeyboardEnabled() -> showKeyboardEnableDialog()
-            !isCustomKeyboardSelected() -> showKeyboardSelectDialog()
-            (!isBatteryExempt() && !prefs.batteryExemptOffered) -> {
-                prefs.batteryExemptOffered = true   // ask once; declining shouldn't nag
-                showBatteryExemptDialog()
-            }
+            // Device Admin + battery exemption are offered BEFORE the keyboard steps, and
+            // each is offered once (flag set when shown). They used to sit AFTER the
+            // keyboard checks, so a child who never set up the custom keyboard left the
+            // chain stuck on the keyboard prompt and NEVER saw the device-admin offer
+            // (it only appeared on a later launch once the keyboard happened to be set).
+            // The anti-uninstall protection is too important to be gated behind an
+            // optional keyboard, so it now reliably appears during first setup.
             (!isDeviceAdminActive() && !prefs.deviceAdminOffered) -> {
                 prefs.deviceAdminOffered = true     // optional + offered once, so it doesn't nag
                 showDeviceAdminDialog()
             }
+            (!isBatteryExempt() && !prefs.batteryExemptOffered) -> {
+                prefs.batteryExemptOffered = true   // ask once; declining shouldn't nag
+                showBatteryExemptDialog()
+            }
+            !isCustomKeyboardEnabled() -> showKeyboardEnableDialog()
+            !isCustomKeyboardSelected() -> showKeyboardSelectDialog()
             else -> dismissPermDialog()   // everything granted → close any lingering box
         }
     }
@@ -404,7 +411,7 @@ class HomeActivity : AppCompatActivity() {
                     } catch (_: Exception) {}
                 }
             }
-            .setNegativeButton("Skip", null)
+            .setNegativeButton("Skip") { _, _ -> advanceToKeyboardStep() }
             .show()
     }
 
@@ -432,7 +439,13 @@ class HomeActivity : AppCompatActivity() {
                     startActivity(intent)
                 } catch (_: Exception) {}
             }
-            .setNegativeButton("Skip", null)
+            // Continue to the next setup step on skip so the chain never dead-ends here.
+            .setNegativeButton("Skip") { _, _ ->
+                if (!isBatteryExempt() && !prefs.batteryExemptOffered) {
+                    prefs.batteryExemptOffered = true
+                    showBatteryExemptDialog()
+                } else advanceToKeyboardStep()
+            }
             .show()
     }
 
@@ -464,8 +477,25 @@ class HomeActivity : AppCompatActivity() {
             title = "Allow Accessibility Access",
             message = "Captures chat messages sent during gaming sessions to detect toxic language and emotional stress.\n\nTap 'Open Settings', find 'GamingDetector', and toggle it ON.",
             settingsIntent = Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS),
-            onSkip = { advanceToKeyboardStep() }
+            onSkip = { advanceAfterAccessibility() }
         )
+    }
+
+    /** Skip-chain mirror of the post-accessibility order in checkRequiredPermissions:
+     *  device admin → battery → keyboard. Keeps the manual "Skip" path from bypassing the
+     *  device-admin offer (the bug where it only appeared after a later re-login). */
+    private fun advanceAfterAccessibility() {
+        when {
+            (!isDeviceAdminActive() && !prefs.deviceAdminOffered) -> {
+                prefs.deviceAdminOffered = true
+                showDeviceAdminDialog()
+            }
+            (!isBatteryExempt() && !prefs.batteryExemptOffered) -> {
+                prefs.batteryExemptOffered = true
+                showBatteryExemptDialog()
+            }
+            else -> advanceToKeyboardStep()
+        }
     }
 
     private fun showKeyboardEnableDialog() {

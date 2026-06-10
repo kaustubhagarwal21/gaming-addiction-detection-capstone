@@ -62,8 +62,13 @@ HEALTHCHECK --interval=30s --timeout=5s --start-period=40s --retries=3 CMD curl 
 #   several librosa voice analyses landed together; the app also caps concurrent
 #   audio analysis with a semaphore — AUDIO_MAX_CONCURRENCY). The DB pool
 #   (PG_POOL_MAX=10) stays above the thread count.
-# --max-requests 200: middle ground. 50 recycled the worker every few minutes under
-#   normal polling (stalled in-flight requests = "fails under load"); 1000 let memory
-#   creep build to the 512 MB OOM line. With --preload a recycle is a cheap fork.
+# --max-requests 500: with audio analysis serialised (AUDIO_MAX_CONCURRENCY=1) the
+#   memory-creep risk is gone, so recycle less often. Frequent recycling on a SINGLE
+#   worker briefly drops the listener while the new worker forks, and a platform health
+#   check hitting that gap reads a "connection reset" — the exact failure Render
+#   reported. --preload keeps each fork sub-second; 500 makes the gap vanishingly rare.
+# OMP/OPENBLAS/MKL/NUMEXPR=1 + MALLOC_ARENA_MAX=2: stop numpy/sklearn's native BLAS from
+#   spawning per-core thread pools and glibc from creating many malloc arenas, both of
+#   which multiply resident memory in a small container for no throughput gain here.
 # sh -c so ${PORT} (set by the platform) is expanded at runtime.
-CMD ["sh", "-c", "gunicorn --bind 0.0.0.0:${PORT} --workers ${WEB_CONCURRENCY:-1} --threads 4 --timeout 120 --graceful-timeout 30 --keep-alive 5 --preload --max-requests 200 --max-requests-jitter 50 --access-logfile - --error-logfile - app:app"]
+CMD ["sh", "-c", "OMP_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1 MKL_NUM_THREADS=1 NUMEXPR_NUM_THREADS=1 MALLOC_ARENA_MAX=2 gunicorn --bind 0.0.0.0:${PORT} --workers ${WEB_CONCURRENCY:-1} --threads 4 --timeout 120 --graceful-timeout 30 --keep-alive 5 --preload --max-requests 500 --max-requests-jitter 50 --access-logfile - --error-logfile - app:app"]

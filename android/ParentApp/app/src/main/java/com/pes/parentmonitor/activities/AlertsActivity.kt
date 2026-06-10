@@ -26,6 +26,16 @@ class AlertsActivity : AppCompatActivity() {
     private lateinit var prefs: PrefsManager
     private val alerts = mutableListOf<Alert>()
 
+    // Auto-refresh while the screen is open so new alerts appear without a manual pull.
+    private val uiHandler = android.os.Handler(android.os.Looper.getMainLooper())
+    private val REFRESH_MS = 15_000L
+    private val autoRefresh = object : Runnable {
+        override fun run() {
+            loadAlerts(silent = true)
+            uiHandler.postDelayed(this, REFRESH_MS)
+        }
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         binding = ActivityAlertsBinding.inflate(layoutInflater)
@@ -43,28 +53,44 @@ class AlertsActivity : AppCompatActivity() {
         loadAlerts()
     }
 
-    private fun loadAlerts() {
+    override fun onResume() {
+        super.onResume()
+        uiHandler.postDelayed(autoRefresh, REFRESH_MS)
+    }
+
+    override fun onPause() {
+        super.onPause()
+        uiHandler.removeCallbacks(autoRefresh)
+    }
+
+    private fun loadAlerts(silent: Boolean = false) {
         lifecycleScope.launch {
             try {
                 val api = ApiClient.getInstance(prefs.serverUrl)
                 val resp = api.getAlerts(prefs.childUserId)
                 if (resp.isSuccessful && resp.body()?.success == true) {
                     val body = resp.body()!!
-                    alerts.clear()
-                    alerts.addAll(body.alerts ?: emptyList())
-                    binding.rvAlerts.adapter?.notifyDataSetChanged()
-                    binding.tvEmpty.visibility = if (alerts.isEmpty()) View.VISIBLE else View.GONE
-
-                    val unreadIds = alerts.filter { !it.read }.map { it.id }
+                    val incoming = body.alerts ?: emptyList()
+                    // On a silent auto-tick, only touch the list when it actually changed
+                    // (avoids flicker / losing scroll position while the parent reads).
+                    val changed = incoming.map { it.id to it.feedback } !=
+                                  alerts.map { it.id to it.feedback }
+                    if (!silent || changed) {
+                        alerts.clear()
+                        alerts.addAll(incoming)
+                        binding.rvAlerts.adapter?.notifyDataSetChanged()
+                        binding.tvEmpty.visibility = if (alerts.isEmpty()) View.VISIBLE else View.GONE
+                    }
+                    val unreadIds = incoming.filter { !it.read }.map { it.id }
                     if (unreadIds.isNotEmpty()) {
                         api.markAlertsRead(MarkReadRequest(unreadIds))
                     }
                 }
                 loadFeedbackSummary(api)
             } catch (e: Exception) {
-                Toast.makeText(this@AlertsActivity, "Failed to load alerts", Toast.LENGTH_SHORT).show()
+                if (!silent) Toast.makeText(this@AlertsActivity, "Failed to load alerts", Toast.LENGTH_SHORT).show()
             } finally {
-                binding.swipeRefresh.isRefreshing = false
+                if (!silent) binding.swipeRefresh.isRefreshing = false
             }
         }
     }

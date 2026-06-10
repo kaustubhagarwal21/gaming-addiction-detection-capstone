@@ -1127,8 +1127,11 @@ VOICE_RISK = {'angry': 0.9, 'frustrated': 0.7, 'excited': 0.4, 'neutral': 0.1}
 # MB per clip; the child app uploads a segment every ~10 s during play, and several
 # arriving together (parallel uploads, offline-queue flushes) analysed concurrently
 # across gunicorn threads spiked past the 512 MB instance limit and OOM-restarted the
-# service. Blocking here briefly queues the extra segments instead.
-_AUDIO_SLOTS = threading.BoundedSemaphore(int(os.environ.get('AUDIO_MAX_CONCURRENCY', '2')))
+# service (the "connection reset" Render health-check failures). Default 1 = fully
+# serialise audio analysis: on the free tier's ~0.1 vCPU these are slow anyway, so
+# serialising costs little latency and removes the memory-spike OOM entirely. Raise
+# AUDIO_MAX_CONCURRENCY only on a larger instance.
+_AUDIO_SLOTS = threading.BoundedSemaphore(int(os.environ.get('AUDIO_MAX_CONCURRENCY', '1')))
 
 
 def extract_audio_features(audio_path):
@@ -1886,9 +1889,25 @@ def _push_to_family(family_code: str, title: str, body: str):
         conn.commit()
     conn.close()
 
+
+def _push_to_user_family(c, user_id: int, title: str, body: str):
+    """Resolve a child's family and FCM-push to every guardian device. Best-effort and
+    used for the most time-critical alerts (tamper / monitoring-went-silent), so they
+    reach a parent whose app isn't actively polling rather than waiting for the next poll.
+    No-op when push isn't configured — polling still delivers."""
+    try:
+        c.execute('SELECT family_code FROM users WHERE user_id=?', (user_id,))
+        row = c.fetchone()
+        fam = row['family_code'] if row else None
+        if fam:
+            _push_to_family(fam, title, body)
+    except Exception as exc:
+        logger.warning(f"push_to_user_family skipped: {exc}")
+
 # ═══════════════════════════ API ROUTES ══════════════════════════
 
 @app.route('/api/health', methods=['GET'])
+@limiter.exempt   # platform health checks poll this frequently — never rate-limit it
 def health():
     all_loaded = all([behavior_model, chat_model, voice_model, tfidf_vectorizer, feature_scaler])
     # Is an FCM credential available? Checked WITHOUT importing firebase/grpc (stays lazy):
@@ -2313,16 +2332,41 @@ def delete_user_data():
 # this, ending it at its last recorded activity so the duration stays realistic. This is
 # the server-side safety net for best-effort uploads (there is no offline retry queue).
 STALE_SESSION_HOURS = 6
+# A live, playing app heartbeats every ~5 min. If heartbeats STOP while a session is
+# open, the monitoring app was killed/swiped/uninstalled — so the session's end-event is
+# never coming and the child is no longer being tracked as "playing". Close it promptly
+# (this many minutes of heartbeat silence) instead of waiting out the 6-hour fallback,
+# which is what left a child shown as "playing" with the green dot after a swipe-away.
+SESSION_SILENT_MIN = 12
 
 
 def _close_stale_sessions(c, user_id):
-    """Self-heal sessions orphaned by a lost end-event. Caller commits. Best-effort:
-    never raises into the request."""
+    """Self-heal sessions orphaned by a lost end-event. Closes a session when EITHER it
+    has been open past the 6-hour fallback, OR the monitoring app's heartbeat has gone
+    silent (the app can't still be tracking play if it isn't checking in). Caller
+    commits. Best-effort: never raises into the request."""
     try:
         cutoff = (datetime.now() - timedelta(hours=STALE_SESSION_HOURS)).isoformat()
-        c.execute("SELECT session_id, start_time FROM sessions "
-                  "WHERE user_id=? AND end_time IS NULL AND start_time < ?",
-                  (user_id, cutoff))
+        # Heartbeat-silent branch: if last_seen is older than the silence window, every
+        # open session for this user is orphaned (the app isn't running). last_seen NULL
+        # means "never heartbeated" (old app) — don't use it to close; the 6h rule covers
+        # that case.
+        c.execute('SELECT last_seen FROM users WHERE user_id=?', (user_id,))
+        _hb = c.fetchone()
+        hb_silent = False
+        if _hb and _hb['last_seen']:
+            try:
+                silent_min = (datetime.now() - _parse_ts(_hb['last_seen'])).total_seconds() / 60.0
+                hb_silent = silent_min >= SESSION_SILENT_MIN
+            except Exception:
+                hb_silent = False
+        if hb_silent:
+            c.execute("SELECT session_id, start_time FROM sessions "
+                      "WHERE user_id=? AND end_time IS NULL", (user_id,))
+        else:
+            c.execute("SELECT session_id, start_time FROM sessions "
+                      "WHERE user_id=? AND end_time IS NULL AND start_time < ?",
+                      (user_id, cutoff))
         rows = c.fetchall()
         for r in rows:
             sid = r['session_id']
@@ -2369,6 +2413,33 @@ def start_session():
     conn = get_db()
     # Self-heal any session orphaned by a lost end-event before opening a new one.
     _close_stale_sessions(conn.cursor(), user_id)
+    # Invariant: at most ONE open session per user. Starting a new one means any session
+    # still open is definitively over (you can't play two games at once) — close it at its
+    # last activity. This clears a duplicate left when the app was killed mid-play and a
+    # later detection opened a fresh session on top of the orphan (which then showed
+    # "running" forever). Best-effort.
+    try:
+        cc = conn.cursor()
+        cc.execute("SELECT session_id, start_time FROM sessions "
+                   "WHERE user_id=? AND end_time IS NULL", (user_id,))
+        for orow in cc.fetchall():
+            osid = orow['session_id']
+            cc.execute("SELECT MAX(t) AS t FROM ("
+                       "  SELECT MAX(timestamp) AS t FROM chat_messages   WHERE session_id=? "
+                       "  UNION ALL SELECT MAX(timestamp) FROM voice_events    WHERE session_id=? "
+                       "  UNION ALL SELECT MAX(timestamp) FROM behavioral_data WHERE session_id=? "
+                       ") q", (osid, osid, osid))
+            lt = cc.fetchone()
+            oend = lt['t'] if (lt and lt['t']) else orow['start_time']
+            try:
+                sdt = _parse_ts(orow['start_time']); edt = _parse_ts(oend)
+                odur = min(max(0, int((edt - sdt).total_seconds())), STALE_SESSION_HOURS * 3600)
+            except Exception:
+                oend, odur = orow['start_time'], 0
+            cc.execute("UPDATE sessions SET end_time=?, duration_seconds=? WHERE session_id=?",
+                       (oend, odur, osid))
+    except Exception as e:
+        logger.warning("close-prior-open-session skipped for user %s: %s", user_id, e)
     sid  = insert_returning_id(
         conn,
         'INSERT INTO sessions (user_id, game_name, start_time) VALUES (?,?,?)',
@@ -2905,7 +2976,14 @@ def parent_dashboard():
               (user_id,))
     lrow_live = c.fetchone()
     live_status = {'is_playing': False, 'current_game': None, 'session_duration_mins': None}
-    if lrow_live:
+    # Don't claim "playing now" when we KNOW the app has gone silent — an open session
+    # with a stale heartbeat is unconfirmed (the stale-session sweep above closes it once
+    # silence crosses SESSION_SILENT_MIN; this guards the in-between window so the green
+    # "playing" dot can't linger after the app is swiped away). When there's no heartbeat
+    # data at all (monitoring is None — legacy/seed child that never pinged) we can't
+    # judge, so we don't suppress.
+    monitoring_silent = monitoring is not None and monitoring.get('online') is not True
+    if lrow_live and not monitoring_silent:
         try:
             live_min = max(0, int((datetime.now() - _parse_ts(lrow_live['start_time'])).total_seconds() // 60))
         except Exception:
@@ -3268,10 +3346,14 @@ def _check_heartbeat(c, user_id):
                 return
         nm  = row['name'] or 'Your child'
         dur = f"{int(silent_min // 60)} hours" if silent_min >= 120 else f"{int(silent_min)} min"
-        _insert_alert(c, user_id, 'offline',
-                      f"{nm}'s monitoring app hasn't checked in for {dur} — it may be offline, "
-                      f"powered off, or have been closed/uninstalled.", 'high')
+        msg = (f"{nm}'s monitoring app hasn't checked in for {dur} — it may be offline, "
+               f"powered off, or have been closed/uninstalled.")
+        _insert_alert(c, user_id, 'offline', msg, 'high')
         c.execute("UPDATE users SET offline_alerted=1 WHERE user_id=?", (user_id,))
+        # Push instantly — "monitoring went silent" (incl. a plain uninstall, where there
+        # is no client callback) is exactly the alert a parent must not have to be polling
+        # to receive.
+        _push_to_user_family(c, user_id, "Monitoring went silent", msg)
     except Exception as e:
         logger.warning(f"heartbeat check skipped: {e}")
 
@@ -3322,6 +3404,9 @@ def child_tamper():
     r  = c.fetchone()
     nm = r['name'] if (r and r['name']) else 'Your child'
     _insert_alert(c, int(uid), 'tamper', f"{nm} {messages[event]}.", 'high')
+    # Tamper is time-critical (the child may be uninstalling now) — push instantly so the
+    # parent doesn't have to wait for the next poll.
+    _push_to_user_family(c, int(uid), "Monitoring alert", f"{nm} {messages[event]}.")
     if event == 'logout':
         # The silence that follows is EXPLAINED, so: clear last_seen so the parent
         # dashboard stops claiming "monitoring active" off a heartbeat that would

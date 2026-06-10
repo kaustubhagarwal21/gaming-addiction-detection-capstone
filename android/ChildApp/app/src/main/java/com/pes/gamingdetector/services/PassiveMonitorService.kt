@@ -57,8 +57,8 @@ class PassiveMonitorService : Service() {
     private val NEUTRAL_GRACE_MS = 120_000L  // 2 min when the game delegated to an ancillary flow
     private val POLL_MS     = 5_000L    // 5s when it matters: near-instant detection
     private val IDLE_POLL_MS = 30_000L  // device locked + no session → nothing to detect, save battery
-    private val NUDGE_POLL_MS = 20_000L // how often to check for parent->child nudges
-    private val HEARTBEAT_MS  = 300_000L // liveness ping every 5 min (tamper/uninstall watchdog)
+    private val NUDGE_POLL_MS = 12_000L // how often to check for parent->child nudges (low-latency)
+    private val HEARTBEAT_MS  = 180_000L // liveness ping every 3 min (tamper/uninstall watchdog + live "monitoring active" dot)
 
     private var screenReceiver: BroadcastReceiver? = null
     // onStartCommand can fire repeatedly on a LIVE service (START_STICKY redelivery, or

@@ -40,10 +40,14 @@ class ParentalDashboardActivity : AppCompatActivity() {
     private lateinit var prefs: PrefsManager
 
     private val uiHandler = Handler(Looper.getMainLooper())
+    // Foreground auto-refresh cadence. Silent (no spinner/animation) and a no-op when the
+    // payload is unchanged, so a tighter interval just makes the numbers + live "playing
+    // now" strip feel near-instant without the parent pulling to refresh.
+    private val DASH_REFRESH_MS = 15_000L
     private val dashRefresh = object : Runnable {
         override fun run() {
             loadDashboard(silent = true)   // background tick: no spinner, no chart re-animation
-            uiHandler.postDelayed(this, 30_000L)
+            uiHandler.postDelayed(this, DASH_REFRESH_MS)
         }
     }
     // Last payload actually rendered — a silent tick that returns identical data is a no-op,
@@ -93,7 +97,7 @@ class ParentalDashboardActivity : AppCompatActivity() {
     override fun onResume() {
         super.onResume()
         loadDashboard()
-        uiHandler.postDelayed(dashRefresh, 30_000L)
+        uiHandler.postDelayed(dashRefresh, DASH_REFRESH_MS)
     }
 
     override fun onPause() {

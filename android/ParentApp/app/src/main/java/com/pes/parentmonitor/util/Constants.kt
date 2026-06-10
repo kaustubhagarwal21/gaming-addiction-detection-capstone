@@ -24,6 +24,9 @@ object Constants {
     const val NOTIF_ALERT = 2001
     const val NOTIF_POLLING = 2002
 
-    // Polling interval (ms)
-    const val POLL_INTERVAL_MS = 60_000L
+    // Background alert-polling interval (ms). FCM push is the instant path for high-risk
+    // alerts; this poll is the catch-all that also delivers the other alert types
+    // (session start, toxicity, offline/tamper). 25 s keeps latency low without hammering
+    // the free tier — the endpoint is light (no model inference).
+    const val POLL_INTERVAL_MS = 25_000L
 }

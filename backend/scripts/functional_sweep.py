@@ -188,6 +188,35 @@ conn.commit(); conn.close()
 r = client.get(f'/api/child/status?user_id={child_a}', headers=auth(tok_p))
 check('orphaned session auto-closed', r.status_code == 200 and r.get_json()['is_playing'] is False)
 
+print("== One-open-session invariant + heartbeat-aware close ==")
+# Leave a session open, then open a second: starting one must close the orphan.
+conn = db()
+conn.execute("INSERT INTO sessions (user_id, game_name, start_time) VALUES (?, 'BGMI', ?)",
+             (child_a, datetime.now().isoformat()))
+conn.commit(); conn.close()
+r = client.post('/api/session/start', json={'user_id': child_a, 'game_name': 'Roblox'}, headers=auth(tok_a))
+new_sid = r.get_json()['session_id']
+conn = db()
+n_open = conn.execute("SELECT COUNT(*) c FROM sessions WHERE user_id=? AND end_time IS NULL",
+                      (child_a,)).fetchone()['c']
+conn.close()
+check('starting a session closes prior open ones (exactly one open)', n_open == 1)
+
+# Heartbeat-silent: an open session with a stale heartbeat is closed, and the live
+# "playing" status is suppressed.
+conn = db()
+conn.execute("UPDATE users SET last_seen=? WHERE user_id=?",
+             ((datetime.now() - timedelta(minutes=20)).isoformat(), child_a))
+conn.commit(); conn.close()
+r = client.get(f'/api/dashboard/parent?user_id={child_a}', headers=auth(tok_p))
+j = r.get_json()
+check('heartbeat-silent closes the open session', j['live_status']['is_playing'] is False)
+conn = db()
+n_open2 = conn.execute("SELECT COUNT(*) c FROM sessions WHERE user_id=? AND end_time IS NULL",
+                       (child_a,)).fetchone()['c']
+conn.close()
+check('no sessions left open after heartbeat-silent sweep', n_open2 == 0)
+
 print("== Heartbeat watchdog (child-local quiet hours) ==")
 r = client.post('/api/child/heartbeat', json={'user_id': child_a, 'tz_offset_min': 330},
                 headers=auth(tok_a))
