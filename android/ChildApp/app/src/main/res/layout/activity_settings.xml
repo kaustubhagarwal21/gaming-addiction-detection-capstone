@@ -28,6 +28,45 @@
         android:orientation="vertical"
         android:padding="16dp">
 
+        <!-- Family code: the parent needs it for the Parent app; otherwise it appears
+             exactly once (registration dialog) and is easily forgotten. Hidden when
+             unknown (not logged in / pre-update account). -->
+        <LinearLayout
+            android:id="@+id/cardFamilyCode"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:visibility="gone"
+            android:background="@drawable/bg_family_code"
+            android:padding="16dp">
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Your family code"
+                android:textStyle="bold"
+                android:textSize="14sp" />
+
+            <TextView
+                android:id="@+id/tvFamilyCode"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="6dp"
+                android:textSize="28sp"
+                android:textStyle="bold"
+                android:letterSpacing="0.2"
+                android:gravity="center"
+                android:fontFamily="monospace"
+                android:textColor="?attr/colorPrimary" />
+
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="6dp"
+                android:text="The parent signs into the Parent app with this code + the Family PIN. Use it again when adding a sibling. Tap the code to copy."
+                android:textSize="12sp" />
+        </LinearLayout>
+
         <com.google.android.material.textfield.TextInputLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"

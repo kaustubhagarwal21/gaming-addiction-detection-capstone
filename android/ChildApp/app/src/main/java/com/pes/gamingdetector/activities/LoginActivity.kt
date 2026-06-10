@@ -50,6 +50,7 @@ class LoginActivity : AppCompatActivity() {
                     prefs.authToken = body.token   // set first so following calls are authenticated
                     prefs.userId = body.userId
                     prefs.userName = body.name
+                    body.familyCode?.let { prefs.familyCode = it }   // shown later in Settings
                     startActivity(Intent(this@LoginActivity, HomeActivity::class.java))
                     finish()
                 } else {

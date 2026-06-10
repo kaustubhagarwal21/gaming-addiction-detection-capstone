@@ -54,6 +54,13 @@ class PrefsManager(context: Context) {
         get() = prefs.getString(Constants.KEY_CHILD_CODE, "") ?: ""
         set(v) = prefs.edit().putString(Constants.KEY_CHILD_CODE, v).apply()
 
+    // The family code (shown at registration, returned again on every login) — kept so
+    // Settings can always display it; without this it was shown exactly once and easily
+    // forgotten, locking the parent out of the Parent app.
+    var familyCode: String
+        get() = prefs.getString("family_code", "") ?: ""
+        set(v) = prefs.edit().putString("family_code", v).apply()
+
     var onboardingDone: Boolean
         get() = prefs.getBoolean("onboarding_done", false)
         set(v) = prefs.edit().putBoolean("onboarding_done", v).apply()

@@ -26,6 +26,19 @@ class SettingsActivity : AppCompatActivity() {
         supportActionBar?.setDisplayHomeAsUpEnabled(true)
         supportActionBar?.title = "Settings"
 
+        // Family code — permanently visible here so it can't be forgotten (it otherwise
+        // appears only once, in the registration dialog). Tap the code to copy it.
+        val code = prefs.familyCode
+        if (code.isNotBlank()) {
+            binding.cardFamilyCode.visibility = android.view.View.VISIBLE
+            binding.tvFamilyCode.text = code
+            binding.tvFamilyCode.setOnClickListener {
+                val cb = getSystemService(CLIPBOARD_SERVICE) as android.content.ClipboardManager
+                cb.setPrimaryClip(android.content.ClipData.newPlainText("Family code", code))
+                Toast.makeText(this, "Family code copied", Toast.LENGTH_SHORT).show()
+            }
+        }
+
         binding.etServerUrl.setText(prefs.serverUrl)
 
         binding.btnSaveUrl.setOnClickListener {

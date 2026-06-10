@@ -65,6 +65,7 @@ class RegisterActivity : AppCompatActivity() {
                     prefs.authToken = body.token   // set first so following calls are authenticated
                     prefs.userId    = body.userId
                     prefs.userName  = body.name
+                    body.familyCode?.let { prefs.familyCode = it }   // shown later in Settings
                     // Show the family code (so the parent knows what to enter in the
                     // Parent app), then continue to Home.
                     showFamilyCodeThenHome(body.name, body.familyCode, joined = familyCode.isNotBlank())

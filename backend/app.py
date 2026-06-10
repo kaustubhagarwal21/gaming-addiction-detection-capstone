@@ -2079,7 +2079,11 @@ def user_login():
         c.execute('SELECT user_id, name, age FROM users WHERE family_code=? AND parent_pin_hash=?',
                   (family_code, pin_h))
     else:
-        c.execute('SELECT user_id, name, age FROM users WHERE pin_hash=?', (pin_h,))
+        # family_code included so the Child app can keep showing it in Settings —
+        # otherwise the code is seen exactly once (registration dialog) and easily
+        # forgotten. It's an identifier, not a credential: parent login and sibling
+        # joins both still require the family PIN alongside it.
+        c.execute('SELECT user_id, name, age, family_code FROM users WHERE pin_hash=?', (pin_h,))
     rows = c.fetchall()
     if not rows:
         conn.close()
@@ -2097,6 +2101,8 @@ def user_login():
         resp['child_user_id'] = children[0]['user_id']
         allowed = [r['user_id'] for r in rows]
     else:
+        if row['family_code']:
+            resp['family_code'] = row['family_code']
         allowed = [row['user_id']]
     # Signed bearer token the client sends on every subsequent request
     resp['token'] = mint_token(role, row['user_id'], allowed)
