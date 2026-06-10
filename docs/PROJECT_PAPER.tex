@@ -239,7 +239,11 @@ killed is detected by a one-round-trip probe and replaced, instead of failing th
 request), rate limits are applied per real client IP behind the reverse proxy (not per
 proxy, which would make all users share one quota), SHAP explanations are memoised and
 the anomaly scan is throttled on the 30-second dashboard polling path, and the single
-threaded worker is sized so the whole ML stack stays within memory.
+threaded worker is sized so the whole ML stack stays within memory. Concurrent
+\emph{audio} analyses are additionally capped by a semaphore: pitch/MFCC extraction
+allocates tens of megabytes per clip, and during live testing several voice segments
+arriving together briefly exceeded the instance's memory --- the cap (plus periodic
+worker recycling and single-threaded BLAS) bounds the peak instead of trusting it.
 
 \subsection{Presentation tier (Parent app)}
 The Parent app authenticates with a family code + PIN, shows the current risk band
@@ -507,7 +511,12 @@ cannot quietly disable monitoring: logging out and changing settings require the
 parent PIN, verified server-side so the PIN is never exposed to the child, and a logout
 itself raises a parent alert; the family PIN can only be \emph{changed} with a
 parent-role token, and data deletion is likewise parent-only --- a child's own
-authenticated session cannot rewrite or erase its safeguards. Because Android gives an app no callback at its own uninstall,
+authenticated session cannot rewrite or erase its safeguards. Sign-out and sign-in are
+treated symmetrically and honestly: a logout immediately clears the monitoring-health
+status (the dashboard must not keep claiming ``monitoring active'' off a heartbeat that
+still looks fresh) and suppresses the now-redundant ``gone silent'' watchdog alert,
+while signing back in raises a ``monitoring is active again'' alert and turns the
+health indicator green at once. Because Android gives an app no callback at its own uninstall,
 removal is detected \emph{indirectly}: the Child app emits a periodic heartbeat, and the
 server raises a single ``monitoring has gone silent'' alert when no heartbeat arrives for
 a set interval --- a catch-all covering uninstall, force-stop, being killed, or going
@@ -525,7 +534,11 @@ a consent-based model rather than a punitive lockdown.
 \subsection{Security and accounts}
 A family registers once and receives a unique family code; each child has a private
 PIN, and the parent signs in with the family code + a shared PIN. All protected
-endpoints enforce token authentication and per-user authorisation.
+endpoints enforce token authentication and per-user authorisation. The family code
+remains permanently visible (and tap-to-copy) in the Child app's PIN-gated Settings
+--- it is an identifier, not a credential (every use of it also requires the family
+PIN) --- so a parent who didn't note it down at registration is never locked out of
+the Parent app.
 
 \subsection{Parental dashboard and wellbeing}
 The Parent app shows the day's risk --- a \emph{duration-weighted} roll-up of that
@@ -598,8 +611,13 @@ and is the first candidate for real-audio retraining.
 \begin{itemize}[leftmargin=1.4em]
   \item Production-deployed cloud backend (HTTPS, token auth, consent, durable
         managed Postgres); both apps build as signed release APKs.
-  \item A 35-test backend suite passes against an isolated database; both apps pass
-        Android Lint with zero errors.
+  \item A layered test program, all passing: a 35-test API suite (isolated database),
+        a \textbf{56-check functional sweep run in production auth mode} with real
+        parent/child tokens (registration and family joins, role guards, the full
+        nudge lifecycle, a real WAV upload through the silence floor and late
+        re-score, the watchdog's quiet hours, feedback re-rating, parent-controlled
+        deletion), and a \textbf{25-check end-to-end probe of the live cloud
+        deployment}. Both apps pass Android Lint with zero errors.
   \item Robustness under load on free-tier hosting: pooled, probe-validated connections
         to the serverless Postgres (replacing per-request TLS handshakes; connections
         killed by scale-to-zero are detected and replaced transparently), per-client
@@ -614,6 +632,40 @@ and is the first candidate for real-audio retraining.
         connectivity.
 \end{itemize}
 
+\subsection{Real-device validation (and what it caught)}
+Beyond the automated layers, the complete system was exercised on a physical Android~16
+handset against the live cloud deployment: registration $\rightarrow$ consent
+$\rightarrow$ the guided permission chain $\rightarrow$ \emph{automatic} session
+detection on a real game (Roblox, no manual start) $\rightarrow$ live microphone
+capture with on-device Vosk transcription (voice events and speech-to-text lines
+arriving server-side and feeding the fusion) $\rightarrow$ automatic session end with a
+scored prediction $\rightarrow$ the parent-side flows. This pass surfaced three
+production-class defects that no amount of local or API-level testing had caught ---
+each was fixed and is now regression-guarded:
+\begin{enumerate}[leftmargin=1.4em]
+  \item \textbf{Launch crash on modern Android.} Reading the enabled-keyboards system
+        setting throws a \texttt{SecurityException} for apps targeting SDK~$>$~33, so
+        the permission-chain check crashed the Home screen on Android~12+ devices; the
+        check now uses the supported \texttt{InputMethodManager} API, and the
+        remaining system-settings reads are wrapped to degrade to a re-prompt rather
+        than a crash.
+  \item \textbf{Out-of-memory under live voice load.} Real gameplay streams a voice
+        segment every $\sim$10 seconds; several analysed concurrently pushed the
+        512\,MB instance over its limit and triggered a platform restart. Fixed by the
+        audio-analysis semaphore, burst-collapsing the per-segment re-score, more
+        frequent worker recycling, and single-threaded BLAS (\S3.2).
+  \item \textbf{A notification feedback loop.} The Parent dashboard (which shows the
+        \emph{day roll-up} band) and the alert poller (which compares the
+        \emph{latest-session} band) both wrote the same ``last seen risk'' state; near
+        a band boundary the two disagreed, so every poll saw a ``change'' and re-fired
+        the risk-change notification indefinitely. The poller is now the single
+        writer, with a per-level re-notify cooldown absorbing genuine boundary
+        flapping.
+\end{enumerate}
+We report these candidly: they are precisely the class of defect that only
+real-device, real-network operation reveals, and finding and fixing them --- rather
+than not looking --- is part of the production-readiness this paper claims.
+
 \subsection{Summary of features delivered}
 \begin{center}
 \begin{tabularx}{\linewidth}{lX}
@@ -626,9 +678,9 @@ ML & Calibrated RF behaviour + SHAP, LogReg/TF-IDF chat, GBM voice, availability
 Credibility & Probability calibration, anomaly detection (date-keyed), observation mode, honest model card, child-local timezone for hour-of-day signals \\
 Parent value & Per-day weighted risk + ``why'' (SHAP), live ``playing now'' + monitoring-health strip, 14-day trend, recently/most-played games, real-time alerts with friendly ages + feedback agreement rate, weekly report (true weekly numbers) + PDF, limits, send-nudge-to-child, switch child without re-login \\
 Child wellbeing & Mira check-in (typing indicator, double-send guard), gamified daily check-in + streak, reflections, breathing, break/limit nudges, today-vs-goal progress \\
-Reliability/anti-tamper & Heartbeat watchdog (uninstall/kill/offline alert, child-local quiet hours), optional Device Admin (uninstall block + instant disable alert), battery-optimisation exemption, double-start-safe services, parent-PIN lock on logout/settings (server-verified, constant-time), parent-role-only PIN change + data deletion, logout alert, self-restart + boot resume, multi-guardian FCM push (lazy-init) \\
-Privacy/Security & Token auth + role checks, peppered PIN hashes, HTTPS-only, encrypted token store, consent (versioned), raw-audio deletion, retention purge, 16\,MB body cap \\
-Engineering & Dual-dialect DB with pooled validated Postgres connections, per-client rate limiting, hot-path caching/throttling, signed APKs, 35 tests + concurrency smoke, lint-clean, deployed + durable DB \\
+Reliability/anti-tamper & Heartbeat watchdog (uninstall/kill/offline alert, child-local quiet hours), optional Device Admin (uninstall block + instant disable alert), battery-optimisation exemption, double-start-safe services, parent-PIN lock on logout/settings (server-verified, constant-time), parent-role-only PIN change + data deletion, logout \emph{and} login alerts with honest monitoring status, self-restart + boot resume, multi-guardian FCM push (lazy-init) \\
+Privacy/Security & Token auth + role checks, peppered PIN hashes, HTTPS-only, encrypted token store, consent (versioned), raw-audio deletion, retention purge, 16\,MB body cap, family code always recoverable in PIN-gated Settings \\
+Engineering & Dual-dialect DB with pooled validated Postgres connections, per-client rate limiting, hot-path caching/throttling + audio-concurrency cap, signed APKs, layered tests (35 API + 56 production-mode + 25 live-cloud) + concurrency smoke, real-device validated, lint-clean, deployed + durable DB \\
 \bottomrule
 \end{tabularx}
 \end{center}
@@ -641,7 +693,9 @@ moves beyond raw screen-time to measured behaviour, chat toxicity and voice emot
 fused into a calibrated, explainable risk band and surfaced to parents as awareness
 rather than punishment. The engineering is real: native Android apps, a secured cloud
 backend, a durable database, signed releases, tamper-resistant background monitoring with
-real-time multi-guardian alerts, and a passing test suite. Our central
+real-time multi-guardian alerts, a layered passing test program (API suite,
+production-mode functional sweep, live-cloud probe), and end-to-end validation on real
+hardware against the live deployment. Our central
 methodological commitments --- train/serve feature alignment, probability
 calibration, SHAP explanations, availability-weighted fusion, and an honest account
 of synthetic-data limitations --- make the system's outputs trustworthy and
