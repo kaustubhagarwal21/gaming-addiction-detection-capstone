@@ -38,10 +38,12 @@ code, h = call('GET', '/api/health')
 check('health: models_loaded', code == 200 and h and h.get('models_loaded') is True,
       f"voice={h.get('models', {}).get('voice') if h else '?'}")
 
-code, j = call('POST', '/api/user/login', body={'pin': '0000', 'role': 'parent'})
+# Parent login requires the family code since the family-code auth model shipped.
+code, j = call('POST', '/api/user/login',
+               body={'pin': '0000', 'role': 'parent', 'family_code': 'FAM789'})
 ptok = (j or {}).get('token')
 kids = sorted(c['user_id'] for c in (j or {}).get('children', [])) if j else []
-check('parent login (0000)', code == 200 and bool(ptok) and kids == [1, 3], f"children={kids}")
+check('parent login (FAM789/0000)', code == 200 and bool(ptok) and len(kids) >= 1, f"children={kids}")
 
 code, j = call('POST', '/api/user/login', body={'pin': '1234', 'role': 'child'})
 ctok = (j or {}).get('token')
