@@ -140,5 +140,6 @@ They talk to the live cloud backend — no GitHub or build tools needed.
 - [SETUP.md](SETUP.md) — detailed setup
 - [DEPLOY.md](DEPLOY.md) — cloud deployment + building signed release APKs
 - [DEMO_RUNBOOK.md](DEMO_RUNBOOK.md) — demo walkthrough
+- [TESTING.md](TESTING.md) — automated test layers + on-device manual checklist
 - [docs/PROJECT_PAPER.tex](docs/PROJECT_PAPER.tex) — the full project paper: architecture, models, honest metrics, limitations
 - [PRIVACY.md](PRIVACY.md) — privacy & data handling
