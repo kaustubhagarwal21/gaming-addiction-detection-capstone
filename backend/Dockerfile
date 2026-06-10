@@ -30,7 +30,15 @@ ENV PATH=/home/app/.local/bin:$PATH \
     NUMBA_CACHE_DIR=/tmp \
     MPLCONFIGDIR=/tmp \
     TZ=Asia/Kolkata \
-    PORT=5000
+    PORT=5000 \
+    # Memory discipline for a 512 MB instance: single-threaded BLAS (numpy/sklearn
+    # otherwise spawn a thread pool PER gunicorn thread, each with its own buffers)
+    # and capped glibc malloc arenas (threaded Python is notorious for arena bloat).
+    OMP_NUM_THREADS=1 \
+    OPENBLAS_NUM_THREADS=1 \
+    MKL_NUM_THREADS=1 \
+    NUMEXPR_NUM_THREADS=1 \
+    MALLOC_ARENA_MAX=2
 
 WORKDIR /app
 COPY --chown=app:app . /app
@@ -49,12 +57,13 @@ HEALTHCHECK --interval=30s --timeout=5s --start-period=40s --retries=3 CMD curl 
 # break --preload's copy-on-write sharing) and OOM-killed the instance -> 50x crash
 # loop. Raise --workers only on a plan with more RAM (e.g. WEB_CONCURRENCY).
 #
-# --threads 8: requests are I/O-bound (waiting on Neon round trips), so more threads
-#   give real concurrency at near-zero extra memory (they share the one model copy).
-#   The DB connection pool (PG_POOL_MAX=10) is sized above the thread count.
-# --max-requests 1000 (was 50): with three apps polling every 20-60 s, 50 recycled
-#   the worker every few MINUTES — each recycle stalled in-flight polls and re-warmed
-#   caches, which presented as "fails under load". 1000 still reclaims slow memory
-#   creep, just roughly hourly instead of constantly.
+# --threads 4: enough I/O concurrency for the polling apps while halving the worst
+#   case of simultaneous heavy requests vs 8 (an 8-thread worker OOM-restarted when
+#   several librosa voice analyses landed together; the app also caps concurrent
+#   audio analysis with a semaphore — AUDIO_MAX_CONCURRENCY). The DB pool
+#   (PG_POOL_MAX=10) stays above the thread count.
+# --max-requests 200: middle ground. 50 recycled the worker every few minutes under
+#   normal polling (stalled in-flight requests = "fails under load"); 1000 let memory
+#   creep build to the 512 MB OOM line. With --preload a recycle is a cheap fork.
 # sh -c so ${PORT} (set by the platform) is expanded at runtime.
-CMD ["sh", "-c", "gunicorn --bind 0.0.0.0:${PORT} --workers ${WEB_CONCURRENCY:-1} --threads 8 --timeout 120 --graceful-timeout 30 --keep-alive 5 --preload --max-requests 1000 --max-requests-jitter 100 --access-logfile - --error-logfile - app:app"]
+CMD ["sh", "-c", "gunicorn --bind 0.0.0.0:${PORT} --workers ${WEB_CONCURRENCY:-1} --threads 4 --timeout 120 --graceful-timeout 30 --keep-alive 5 --preload --max-requests 200 --max-requests-jitter 50 --access-logfile - --error-logfile - app:app"]

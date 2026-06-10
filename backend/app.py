@@ -101,7 +101,10 @@ app.json = _NumericJSONProvider(app)
 
 # Rate limiter — no-op wrapper when flask_limiter isn't installed
 if _limiter_real:
-    limiter = Limiter(app=app, key_func=_get_ip, default_limits=["120 per minute"])
+    # storage_uri set explicitly: single-instance deployment, in-memory is correct
+    # (and silences the production warning in the boot logs).
+    limiter = Limiter(app=app, key_func=_get_ip, default_limits=["120 per minute"],
+                      storage_uri="memory://")
 else:
     class _NoopLimiter:
         def limit(self, *a, **kw):
@@ -1120,10 +1123,22 @@ def _shap_explain_impl(feat_dict: dict, top_n: int = 4) -> list:
 
 VOICE_RISK = {'angry': 0.9, 'frustrated': 0.7, 'excited': 0.4, 'neutral': 0.1}
 
+# At most N librosa analyses at once. Pitch (yin) + MFCC extraction allocates tens of
+# MB per clip; the child app uploads a segment every ~10 s during play, and several
+# arriving together (parallel uploads, offline-queue flushes) analysed concurrently
+# across gunicorn threads spiked past the 512 MB instance limit and OOM-restarted the
+# service. Blocking here briefly queues the extra segments instead.
+_AUDIO_SLOTS = threading.BoundedSemaphore(int(os.environ.get('AUDIO_MAX_CONCURRENCY', '2')))
+
 
 def extract_audio_features(audio_path):
     if not LIBROSA_AVAILABLE:
         return None, 0.0
+    with _AUDIO_SLOTS:
+        return _extract_audio_features_inner(audio_path)
+
+
+def _extract_audio_features_inner(audio_path):
     try:
         y, sr = librosa.load(audio_path, sr=22050, duration=30)
         duration = len(y) / sr
@@ -2608,6 +2623,10 @@ def save_chat(sid):
     return jsonify({'success': True, 'toxicity_score': round(tox_score, 3)})
 
 
+# Last voice-driven re-score per session (monotonic seconds) — see save_voice.
+_voice_rescore_last: dict = {}
+
+
 @app.route('/api/session/<int:sid>/voice', methods=['POST'])
 def save_voice(sid):
     """Accept audio file or pre-computed emotion from Android."""
@@ -2675,10 +2694,16 @@ def save_voice(sid):
     # short session the session-end prediction can be computed BEFORE the last voice
     # segment lands — leaving voice marked "not captured". Re-running here (cheap, no
     # SHAP) folds the new emotion into the latest stored prediction's voice flag + score.
-    try:
-        run_prediction(sid, explain=False)
-    except Exception as e:
-        logger.warning(f"voice re-prediction skipped: {e}")
+    # Throttled per session: segments arrive every ~10 s (and in bursts after an offline
+    # flush); re-scoring once per burst gives the same final state for a fraction of the
+    # CPU/DB work on the free tier.
+    now_mono = time.monotonic()
+    if now_mono - _voice_rescore_last.get(sid, 0) >= 8:
+        _voice_rescore_last[sid] = now_mono
+        try:
+            run_prediction(sid, explain=False)
+        except Exception as e:
+            logger.warning(f"voice re-prediction skipped: {e}")
     return jsonify({'success': True, 'emotion': emotion, 'intensity': intensity, 'duration': duration})
 
 
