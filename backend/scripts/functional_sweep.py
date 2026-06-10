@@ -214,11 +214,20 @@ n_off2 = conn.execute("SELECT COUNT(*) c FROM alerts WHERE user_id=? AND type='o
 conn.close()
 check('silence at child-local DAY raises ONE offline alert', n_off2 == 1)
 
-print("== Tamper + logout alert ==")
+print("== Tamper + logout alert / login resumes ==")
 r = client.post('/api/child/tamper', json={'user_id': child_a, 'event': 'logout'}, headers=auth(tok_a))
 check('logout tamper alert', r.status_code == 200)
 r = client.post('/api/child/tamper', json={'user_id': child_a, 'event': 'weird'}, headers=auth(tok_a))
 check('unknown tamper event -> 400', r.status_code == 400)
+r = client.get(f'/api/dashboard/parent?user_id={child_a}', headers=auth(tok_p))
+check('after logout: dashboard stops claiming monitoring active',
+      r.get_json().get('monitoring') is None)
+r = client.post('/api/user/login', json={'pin': '4321', 'role': 'child'})
+check('child re-login OK', r.status_code == 200)
+tok_a = r.get_json()['token']
+r = client.get(f'/api/alerts?user_id={child_a}', headers=auth(tok_p))
+check('login alert raised for parent (monitoring resumed)',
+      any(a['type'] == 'login' for a in r.get_json()['alerts']))
 
 print("== Feedback loop ==")
 r = client.post('/api/feedback', json={'alert_id': tox_alert['id'], 'label': 'accurate'},

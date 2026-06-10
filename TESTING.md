@@ -11,7 +11,7 @@ cloud check, and an on-device manual checklist. Run the automated layers any tim
 | Command | What it proves | Expected |
 |---|---|---|
 | `python -m pytest tests/ -q` | 35-test suite: API contracts, dashboards, feedback, auth shadow mode — isolated throwaway DB | `35 passed` |
-| `python scripts/functional_sweep.py` | **53 checks in production mode** (`AUTH_ENFORCE=1`, real tokens): registration/family joins, role guards (child token can't change family PIN / delete data), consent, session lifecycle + observation mode, chat de-dupe + toxicity alert + auto language-nudge, full nudge lifecycle (delivered exactly once), real WAV voice upload (silence floor, raw-audio deletion, late re-score), stale-session self-healing, heartbeat watchdog **with child-local quiet hours**, tamper events, feedback agreement + re-rating, dashboards/PDF, parent-controlled deletion | `53/53 checks passed` |
+| `python scripts/functional_sweep.py` | **56 checks in production mode** (`AUTH_ENFORCE=1`, real tokens): registration/family joins, role guards (child token can't change family PIN / delete data), consent, session lifecycle + observation mode, chat de-dupe + toxicity alert + auto language-nudge, full nudge lifecycle (delivered exactly once), real WAV voice upload (silence floor, raw-audio deletion, late re-score), stale-session self-healing, heartbeat watchdog **with child-local quiet hours**, tamper events (logout clears monitoring status; re-login alerts the parent), feedback agreement + re-rating, dashboards/PDF, parent-controlled deletion | `56/56 checks passed` |
 | `python scripts/cloud_e2e.py` | **25 checks against the LIVE Render deployment**: every screen's endpoint with real parent/child tokens, PDF bytes, cross-user 403 / no-token 401 guards | `25/25 passed` |
 
 Notes
@@ -52,7 +52,12 @@ signed release APKs from `android/*/app/build/outputs/apk/release/app-release.ap
       tapping it copies to clipboard. (Accounts created before v1.1: log out and
       back in once so the app learns the code from the server.)
 - [ ] **Parent-PIN gate**: menu → Logout → wrong PIN is rejected with a toast;
-      correct PIN logs out AND raises a logout alert in the Parent app.
+      correct PIN logs out AND raises a logout alert in the Parent app; the Parent
+      dashboard stops showing "Monitoring active". Logging back in raises a
+      "signed in — monitoring active again" alert and the strip turns green.
+- [ ] **After logout, nothing captures**: open a game while logged out → no
+      monitoring notification, no new session in the Parent app, typing captures
+      nothing (the keyboard still types normally — it just records nothing).
 - [ ] **Mira**: send "i cant stop playing" → typing indicator ("…") → craving-
       specific reply; Send button disabled while waiting (no double-send).
 - [ ] **Daily check-in**: tap a face, sliders, submit → celebration dialog +

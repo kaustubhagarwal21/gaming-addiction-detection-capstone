@@ -2104,6 +2104,19 @@ def user_login():
         if row['family_code']:
             resp['family_code'] = row['family_code']
         allowed = [row['user_id']]
+        # Parent-awareness symmetry: logging OUT raises an alert, so signing back IN
+        # does too — confirming monitoring resumed. Also stamp last_seen immediately,
+        # so the dashboard's monitoring strip turns green now rather than when the
+        # first heartbeat lands minutes later.
+        try:
+            _insert_alert(c, row['user_id'], 'login',
+                          f"{row['name'] or 'Your child'} signed in to the monitoring app — "
+                          "monitoring is active again.", 'info')
+            c.execute("UPDATE users SET last_seen=?, offline_alerted=0 WHERE user_id=?",
+                      (datetime.now().isoformat(), row['user_id']))
+            conn.commit()
+        except Exception as e:
+            logger.warning(f"login alert skipped: {e}")
     # Signed bearer token the client sends on every subsequent request
     resp['token'] = mint_token(role, row['user_id'], allowed)
     conn.close()
@@ -3309,6 +3322,12 @@ def child_tamper():
     r  = c.fetchone()
     nm = r['name'] if (r and r['name']) else 'Your child'
     _insert_alert(c, int(uid), 'tamper', f"{nm} {messages[event]}.", 'high')
+    if event == 'logout':
+        # The silence that follows is EXPLAINED, so: clear last_seen so the parent
+        # dashboard stops claiming "monitoring active" off a heartbeat that would
+        # otherwise look fresh for ~10 more minutes, and so the watchdog doesn't
+        # later pile a redundant "gone silent" alert on top of this logout alert.
+        c.execute("UPDATE users SET last_seen=NULL WHERE user_id=?", (int(uid),))
     conn.commit()
     conn.close()
     return jsonify({'success': True})
