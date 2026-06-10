@@ -8,7 +8,7 @@
 #   3. AUTH_SECRET / PIN_PEPPER are generated automatically. DATABASE_URL is a
 #      manual secret (sync:false) — set it in the dashboard to your Neon Postgres
 #      connection string (Render's free Postgres is deleted ~30 days after creation,
-#      so we use an external durable DB instead). See DEMO_PREP.md §1.
+#      so we use an external durable DB instead). See DEPLOY.md.
 #   4. After it's live, point both apps' Server URL at https://<service>.onrender.com/
 #
 # Notes: the free web instance cold-starts after idle (~30–60s the first hit while

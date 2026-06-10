@@ -10,7 +10,7 @@ to produce a *screening* risk signal with an explanation; a **Parent app** shows
 alerts, trends, and lets the parent confirm whether an alert was accurate.
 
 > It's a **screening / awareness** tool, not a clinical diagnosis. See [PRIVACY.md](PRIVACY.md)
-> and the "Known Limitations" section of [docs/TECHNICAL_REPORT.md](docs/TECHNICAL_REPORT.md).
+> and the honest-evaluation sections of the project paper ([docs/PROJECT_PAPER.tex](docs/PROJECT_PAPER.tex)).
 
 ---
 
@@ -38,7 +38,7 @@ specific tasks — see [Secrets](#secrets-not-in-the-repo).
 | `backend/` | Flask REST API + ML models (`app.py`), tests, `seed_demo.py` |
 | `ml/` | Model training / evaluation scripts |
 | `data/` | Training datasets |
-| `docs/` | Technical report, architecture, smoke test |
+| `docs/` | Project paper (LaTeX) |
 | `capstone/` | Capstone report documents (deliverables) |
 
 ---
@@ -139,7 +139,6 @@ They talk to the live cloud backend — no GitHub or build tools needed.
 ## More docs
 - [SETUP.md](SETUP.md) — detailed setup
 - [DEPLOY.md](DEPLOY.md) — cloud deployment + building signed release APKs
-- [DEMO_PREP.md](DEMO_PREP.md) — getting demo-ready (DB, warm-up, smoke test)
 - [DEMO_RUNBOOK.md](DEMO_RUNBOOK.md) — demo walkthrough
-- [docs/TECHNICAL_REPORT.md](docs/TECHNICAL_REPORT.md) — architecture, models, limitations
+- [docs/PROJECT_PAPER.tex](docs/PROJECT_PAPER.tex) — the full project paper: architecture, models, honest metrics, limitations
 - [PRIVACY.md](PRIVACY.md) — privacy & data handling
