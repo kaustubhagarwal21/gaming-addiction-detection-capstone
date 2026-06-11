@@ -11,7 +11,7 @@ cloud check, and an on-device manual checklist. Run the automated layers any tim
 | Command | What it proves | Expected |
 |---|---|---|
 | `python -m pytest tests/ -q` | 35-test suite: API contracts, dashboards, feedback, auth shadow mode — isolated throwaway DB | `35 passed` |
-| `python scripts/functional_sweep.py` | **56 checks in production mode** (`AUTH_ENFORCE=1`, real tokens): registration/family joins, role guards (child token can't change family PIN / delete data), consent, session lifecycle + observation mode, chat de-dupe + toxicity alert + auto language-nudge, full nudge lifecycle (delivered exactly once), real WAV voice upload (silence floor, raw-audio deletion, late re-score), stale-session self-healing, heartbeat watchdog **with child-local quiet hours**, tamper events (logout clears monitoring status; re-login alerts the parent), feedback agreement + re-rating, dashboards/PDF, parent-controlled deletion | `56/56 checks passed` |
+| `python scripts/functional_sweep.py` | **59 checks in production mode** (`AUTH_ENFORCE=1`, real tokens): registration/family joins, role guards (child token can't change family PIN / delete data), consent, session lifecycle + observation mode, chat de-dupe + toxicity alert + auto language-nudge, full nudge lifecycle (delivered exactly once), real WAV voice upload (silence floor, raw-audio deletion, late re-score), stale-session self-healing (incl. heartbeat-aware close + one-open-session invariant), heartbeat watchdog **with child-local quiet hours**, tamper events (logout clears monitoring status; re-login alerts the parent), feedback agreement + re-rating, dashboards/PDF, parent-controlled deletion | `59/59 checks passed` |
 | `python scripts/cloud_e2e.py` | **25 checks against the LIVE Render deployment**: every screen's endpoint with real parent/child tokens, PDF bytes, cross-user 403 / no-token 401 guards | `25/25 passed` |
 
 Notes
@@ -26,8 +26,8 @@ Notes
 - `https://gaming-addiction-api.onrender.com/api/health` → `"models_loaded": true`.
 - After a deploy, confirm the Render dashboard's latest deploy is your commit.
 - Watch for Render **memory-limit emails**: heavy voice load is capped now
-  (audio-analysis semaphore + 4 gunicorn threads + worker recycling at ~200
-  requests), so one of those emails appearing again is a regression signal.
+  (serialised audio analysis with bounded queueing + 4 gunicorn threads + worker
+  recycling at ~500 requests), so one of those emails appearing again is a regression signal.
 
 ---
 
@@ -44,8 +44,10 @@ signed release APKs from `android/*/app/build/outputs/apk/release/app-release.ap
 - [ ] **Register** a child (leave family code blank) → family-code dialog appears;
       note the code.
 - [ ] **Consent dialog** → I Agree → permission chain walks through Usage access,
-      Notification access, Accessibility, Wellbeing Keyboard (enable + select),
-      battery exemption, optional Device Admin. Each "Skip" advances, nothing loops.
+      Notification access, Accessibility, optional Device Admin, battery exemption,
+      Wellbeing Keyboard (enable + select). Each "Skip" advances, nothing loops.
+      Device Admin + battery come BEFORE the keyboard steps on purpose — they used
+      to sit after, so skipping the keyboard hid the anti-uninstall offer entirely.
 - [ ] **Home** shows "Hi, <name>", today-vs-goal progress, streak line, mindful
       break, "try instead" shuffle.
 - [ ] **Settings (via parent-PIN gate)** → the **family code card** shows the code;
@@ -86,16 +88,17 @@ signed release APKs from `android/*/app/build/outputs/apk/release/app-release.ap
 - [ ] **Alerts**: friendly ages ("2h ago"); rate one Accurate/False alarm → buttons
       become a "thanks" line; the **agreement banner** appears at the top.
 - [ ] **Send a nudge** (preset or custom) → notification pops on the child phone
-      within ~20 s, exactly once.
+      within ~12 s, exactly once.
 - [ ] **Set a daily limit** → child Home switches to "of your X h daily limit";
       child gets a limit nudge.
 - [ ] **Emotion Insights / Chat Analysis / Weekly Report / PDF** all load with the
       captured data; PDF opens/shares.
 - [ ] **Switch child** (multi-child) → dashboard re-targets AND subsequent alert
       notifications are about the new child.
-- [ ] **Tamper drill**: force-stop the Child app ~20 min → dashboard strip shows
-      "🔴 No check-in for N min" and an offline alert appears (suppressed during
-      child-local night hours, 22:00–07:00, by design).
+- [ ] **Tamper drill**: force-stop the Child app → strip stops claiming "playing"
+      within ~10 min, the orphaned session auto-closes by ~12 min, and the offline
+      alert lands at ~15 min (plus an instant FCM push). Suppressed during
+      child-local night hours, 22:00–07:00, by design.
 
 ### Cleanup after testing
 
@@ -113,5 +116,10 @@ all its data; the child PIN stops working).
 3. **Repeating "Risk Level Changed" notification** — dashboard/poller fought over
    `lastRiskLevel` with different risk definitions (fix `6c7fcb8`).
 
-These three are exactly the class of issue only real-device testing finds — rerun
+4. **Round 2 (user field-testing)**: session stuck "running" after a swipe-away
+   (heartbeat-aware close + one-open invariant), Device Admin never offered when the
+   keyboard was skipped (chain reordered), uninstall alert dying with the process
+   (synchronous send + FCM push), slow refresh/alerts (tighter polls + push).
+
+These are exactly the class of issue only real-device testing finds — rerun
 this checklist after any significant change.

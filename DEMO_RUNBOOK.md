@@ -76,7 +76,7 @@ Then switch to the pre-seeded family for the data-rich story:
    *Accurate* or *False alarm* on a risk alert → the **agreement banner** appears at the
    top ("based on your N verdicts…"). This is the feedback loop the paper describes.
 4. **Send a nudge**: Dashboard → *Send a nudge* → pick "Time to take a break 🙂" → it
-   pops up as a notification on the child's phone within ~20 s. Two-way, not just watching.
+   pops up as a notification on the child's phone within ~12 s. Two-way, not just watching.
 5. **Emotion Insights**: real emotion breakdown (angry/frustrated/excited) from voice.
 6. **Chat Analysis**: avg toxicity + flagged messages (typed ⌨️ vs voice 🎙️ tagged).
 7. **Weekly Report → Download PDF**: generates a shareable PDF report.
@@ -100,8 +100,8 @@ Then switch to the pre-seeded family for the data-rich story:
 5. (Behind the scenes) `python verify_captures.py --limit 0` shows the captured
    chat + voice transcript + fused emotion for that session.
 
-### D. Tamper watchdog (strong closer — optional, needs ~20 min lead time)
-Force-stop the ChildApp (Android Settings → Apps → Force stop) ~20 min **before** Q&A;
+### D. Tamper watchdog (strong closer — optional, needs ~15 min lead time)
+Force-stop the ChildApp (Android Settings → Apps → Force stop) ~15 min **before** Q&A;
 during Q&A, show the ParentApp: the header strip reads "🔴 No check-in for N min" and an
 **offline alert** ("monitoring app hasn't checked in…") sits in the alerts feed —
 uninstall/kill/offline detection working live.
