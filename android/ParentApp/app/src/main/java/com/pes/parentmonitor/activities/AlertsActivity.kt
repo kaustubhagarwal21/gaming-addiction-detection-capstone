@@ -73,8 +73,10 @@ class AlertsActivity : AppCompatActivity() {
                     val incoming = body.alerts ?: emptyList()
                     // On a silent auto-tick, only touch the list when it actually changed
                     // (avoids flicker / losing scroll position while the parent reads).
-                    val changed = incoming.map { it.id to it.feedback } !=
-                                  alerts.map { it.id to it.feedback }
+                    // Compare id + feedback + read so a row marked read server-side also
+                    // refreshes (drops its unread highlight) on the next tick.
+                    val changed = incoming.map { Triple(it.id, it.feedback, it.read) } !=
+                                  alerts.map { Triple(it.id, it.feedback, it.read) }
                     if (!silent || changed) {
                         alerts.clear()
                         alerts.addAll(incoming)

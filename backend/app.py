@@ -1137,8 +1137,17 @@ _AUDIO_SLOTS = threading.BoundedSemaphore(int(os.environ.get('AUDIO_MAX_CONCURRE
 def extract_audio_features(audio_path):
     if not LIBROSA_AVAILABLE:
         return None, 0.0
-    with _AUDIO_SLOTS:
+    # Bounded wait: with analyses serialised, an unbounded acquire would let a burst of
+    # voice uploads park most worker threads behind the semaphore and starve every other
+    # request. Better to drop ONE segment (degrades to a low-confidence neutral event)
+    # than to stall the whole API.
+    if not _AUDIO_SLOTS.acquire(timeout=float(os.environ.get('AUDIO_QUEUE_TIMEOUT_S', '20'))):
+        logger.warning("audio analysis queue full — segment skipped (degraded to neutral)")
+        return None, 0.0
+    try:
         return _extract_audio_features_inner(audio_path)
+    finally:
+        _AUDIO_SLOTS.release()
 
 
 def _extract_audio_features_inner(audio_path):
