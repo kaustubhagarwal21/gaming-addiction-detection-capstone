@@ -94,6 +94,13 @@ r = client.post('/api/user/update', json={'user_id': child_a, 'parent_pin': '000
 check('CHILD token cannot change family PIN -> 403', r.status_code == 403)
 r = client.post('/api/user/delete_data', json={'user_id': child_a, 'scope': 'data'}, headers=auth(tok_a))
 check('CHILD token cannot delete data -> 403', r.status_code == 403)
+# Parent-only actions must reject a child's own token (it satisfies guard() for its own id).
+r = client.post('/api/parent/set_limit', json={'user_id': child_a, 'daily_limit_hours': 1}, headers=auth(tok_a))
+check('CHILD token cannot set limit -> 403', r.status_code == 403)
+r = client.post('/api/parent/nudge', json={'user_id': child_a, 'message': 'hi'}, headers=auth(tok_a))
+check('CHILD token cannot send nudge -> 403', r.status_code == 403)
+r = client.post('/api/feedback', json={'user_id': child_a, 'label': 'accurate'}, headers=auth(tok_a))
+check('CHILD token cannot submit feedback -> 403', r.status_code == 403)
 r = client.post('/api/verify_parent_pin', json={'user_id': child_a, 'pin': '9876'}, headers=auth(tok_a))
 check('verify parent PIN (right)', r.status_code == 200 and r.get_json()['valid'] is True)
 r = client.post('/api/verify_parent_pin', json={'user_id': child_a, 'pin': '0000'}, headers=auth(tok_a))

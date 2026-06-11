@@ -1,9 +1,13 @@
 package com.pes.parentmonitor.service
 
+import android.Manifest
 import android.app.NotificationManager
 import android.app.PendingIntent
 import android.content.Intent
+import android.content.pm.PackageManager
+import android.os.Build
 import androidx.core.app.NotificationCompat
+import androidx.core.content.ContextCompat
 import com.google.firebase.messaging.FirebaseMessagingService
 import com.google.firebase.messaging.RemoteMessage
 import com.pes.parentmonitor.R
@@ -49,8 +53,14 @@ class ParentFCMService : FirebaseMessagingService() {
             .setContentIntent(pi)
             .setAutoCancel(true)
             .build()
-        val nm = getSystemService(NotificationManager::class.java)
-        nm.notify(System.currentTimeMillis().toInt() and 0xFFFF, notif)
+        // Android 13+ requires POST_NOTIFICATIONS at runtime; guard so a denied
+        // permission is a clean no-op (and lint-clean) rather than a dropped notify.
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU ||
+            ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS)
+                == PackageManager.PERMISSION_GRANTED) {
+            getSystemService(NotificationManager::class.java)
+                .notify(System.currentTimeMillis().toInt() and 0xFFFF, notif)
+        }
     }
 
     private fun registerTokenWithBackend(token: String, prefs: PrefsManager) {

@@ -219,6 +219,21 @@ def guard(target_uid=None):
     return None
 
 
+def deny_non_parent():
+    """Block a call that only a PARENT should make. guard() proves the caller may touch
+    the target child, but a child's own token also satisfies that for its own id — so
+    parent-only actions (set a limit, send a nudge, give model feedback, register a push
+    device) need this extra check. Returns a 403 response to short-circuit, or None.
+
+    Tolerant of token-less shadow-mode callers (role unknown): production runs
+    AUTH_ENFORCE=1, where guard() already rejects a missing token before this runs."""
+    role = (g.auth or {}).get('role')
+    if role is not None and role != 'parent':
+        return jsonify({'success': False,
+                        'message': 'This action is available from the Parent app only'}), 403
+    return None
+
+
 def guard_session(sid):
     """Authorize access to a session by looking up its owning user."""
     conn = get_db()
@@ -2162,6 +2177,8 @@ def update_fcm_token():
         return jsonify({'error': 'user_id and fcm_token required'}), 400
     deny = guard(uid)
     if deny: return deny
+    deny = deny_non_parent()           # guardian_devices is a parent push registration
+    if deny: return deny
     conn = get_db()
     c    = conn.cursor()
     c.execute('UPDATE users SET fcm_token=? WHERE user_id=?', (token, int(uid)))   # legacy/compat
@@ -2235,8 +2252,11 @@ CONSENT_VERSION = os.environ.get('CONSENT_VERSION', '2026-06-01')
 DATA_RETENTION_DAYS = int(os.environ.get('DATA_RETENTION_DAYS', '0'))
 
 # Every table holding a child's collected data, so "delete my data" is complete.
+# (feedback + child_nudges were previously missed — they hold per-child rows and so
+# must be erased too, or the privacy promise leaks parent verdicts and queued nudges.)
 _USER_TABLES    = ['alerts', 'screen_events', 'notification_events', 'streaks',
-                   'time_limits', 'reflections', 'counselor_messages', 'anomalies']
+                   'time_limits', 'reflections', 'counselor_messages', 'anomalies',
+                   'feedback', 'child_nudges']
 _SESSION_TABLES = ['behavioral_data', 'chat_messages', 'voice_events', 'predictions']
 
 
@@ -2249,19 +2269,43 @@ def _delete_user_data(conn, user_id):
     c.execute("DELETE FROM sessions WHERE user_id=?", (user_id,))
     for t in _USER_TABLES:
         c.execute(f"DELETE FROM {t} WHERE user_id=?", (user_id,))
+    # Guardian push-device tokens are keyed by family_code, not user_id. On a FULL
+    # account removal, drop the tokens belonging to this user's family so a deleted
+    # family leaves no push registrations behind.
+    c.execute("SELECT family_code FROM users WHERE user_id=?", (user_id,))
+    frow = c.fetchone()
+    if frow and frow['family_code']:
+        c.execute("DELETE FROM guardian_devices WHERE family_code=? AND NOT EXISTS "
+                  "(SELECT 1 FROM users u2 WHERE u2.family_code=? AND u2.user_id<>?)",
+                  (frow['family_code'], frow['family_code'], user_id))
     conn.commit()
 
 
-def purge_old_data():
-    """Enforce the data-retention window by deleting stale raw events on startup."""
+_last_purge_mono = 0.0
+_PURGE_EVERY_S   = 6 * 3600   # re-enforce retention at most every 6 h on a live worker
+
+
+def purge_old_data(force: bool = False):
+    """Enforce the data-retention window by deleting stale raw events. Runs at startup and
+    is also called opportunistically from the polling paths (time-gated) so a long-running
+    worker keeps enforcing retention rather than only at boot/deploy."""
+    global _last_purge_mono
     if DATA_RETENTION_DAYS <= 0:
         return
-    cutoff = (datetime.now() - timedelta(days=DATA_RETENTION_DAYS)).isoformat()
-    conn = get_db()
-    c = conn.cursor()
-    for t in ('chat_messages', 'voice_events', 'screen_events', 'notification_events'):
-        c.execute(f"DELETE FROM {t} WHERE timestamp < ?", (cutoff,))
-    conn.commit()
+    now_mono = time.monotonic()
+    if not force and (now_mono - _last_purge_mono) < _PURGE_EVERY_S:
+        return
+    _last_purge_mono = now_mono
+    try:
+        cutoff = (datetime.now() - timedelta(days=DATA_RETENTION_DAYS)).isoformat()
+        conn = get_db()
+        c = conn.cursor()
+        for t in ('chat_messages', 'voice_events', 'screen_events', 'notification_events'):
+            c.execute(f"DELETE FROM {t} WHERE timestamp < ?", (cutoff,))
+        conn.commit()
+        conn.close()
+    except Exception as e:
+        logger.warning(f"retention purge skipped: {e}")
     conn.close()
     logger.info(f"Retention purge: removed raw events older than {DATA_RETENTION_DAYS} days")
 
@@ -2734,7 +2778,9 @@ def save_voice(sid):
     if deny: return deny
     audio_file = request.files.get('audio')
     if audio_file:
-        fname  = f"voice_{sid}_{int(time.time())}.wav"
+        # time_ns + a short random suffix: two segments for the same session in the same
+        # second would otherwise collide and overwrite each other before analysis.
+        fname  = f"voice_{sid}_{time.time_ns()}_{secrets.token_hex(3)}.wav"
         fpath  = os.path.join(AUDIO_DIR, fname)
         audio_file.save(fpath)
         try:
@@ -3475,6 +3521,7 @@ def get_alerts():
     c       = conn.cursor()
     _check_heartbeat(c, user_id)   # raise an 'offline' alert if the child app went silent
     conn.commit()
+    purge_old_data()               # time-gated retention enforcement on a long-running worker
     c.execute('''SELECT a.*, f.label AS feedback_label
                  FROM alerts a
                  LEFT JOIN feedback f ON f.alert_id = a.id
@@ -3559,6 +3606,10 @@ def submit_feedback():
 
     deny = guard(user_id)
     if deny:
+        conn.close()
+        return deny
+    deny = deny_non_parent()           # feedback is the PARENT's verdict — keep the
+    if deny:                           # training signal clean of child self-rating
         conn.close()
         return deny
 
@@ -3883,6 +3934,8 @@ def set_time_limit():
     user_id = data.get('user_id')
     deny = guard(user_id)
     if deny: return deny
+    deny = deny_non_parent()           # a child must not set their own limit
+    if deny: return deny
     hours   = data.get('daily_limit_hours')
     if not user_id or hours is None:
         return jsonify({'success': False, 'message': 'user_id and daily_limit_hours required'}), 400
@@ -3921,6 +3974,8 @@ def send_nudge():
     data    = request.get_json() or {}
     user_id = data.get('user_id')
     deny = guard(user_id)
+    if deny: return deny
+    deny = deny_non_parent()           # nudges are a parent->child channel
     if deny: return deny
     message = (str(data.get('message') or '').strip())[:200]
     if not user_id or not message:
@@ -4630,7 +4685,7 @@ def get_reflections():
 # ─────────────────────────────────────────────────────────────────
 
 # Enforce the retention window once at import (covers gunicorn workers too).
-purge_old_data()   # no-op unless DATA_RETENTION_DAYS is set
+purge_old_data(force=True)   # no-op unless DATA_RETENTION_DAYS is set
 
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 5000))

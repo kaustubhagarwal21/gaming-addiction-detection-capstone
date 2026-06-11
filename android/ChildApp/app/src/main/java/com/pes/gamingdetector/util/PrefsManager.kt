@@ -69,6 +69,13 @@ class PrefsManager(context: Context) {
         get() = prefs.getBoolean("consent_done", false)
         set(v) = prefs.edit().putBoolean("consent_done", v).apply()
 
+    // Has the server been told about this consent? False when the grant POST failed
+    // (offline) so the app re-syncs on a later launch — consent is an audit fact the
+    // server must hold, not just a local flag.
+    var consentSynced: Boolean
+        get() = prefs.getBoolean("consent_synced", false)
+        set(v) = prefs.edit().putBoolean("consent_synced", v).apply()
+
     // Daily check-in gamification (local): a streak the child grows by checking in each day.
     var checkinStreak: Int
         get() = prefs.getInt("checkin_streak", 0)

@@ -103,6 +103,18 @@ class ChatAccessibilityService : AccessibilityService() {
             return
         }
 
+        // The EditText paths below upload typed text, so they MUST also confirm the
+        // foreground is still a game — not just that a session is active. A session
+        // stays active through its ~20s grace period after the child leaves the game,
+        // and without this check, text typed in another app during that window (e.g. a
+        // messaging app the child switched to) would be captured. The IME path above
+        // already gates on this; the EditText path previously did not.
+        if (!GameDetector.isGame(this, ForegroundResolver.current(this))) {
+            keystrokeBuffer.clear()
+            lastText = ""
+            return
+        }
+
         when (event.eventType) {
             AccessibilityEvent.TYPE_VIEW_TEXT_CHANGED -> {
                 // A real EditText is handling this input, so it's authoritative — drop

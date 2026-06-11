@@ -50,9 +50,13 @@ class PrefsManager(context: Context) {
         get() = prefs.getString(Constants.KEY_FCM_TOKEN, "") ?: ""
         set(v) = prefs.edit().putString(Constants.KEY_FCM_TOKEN, v).apply()
 
-    var lastNotifiedAlertId: Int
-        get() = prefs.getInt(Constants.KEY_LAST_ALERT_ID, -1)
-        set(v) = prefs.edit().putInt(Constants.KEY_LAST_ALERT_ID, v).apply()
+    // Per-child high-water mark of the last alert we notified about. Keyed by child id
+    // because alert ids are global — one shared value suppressed a sibling's alerts in a
+    // multi-child family after switching children.
+    fun lastNotifiedAlertId(childId: Int): Int =
+        prefs.getInt("${Constants.KEY_LAST_ALERT_ID}_$childId", -1)
+    fun setLastNotifiedAlertId(childId: Int, v: Int) =
+        prefs.edit().putInt("${Constants.KEY_LAST_ALERT_ID}_$childId", v).apply()
 
     fun isLoggedIn() = parentId != -1
 

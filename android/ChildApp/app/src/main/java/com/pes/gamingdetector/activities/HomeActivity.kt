@@ -83,6 +83,7 @@ class HomeActivity : AppCompatActivity() {
         // even on a device that previously agreed to an older version.
         if (consentCurrent()) {
             startMonitoring()
+            syncConsentIfPending()   // catch up if an earlier grant never reached the server
         } else {
             ensureConsent()
         }
@@ -212,8 +213,10 @@ class HomeActivity : AppCompatActivity() {
                 if (resp.isSuccessful) needs = resp.body()?.needsConsent ?: true
             } catch (_: Exception) { /* offline — show consent to be safe */ }
             if (!needs) {
+                // Server already holds consent → local state is authoritative AND synced.
                 prefs.consentDone = true
                 prefs.consentVersion = PrivacyText.CONSENT_VERSION
+                prefs.consentSynced = true
                 startMonitoring()
             } else {
                 showConsentDialog()
@@ -237,13 +240,33 @@ class HomeActivity : AppCompatActivity() {
     private fun grantConsent() {
         val uid = prefs.userId
         lifecycleScope.launch {
+            var synced = false
             try {
-                ApiClient.getInstance(prefs.serverUrl)
+                val resp = ApiClient.getInstance(prefs.serverUrl)
                     .postConsent(mapOf("user_id" to uid, "version" to PrivacyText.CONSENT_VERSION))
-            } catch (_: Exception) { /* recorded locally; will retry on next launch */ }
+                synced = resp.isSuccessful
+            } catch (_: Exception) { /* offline — re-synced on a later launch (see below) */ }
             prefs.consentDone = true
             prefs.consentVersion = PrivacyText.CONSENT_VERSION
+            // The parent's consent is a recorded fact the SERVER must hold (audit trail).
+            // If the POST didn't land, remember that so we retry — previously the local
+            // flag alone made consentCurrent() true and the server was never told.
+            prefs.consentSynced = synced
             startMonitoring()
+        }
+    }
+
+    /** Re-send consent to the server if a previous grant didn't reach it (offline at the
+     *  time). Cheap no-op once synced. */
+    private fun syncConsentIfPending() {
+        if (!prefs.consentDone || prefs.consentSynced) return
+        val uid = prefs.userId
+        lifecycleScope.launch {
+            try {
+                val resp = ApiClient.getInstance(prefs.serverUrl)
+                    .postConsent(mapOf("user_id" to uid, "version" to prefs.consentVersion))
+                if (resp.isSuccessful) prefs.consentSynced = true
+            } catch (_: Exception) { /* still offline — try again next launch */ }
         }
     }
 

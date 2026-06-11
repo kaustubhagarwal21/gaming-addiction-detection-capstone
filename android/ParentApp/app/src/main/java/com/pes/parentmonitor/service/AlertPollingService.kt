@@ -73,8 +73,11 @@ class AlertPollingService : Service() {
             val resp = api.getAlerts(childUserId)
             if (resp.isSuccessful && resp.body()?.success == true) {
                 val body = resp.body()!!
-                // Only notify for alerts newer than the last one we already showed
-                val lastId  = prefs.lastNotifiedAlertId
+                // Only notify for alerts newer than the last one we already showed FOR
+                // THIS CHILD. Alert ids are globally unique, so a single shared high-water
+                // mark suppressed a sibling's older-id alerts after viewing another child
+                // — the mark is now kept per child.
+                val lastId  = prefs.lastNotifiedAlertId(childUserId)
                 val newAlerts = body.alerts
                     ?.filter { !it.read && it.id > lastId }
                     ?.sortedBy { it.id }
@@ -82,7 +85,7 @@ class AlertPollingService : Service() {
                 if (newAlerts.isNotEmpty()) {
                     val worst = newAlerts.maxByOrNull { severityRank(it.severity) }!!
                     sendAlertNotification(worst.message, worst.severity)
-                    prefs.lastNotifiedAlertId = newAlerts.last().id
+                    prefs.setLastNotifiedAlertId(childUserId, newAlerts.last().id)
                 }
 
                 val statusResp = api.getChildStatus(childUserId)
