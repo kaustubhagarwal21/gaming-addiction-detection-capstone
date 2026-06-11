@@ -3389,8 +3389,11 @@ def child_heartbeat():
         tz = None
     # Whether the child has enabled Device Admin (instant uninstall-attempt alert). Lets
     # the parent see their actual protection level rather than assuming it's on.
-    da = data.get('device_admin')
-    da = (1 if int(da) else 0) if da is not None else None
+    try:
+        da = data.get('device_admin')
+        da = (1 if int(da) else 0) if da is not None else None
+    except (TypeError, ValueError):
+        da = None
     conn = get_db()
     c    = conn.cursor()
     # COALESCE keeps a previously-stored value if this ping omitted the field.
@@ -3433,6 +3436,12 @@ def child_tamper():
         # otherwise look fresh for ~10 more minutes, and so the watchdog doesn't
         # later pile a redundant "gone silent" alert on top of this logout alert.
         c.execute("UPDATE users SET last_seen=NULL WHERE user_id=?", (int(uid),))
+    elif event == 'admin_disable':
+        # Track protection truthfully the moment deactivation is ATTEMPTED — the app
+        # may be uninstalled seconds later, leaving a stale "protected" flag forever.
+        # If the child cancels the deactivation, the next ~3-min heartbeat reports
+        # device_admin=1 again and flips it back.
+        c.execute("UPDATE users SET device_admin_active=0 WHERE user_id=?", (int(uid),))
     conn.commit()
     conn.close()
     return jsonify({'success': True})

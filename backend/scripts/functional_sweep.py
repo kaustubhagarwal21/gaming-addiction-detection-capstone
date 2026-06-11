@@ -258,6 +258,17 @@ r = client.get(f'/api/alerts?user_id={child_a}', headers=auth(tok_p))
 check('login alert raised for parent (monitoring resumed)',
       any(a['type'] == 'login' for a in r.get_json()['alerts']))
 
+print("== Device-admin protection status ==")
+client.post('/api/child/heartbeat', json={'user_id': child_a, 'tz_offset_min': 330,
+                                          'device_admin': 1}, headers=auth(tok_a))
+r = client.get(f'/api/dashboard/parent?user_id={child_a}', headers=auth(tok_p))
+check('heartbeat device_admin=1 -> protected', r.get_json()['monitoring']['protected'] is True)
+# A deactivation ATTEMPT flips it off immediately (next heartbeat would correct a cancel)
+client.post('/api/child/tamper', json={'user_id': child_a, 'event': 'admin_disable'},
+            headers=auth(tok_a))
+r = client.get(f'/api/dashboard/parent?user_id={child_a}', headers=auth(tok_p))
+check('admin_disable attempt -> protected=false', r.get_json()['monitoring']['protected'] is False)
+
 print("== Feedback loop ==")
 r = client.post('/api/feedback', json={'alert_id': tox_alert['id'], 'label': 'accurate'},
                 headers=auth(tok_p))

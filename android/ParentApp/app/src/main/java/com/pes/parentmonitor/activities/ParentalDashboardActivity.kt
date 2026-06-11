@@ -253,10 +253,15 @@ class ParentalDashboardActivity : AppCompatActivity() {
             }
             // Tamper-protection level, so the parent KNOWS whether an uninstall attempt
             // would alert them instantly (Device Admin) or only via the ~15-min watchdog.
-            when (m.protected) {
-                true  -> liveBits += "🛡️ Uninstall-protected"
-                false -> liveBits += "⚠️ Not uninstall-protected — enable Device Admin on the child phone"
-                null  -> { /* unknown (older child app) — say nothing */ }
+            // Only shown while the app is checking in — when monitoring is offline the
+            // flag is whatever the LAST heartbeat said (possibly right before an
+            // uninstall), and "offline but protected" would be a contradiction.
+            if (m.online == true) {
+                when (m.protected) {
+                    true  -> liveBits += "🛡️ Uninstall-protected"
+                    false -> liveBits += "⚠️ Not uninstall-protected — enable Device Admin on the child phone"
+                    null  -> { /* unknown (older child app) — say nothing */ }
+                }
             }
         }
         if (liveBits.isNotEmpty()) {
