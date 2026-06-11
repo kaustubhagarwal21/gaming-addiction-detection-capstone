@@ -251,6 +251,13 @@ class ParentalDashboardActivity : AppCompatActivity() {
                     " — phone may be off or app closed"
                 else                   -> "🔴 Monitoring not checking in"
             }
+            // Tamper-protection level, so the parent KNOWS whether an uninstall attempt
+            // would alert them instantly (Device Admin) or only via the ~15-min watchdog.
+            when (m.protected) {
+                true  -> liveBits += "🛡️ Uninstall-protected"
+                false -> liveBits += "⚠️ Not uninstall-protected — enable Device Admin on the child phone"
+                null  -> { /* unknown (older child app) — say nothing */ }
+            }
         }
         if (liveBits.isNotEmpty()) {
             binding.tvLiveStatus.text = liveBits.joinToString("   ")

@@ -901,6 +901,7 @@ def init_db():
     add_column(c, 'users', 'last_seen',         'TEXT DEFAULT NULL')      # last child heartbeat (ISO)
     add_column(c, 'users', 'offline_alerted',   'INTEGER DEFAULT 0')      # one alert per outage
     add_column(c, 'users', 'tz_offset_min',     'INTEGER DEFAULT NULL')   # child device UTC offset (min)
+    add_column(c, 'users', 'device_admin_active', 'INTEGER DEFAULT NULL')  # 1/0: instant-uninstall protection on?
 
     # Which signals actually fed each prediction. NULL on legacy rows ("unknown");
     # new predictions write explicit 1/0 so the UI can distinguish "captured and
@@ -2972,12 +2973,16 @@ def parent_dashboard():
     # last_seen is written by the ~5-minute heartbeat, so <=10 min means healthy;
     # beyond that the app is likely killed/offline (the watchdog alert follows later).
     monitoring = None
-    c.execute('SELECT last_seen FROM users WHERE user_id=?', (user_id,))
+    c.execute('SELECT last_seen, device_admin_active FROM users WHERE user_id=?', (user_id,))
     lsrow = c.fetchone()
     if lsrow and lsrow['last_seen']:
         try:
             mins = max(0, int((datetime.now() - _parse_ts(lsrow['last_seen'])).total_seconds() // 60))
-            monitoring = {'online': mins <= 10, 'minutes_since_checkin': mins}
+            # protected: instant uninstall-attempt alerting is on (Device Admin enabled).
+            # None = unknown (older child app that doesn't report it yet).
+            prot = lsrow['device_admin_active']
+            monitoring = {'online': mins <= 10, 'minutes_since_checkin': mins,
+                          'protected': (bool(prot) if prot is not None else None)}
         except Exception:
             monitoring = None
     c.execute('''SELECT game_name, start_time FROM sessions
@@ -3382,12 +3387,18 @@ def child_heartbeat():
         tz = int(data.get('tz_offset_min'))
     except (TypeError, ValueError):
         tz = None
+    # Whether the child has enabled Device Admin (instant uninstall-attempt alert). Lets
+    # the parent see their actual protection level rather than assuming it's on.
+    da = data.get('device_admin')
+    da = (1 if int(da) else 0) if da is not None else None
     conn = get_db()
     c    = conn.cursor()
-    # COALESCE keeps a previously-stored offset if this ping omitted it.
-    c.execute("UPDATE users SET last_seen=?, offline_alerted=0, tz_offset_min=COALESCE(?, tz_offset_min) "
+    # COALESCE keeps a previously-stored value if this ping omitted the field.
+    c.execute("UPDATE users SET last_seen=?, offline_alerted=0, "
+              "tz_offset_min=COALESCE(?, tz_offset_min), "
+              "device_admin_active=COALESCE(?, device_admin_active) "
               "WHERE user_id=?",
-              (datetime.now().isoformat(), tz, int(uid)))
+              (datetime.now().isoformat(), tz, da, int(uid)))
     conn.commit()
     conn.close()
     return jsonify({'success': True})

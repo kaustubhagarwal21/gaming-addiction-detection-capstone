@@ -118,7 +118,10 @@ data class LiveStatus(
 // Health of the child-side monitoring app, from its ~5-minute heartbeat.
 data class MonitoringStatus(
     val online: Boolean?,
-    @SerializedName("minutes_since_checkin") val minutesSinceCheckin: Long?
+    @SerializedName("minutes_since_checkin") val minutesSinceCheckin: Long?,
+    // Device Admin enabled on the child device = instant uninstall-attempt alerting.
+    // null = unknown (older child app that doesn't report it yet).
+    val protected: Boolean? = null
 )
 
 // Describes the day the headline risk aggregates over: "Today" / "Yesterday" / "Jun 03".

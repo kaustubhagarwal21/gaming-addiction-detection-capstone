@@ -141,10 +141,14 @@ class PassiveMonitorService : Service() {
             try {
                 if (prefs.isLoggedIn() && prefs.userId != -1) {
                     // Send the device's UTC offset so the server can apply child-local quiet
-                    // hours (don't alarm the parent for a phone that's just off overnight).
+                    // hours (don't alarm the parent for a phone that's just off overnight),
+                    // and whether Device Admin is active so the parent can see their real
+                    // tamper-protection level (instant uninstall-attempt alerting).
                     val tzMin = java.util.TimeZone.getDefault().getOffset(System.currentTimeMillis()) / 60000
-                    ApiClient.getInstance(prefs.serverUrl)
-                        .heartbeat(mapOf("user_id" to prefs.userId, "tz_offset_min" to tzMin))
+                    ApiClient.getInstance(prefs.serverUrl).heartbeat(mapOf(
+                        "user_id" to prefs.userId,
+                        "tz_offset_min" to tzMin,
+                        "device_admin" to if (isDeviceAdminActive()) 1 else 0))
                 }
             } catch (_: Exception) { /* offline — server will infer silence */ }
             delay(HEARTBEAT_MS)
@@ -173,6 +177,13 @@ class PassiveMonitorService : Service() {
             delay(NUDGE_POLL_MS)
         }
     }
+
+    /** Is this app currently an active device administrator? (Instant uninstall-attempt
+        alerting depends on it; reported in the heartbeat so the parent can see it.) */
+    private fun isDeviceAdminActive(): Boolean = try {
+        val dpm = getSystemService(Context.DEVICE_POLICY_SERVICE) as android.app.admin.DevicePolicyManager
+        dpm.isAdminActive(android.content.ComponentName(this, AdminReceiver::class.java))
+    } catch (_: Exception) { false }
 
     private fun showNudge(message: String, kind: String?) {
         try {

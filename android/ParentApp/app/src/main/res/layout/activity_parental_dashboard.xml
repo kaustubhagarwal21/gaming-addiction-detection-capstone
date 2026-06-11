@@ -300,6 +300,7 @@
                         android:layout_weight="1"
                         android:layout_marginEnd="4dp"
                         android:text="Emotions"
+                        android:maxLines="1"
                         style="@style/Widget.App.Button.Outlined" />
                     <com.google.android.material.button.MaterialButton
                         android:id="@+id/btnChatAnalysis"
@@ -308,6 +309,7 @@
                         android:layout_weight="1"
                         android:layout_marginStart="4dp"
                         android:text="Chat"
+                        android:maxLines="1"
                         style="@style/Widget.App.Button.Outlined" />
                 </LinearLayout>
 
@@ -324,6 +326,7 @@
                         android:layout_weight="1"
                         android:layout_marginEnd="4dp"
                         android:text="Report"
+                        android:maxLines="1"
                         style="@style/Widget.App.Button.Outlined" />
                     <com.google.android.material.button.MaterialButton
                         android:id="@+id/btnDownloadPdf"
@@ -331,7 +334,8 @@
                         android:layout_height="56dp"
                         android:layout_weight="1"
                         android:layout_marginStart="4dp"
-                        android:text="Download PDF"
+                        android:text="Save PDF"
+                        android:maxLines="1"
                         style="@style/Widget.App.Button.Outlined" />
                 </LinearLayout>
 
