@@ -137,7 +137,6 @@ They talk to the live cloud backend — no GitHub or build tools needed.
 ---
 
 ## More docs
-- [SETUP.md](SETUP.md) — detailed setup
 - [DEPLOY.md](DEPLOY.md) — cloud deployment + building signed release APKs
 - [DEMO_RUNBOOK.md](DEMO_RUNBOOK.md) — demo walkthrough
 - [TESTING.md](TESTING.md) — automated test layers + on-device manual checklist
