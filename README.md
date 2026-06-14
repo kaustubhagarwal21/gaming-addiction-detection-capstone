@@ -142,3 +142,5 @@ They talk to the live cloud backend — no GitHub or build tools needed.
 - [TESTING.md](TESTING.md) — automated test layers + on-device manual checklist
 - [docs/PROJECT_PAPER.tex](docs/PROJECT_PAPER.tex) — the full project paper: architecture, models, honest metrics, limitations
 - [PRIVACY.md](PRIVACY.md) — privacy & data handling
+
+<!-- contributors recompute nudge: 2026-06-14 -->
