@@ -93,6 +93,17 @@
             </intent-filter>
         </service>
 
+        <!-- When the app is backgrounded/killed, the SYSTEM (not our code) posts FCM
+             notification messages, and on Android 8+ it needs a channel. Point it at our
+             high-importance alerts channel (created in ParentApp.onCreate) so background
+             high-risk pushes show with the right priority instead of a fallback channel. -->
+        <meta-data
+            android:name="com.google.firebase.messaging.default_notification_channel_id"
+            android:value="alerts_channel" />
+        <meta-data
+            android:name="com.google.firebase.messaging.default_notification_icon"
+            android:resource="@drawable/ic_alert" />
+
         <!-- FileProvider for PDF sharing -->
         <provider
             android:name="androidx.core.content.FileProvider"
