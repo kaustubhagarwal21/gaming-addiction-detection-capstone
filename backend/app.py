@@ -3555,6 +3555,22 @@ def child_heartbeat():
     pkb  = _flag('perm_keyboard')
     conn = get_db()
     c    = conn.cursor()
+    # Detect capture permissions the child just *revoked* (granted->revoked) so the parent is
+    # actively alerted, not left to notice the degraded badge only if they open the app. Read
+    # the stored values first; comparing against the incoming flags gives the transition edge.
+    # Device Admin is intentionally excluded here -- it already has its own instant tamper alert.
+    c.execute("SELECT name, perm_usage, perm_accessibility, perm_keyboard "
+              "FROM users WHERE user_id=?", (int(uid),))
+    prev    = c.fetchone()
+    revoked = []
+    if prev:
+        for new_v, old_key, label in (
+                (pu,   'perm_usage',         'Usage Access'),
+                (pacc, 'perm_accessibility', 'chat capture (Accessibility)'),
+                (pkb,  'perm_keyboard',      'Wellbeing Keyboard')):
+            old_v = prev[old_key]
+            if new_v == 0 and old_v is not None and int(old_v) == 1:
+                revoked.append(label)
     # COALESCE keeps a previously-stored value if this ping omitted the field.
     c.execute("UPDATE users SET last_seen=?, offline_alerted=0, "
               "tz_offset_min=COALESCE(?, tz_offset_min), "
@@ -3564,6 +3580,18 @@ def child_heartbeat():
               "perm_keyboard=COALESCE(?, perm_keyboard) "
               "WHERE user_id=?",
               (datetime.now().isoformat(), tz, da, pu, pacc, pkb, int(uid)))
+    if revoked:
+        nm  = prev['name'] if prev['name'] else 'Your child'
+        cap = ', '.join(revoked)
+        # 'high' when a core capture path (game detection or chat) is lost; the keyboard
+        # alone is a softer degradation. Fires once per revocation: the next heartbeats
+        # report 0 with the stored value now 0, so the 1->0 edge can't repeat (no spam).
+        sev = 'medium' if revoked == ['Wellbeing Keyboard'] else 'high'
+        _insert_alert(c, int(uid), 'permission',
+                      f"{nm} turned off {cap} — monitoring is now degraded.", sev)
+        # Tamper-like: push instantly rather than waiting for the parent's next poll.
+        _push_to_user_family(c, int(uid),
+                             "Monitoring degraded", f"{nm} turned off {cap}.")
     conn.commit()
     conn.close()
     return jsonify({'success': True})

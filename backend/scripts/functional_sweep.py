@@ -301,6 +301,24 @@ check('perm flags surfaced (accessibility off)',
 client.post('/api/child/heartbeat', json={'user_id': child_a, 'tz_offset_min': 330}, headers=auth(tok_a))
 m = client.get(f'/api/dashboard/parent?user_id={child_a}', headers=auth(tok_p)).get_json()['monitoring']
 check('perm flags persist when heartbeat omits them', m['perm_accessibility'] is False)
+# Revoking a previously-granted capture permission must actively ALERT the parent (not just
+# flip the badge): grant all, then drop accessibility -> a 'permission' alert appears.
+client.post('/api/child/heartbeat', json={'user_id': child_a, 'tz_offset_min': 330,
+            'perm_usage': 1, 'perm_accessibility': 1, 'perm_keyboard': 1}, headers=auth(tok_a))
+client.post('/api/child/heartbeat', json={'user_id': child_a, 'tz_offset_min': 330,
+            'perm_usage': 1, 'perm_accessibility': 0, 'perm_keyboard': 1}, headers=auth(tok_a))
+perm_alerts = [a for a in client.get(f'/api/alerts?user_id={child_a}',
+               headers=auth(tok_p)).get_json()['alerts'] if a['type'] == 'permission']
+check('revoked capture permission raises a permission alert', len(perm_alerts) >= 1)
+check('permission alert names the capability', 'Accessibility' in perm_alerts[0]['message'])
+# Re-arm guard: a repeat heartbeat at the SAME revoked state must NOT raise a second alert
+# (the 1->0 edge already passed; the stored value is now 0, so no edge to re-trigger on).
+n_before = len(perm_alerts)
+client.post('/api/child/heartbeat', json={'user_id': child_a, 'tz_offset_min': 330,
+            'perm_usage': 1, 'perm_accessibility': 0, 'perm_keyboard': 1}, headers=auth(tok_a))
+perm_alerts2 = [a for a in client.get(f'/api/alerts?user_id={child_a}',
+                headers=auth(tok_p)).get_json()['alerts'] if a['type'] == 'permission']
+check('no duplicate permission alert while still revoked', len(perm_alerts2) == n_before)
 
 print("== Feedback loop ==")
 r = client.post('/api/feedback', json={'alert_id': tox_alert['id'], 'label': 'accurate'},

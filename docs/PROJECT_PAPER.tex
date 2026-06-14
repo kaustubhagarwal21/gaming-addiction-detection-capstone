@@ -135,8 +135,9 @@ rather than to maximise a headline accuracy number.
         server-side heartbeat watchdog that alerts the parent when monitoring goes silent
         (uninstall / kill / offline), a live parent-dashboard indicator of monitoring
         health --- uptime, uninstall-protection, and \emph{capture-permission} status, so
-        the parent sees when the app is running but degraded (e.g.\ accessibility revoked)
-        --- and ``playing right now'', an offline retry queue so chat captured
+        the parent sees when the app is running but degraded (e.g.\ accessibility revoked);
+        revoking a capture permission also raises a one-shot push alert rather than only
+        flipping the badge --- and ``playing right now'', an offline retry queue so chat captured
         without connectivity is delivered later instead of lost, and real-time alerts
         pushed to \emph{every} guardian device in a family.
   \item An honest evaluation, including the realistic-stream precision of the chat
@@ -617,7 +618,7 @@ and is the first candidate for real-audio retraining.
   \item Production-deployed cloud backend (HTTPS, token auth, consent, durable
         managed Postgres); both apps build as signed release APKs.
   \item A layered test program, all passing: a 35-test API suite (isolated database),
-        a \textbf{75-check functional sweep run in production auth mode} with real
+        a \textbf{78-check functional sweep run in production auth mode} with real
         parent/child tokens (registration and family joins, role guards on every
         parent-only endpoint, the full nudge lifecycle, a real WAV upload through the
         silence floor and late re-score, the watchdog's quiet hours, end-session
@@ -695,7 +696,7 @@ Parent value & Per-day weighted risk + ``why'' (SHAP), live ``playing now'' + mo
 Child wellbeing & Mira check-in (typing indicator, double-send guard), gamified daily check-in + streak, reflections, breathing, break/limit nudges, today-vs-goal progress \\
 Reliability/anti-tamper & Heartbeat watchdog (uninstall/kill/offline alert, child-local quiet hours), optional Device Admin (uninstall block + instant disable alert), battery-optimisation exemption, double-start-safe services, consent-gated boot resume, parent-PIN lock on logout/settings (server-verified, constant-time), logout \emph{and} login alerts with honest monitoring status, idempotent session-end, self-scoring stale-session guard, per-child risk notifications, multi-guardian FCM push (lazy-init) \\
 Privacy/Security & Token auth + \emph{role} checks on every parent-only endpoint, peppered PIN hashes (validated, family-wide PIN change), HTTPS-only, encrypted token store, consent (versioned), raw-audio deletion, retention purge, 16\,MB body cap, family code always recoverable in PIN-gated Settings \\
-Engineering & Dual-dialect DB with pooled validated Postgres connections, per-client rate limiting, hot-path caching/throttling + audio-concurrency cap + bounded throttle caches, thread-safe device-side shared state (concurrent cache, snapshot-merge offline queue), signed APKs, layered tests (35 API + 75 production-mode + 25 live-cloud) + concurrency smoke, real-device validated, lint-clean, deployed + durable DB \\
+Engineering & Dual-dialect DB with pooled validated Postgres connections, per-client rate limiting, hot-path caching/throttling + audio-concurrency cap + bounded throttle caches, thread-safe device-side shared state (concurrent cache, snapshot-merge offline queue), signed APKs, layered tests (35 API + 78 production-mode + 25 live-cloud) + concurrency smoke, real-device validated, lint-clean, deployed + durable DB \\
 \bottomrule
 \end{tabularx}
 \end{center}

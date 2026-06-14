@@ -106,6 +106,15 @@ during Q&A, show the ParentApp: the header strip reads "🔴 No check-in for N m
 **offline alert** ("monitoring app hasn't checked in…") sits in the alerts feed —
 uninstall/kill/offline detection working live.
 
+### D2. Capture-permission tamper (fast tamper demo — no lead time)
+With both apps open, on the ChildApp phone turn **Accessibility OFF** (Settings →
+Accessibility → Gaming Detector). Within seconds the ChildApp's change-triggered heartbeat
+reports it; the ParentApp dashboard strip shows "⚠️ Monitoring degraded — chat capture off"
+and a **`permission` alert + push** arrives ("…turned off chat capture (Accessibility) —
+monitoring is now degraded"). Turn it back on → the warning clears (no duplicate alert is
+raised while it stays off). Demonstrates that silently disabling a capture path is treated
+as a tamper event, not just a passive badge.
+
 ---
 
 ## 4. If something breaks (recovery)
