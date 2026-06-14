@@ -262,6 +262,19 @@ class ParentalDashboardActivity : AppCompatActivity() {
                     false -> liveBits += "⚠️ Not uninstall-protected — enable Device Admin on the child phone"
                     null  -> { /* unknown (older child app) — say nothing */ }
                 }
+                // Capture-permission health: the app can be RUNNING yet collecting nothing
+                // useful if the child revoked a permission. Name which capability is off so
+                // the parent can fix it, rather than trusting a green "Monitoring active".
+                if (m.online == true) {
+                    val off = mutableListOf<String>()
+                    if (m.permUsage == false)         off += "game detection"
+                    if (m.permAccessibility == false) off += "chat capture"
+                    if (m.permKeyboard == false)      off += "in-game keyboard"
+                    if (off.isNotEmpty()) {
+                        liveBits += "⚠️ Monitoring degraded — ${off.joinToString(", ")} off on the child phone " +
+                            "(re-enable in the Child app)"
+                    }
+                }
             }
         }
         if (liveBits.isNotEmpty()) {

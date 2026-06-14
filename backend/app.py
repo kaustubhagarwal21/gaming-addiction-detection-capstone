@@ -917,6 +917,12 @@ def init_db():
     add_column(c, 'users', 'offline_alerted',   'INTEGER DEFAULT 0')      # one alert per outage
     add_column(c, 'users', 'tz_offset_min',     'INTEGER DEFAULT NULL')   # child device UTC offset (min)
     add_column(c, 'users', 'device_admin_active', 'INTEGER DEFAULT NULL')  # 1/0: instant-uninstall protection on?
+    # Capture-permission health, reported in the heartbeat. NULL = unknown (old app); 1/0
+    # = granted/revoked. Lets the parent see when monitoring is RUNNING but degraded
+    # (e.g. accessibility revoked -> no chat capture), not just whether it's alive.
+    add_column(c, 'users', 'perm_usage',         'INTEGER DEFAULT NULL')   # Usage Access (game/session detection)
+    add_column(c, 'users', 'perm_accessibility', 'INTEGER DEFAULT NULL')   # typed-chat capture
+    add_column(c, 'users', 'perm_keyboard',      'INTEGER DEFAULT NULL')   # Wellbeing Keyboard active (canvas-game chat)
 
     # Which signals actually fed each prediction. NULL on legacy rows ("unknown");
     # new predictions write explicit 1/0 so the UI can distinguish "captured and
@@ -3110,7 +3116,8 @@ def parent_dashboard():
     # last_seen is written by the ~5-minute heartbeat, so <=10 min means healthy;
     # beyond that the app is likely killed/offline (the watchdog alert follows later).
     monitoring = None
-    c.execute('SELECT last_seen, device_admin_active FROM users WHERE user_id=?', (user_id,))
+    c.execute('SELECT last_seen, device_admin_active, perm_usage, perm_accessibility, '
+              'perm_keyboard FROM users WHERE user_id=?', (user_id,))
     lsrow = c.fetchone()
     if lsrow and lsrow['last_seen']:
         try:
@@ -3118,8 +3125,14 @@ def parent_dashboard():
             # protected: instant uninstall-attempt alerting is on (Device Admin enabled).
             # None = unknown (older child app that doesn't report it yet).
             prot = lsrow['device_admin_active']
+            _b = lambda v: (bool(v) if v is not None else None)   # 1/0 -> bool, NULL -> None
             monitoring = {'online': mins <= 10, 'minutes_since_checkin': mins,
-                          'protected': (bool(prot) if prot is not None else None)}
+                          'protected': _b(prot),
+                          # Capture-permission health: the app can be RUNNING but degraded
+                          # if the child revoked one of these. None = old app (unknown).
+                          'perm_usage':         _b(lsrow['perm_usage']),
+                          'perm_accessibility': _b(lsrow['perm_accessibility']),
+                          'perm_keyboard':      _b(lsrow['perm_keyboard'])}
         except Exception:
             monitoring = None
     c.execute('''SELECT game_name, start_time FROM sessions
@@ -3530,19 +3543,27 @@ def child_heartbeat():
         tz = None
     # Whether the child has enabled Device Admin (instant uninstall-attempt alert). Lets
     # the parent see their actual protection level rather than assuming it's on.
-    try:
-        da = data.get('device_admin')
-        da = (1 if int(da) else 0) if da is not None else None
-    except (TypeError, ValueError):
-        da = None
+    def _flag(key):
+        try:
+            v = data.get(key)
+            return (1 if int(v) else 0) if v is not None else None
+        except (TypeError, ValueError):
+            return None
+    da   = _flag('device_admin')
+    pu   = _flag('perm_usage')          # capture-permission health (see init_db columns)
+    pacc = _flag('perm_accessibility')
+    pkb  = _flag('perm_keyboard')
     conn = get_db()
     c    = conn.cursor()
     # COALESCE keeps a previously-stored value if this ping omitted the field.
     c.execute("UPDATE users SET last_seen=?, offline_alerted=0, "
               "tz_offset_min=COALESCE(?, tz_offset_min), "
-              "device_admin_active=COALESCE(?, device_admin_active) "
+              "device_admin_active=COALESCE(?, device_admin_active), "
+              "perm_usage=COALESCE(?, perm_usage), "
+              "perm_accessibility=COALESCE(?, perm_accessibility), "
+              "perm_keyboard=COALESCE(?, perm_keyboard) "
               "WHERE user_id=?",
-              (datetime.now().isoformat(), tz, da, int(uid)))
+              (datetime.now().isoformat(), tz, da, pu, pacc, pkb, int(uid)))
     conn.commit()
     conn.close()
     return jsonify({'success': True})

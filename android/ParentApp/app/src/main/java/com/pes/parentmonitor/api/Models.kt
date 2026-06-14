@@ -121,7 +121,12 @@ data class MonitoringStatus(
     @SerializedName("minutes_since_checkin") val minutesSinceCheckin: Long?,
     // Device Admin enabled on the child device = instant uninstall-attempt alerting.
     // null = unknown (older child app that doesn't report it yet).
-    val protected: Boolean? = null
+    val protected: Boolean? = null,
+    // Capture-permission health: false = revoked (monitoring running but degraded),
+    // null = unknown (old app).
+    @SerializedName("perm_usage") val permUsage: Boolean? = null,
+    @SerializedName("perm_accessibility") val permAccessibility: Boolean? = null,
+    @SerializedName("perm_keyboard") val permKeyboard: Boolean? = null
 )
 
 // Describes the day the headline risk aggregates over: "Today" / "Yesterday" / "Jun 03".

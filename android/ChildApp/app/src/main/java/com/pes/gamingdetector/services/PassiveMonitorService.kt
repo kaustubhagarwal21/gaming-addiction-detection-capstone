@@ -145,10 +145,15 @@ class PassiveMonitorService : Service() {
                     // and whether Device Admin is active so the parent can see their real
                     // tamper-protection level (instant uninstall-attempt alerting).
                     val tzMin = java.util.TimeZone.getDefault().getOffset(System.currentTimeMillis()) / 60000
+                    // Also report capture-permission health so the parent can see when
+                    // monitoring is RUNNING but degraded (e.g. accessibility revoked).
                     ApiClient.getInstance(prefs.serverUrl).heartbeat(mapOf(
                         "user_id" to prefs.userId,
                         "tz_offset_min" to tzMin,
-                        "device_admin" to if (isDeviceAdminActive()) 1 else 0))
+                        "device_admin" to if (isDeviceAdminActive()) 1 else 0,
+                        "perm_usage" to if (hasUsageAccess()) 1 else 0,
+                        "perm_accessibility" to if (isAccessibilityOn()) 1 else 0,
+                        "perm_keyboard" to if (isKeyboardActive()) 1 else 0))
                 }
             } catch (_: Exception) { /* offline — server will infer silence */ }
             delay(HEARTBEAT_MS)
@@ -183,6 +188,31 @@ class PassiveMonitorService : Service() {
     private fun isDeviceAdminActive(): Boolean = try {
         val dpm = getSystemService(Context.DEVICE_POLICY_SERVICE) as android.app.admin.DevicePolicyManager
         dpm.isAdminActive(android.content.ComponentName(this, AdminReceiver::class.java))
+    } catch (_: Exception) { false }
+
+    // ── Capture-permission health (reported in the heartbeat) ─────────────
+    // Mirror the checks in HomeActivity so the parent dashboard can flag a running-but-
+    // degraded monitor (e.g. the child revoked accessibility, silently stopping chat capture).
+    private fun hasUsageAccess(): Boolean = try {
+        val ops = getSystemService(Context.APP_OPS_SERVICE) as android.app.AppOpsManager
+        val mode = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.Q)
+            ops.unsafeCheckOpNoThrow(android.app.AppOpsManager.OPSTR_GET_USAGE_STATS,
+                android.os.Process.myUid(), packageName)
+        else @Suppress("DEPRECATION") ops.checkOpNoThrow(android.app.AppOpsManager.OPSTR_GET_USAGE_STATS,
+                android.os.Process.myUid(), packageName)
+        mode == android.app.AppOpsManager.MODE_ALLOWED
+    } catch (_: Exception) { false }
+
+    private fun isAccessibilityOn(): Boolean = try {
+        (android.provider.Settings.Secure.getString(contentResolver,
+            android.provider.Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES) ?: "")
+            .contains(packageName, ignoreCase = true)
+    } catch (_: Exception) { false }
+
+    private fun isKeyboardActive(): Boolean = try {
+        (android.provider.Settings.Secure.getString(contentResolver,
+            android.provider.Settings.Secure.DEFAULT_INPUT_METHOD) ?: "")
+            .contains(packageName, ignoreCase = true)
     } catch (_: Exception) { false }
 
     private fun showNudge(message: String, kind: String?) {

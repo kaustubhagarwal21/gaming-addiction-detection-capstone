@@ -291,6 +291,17 @@ client.post('/api/child/tamper', json={'user_id': child_a, 'event': 'admin_disab
 r = client.get(f'/api/dashboard/parent?user_id={child_a}', headers=auth(tok_p))
 check('admin_disable attempt -> protected=false', r.get_json()['monitoring']['protected'] is False)
 
+print("== Capture-permission health ==")
+client.post('/api/child/heartbeat', json={'user_id': child_a, 'tz_offset_min': 330,
+            'perm_usage': 1, 'perm_accessibility': 0, 'perm_keyboard': 1}, headers=auth(tok_a))
+m = client.get(f'/api/dashboard/parent?user_id={child_a}', headers=auth(tok_p)).get_json()['monitoring']
+check('perm flags surfaced (accessibility off)',
+      m['perm_usage'] is True and m['perm_accessibility'] is False and m['perm_keyboard'] is True)
+# Omitting the flags on a later heartbeat must NOT wipe them (COALESCE keeps last known).
+client.post('/api/child/heartbeat', json={'user_id': child_a, 'tz_offset_min': 330}, headers=auth(tok_a))
+m = client.get(f'/api/dashboard/parent?user_id={child_a}', headers=auth(tok_p)).get_json()['monitoring']
+check('perm flags persist when heartbeat omits them', m['perm_accessibility'] is False)
+
 print("== Feedback loop ==")
 r = client.post('/api/feedback', json={'alert_id': tox_alert['id'], 'label': 'accurate'},
                 headers=auth(tok_p))
