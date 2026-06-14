@@ -141,4 +141,5 @@ They talk to the live cloud backend — no GitHub or build tools needed.
 - [DEMO_RUNBOOK.md](DEMO_RUNBOOK.md) — demo walkthrough
 - [TESTING.md](TESTING.md) — automated test layers + on-device manual checklist
 - [docs/PROJECT_PAPER.tex](docs/PROJECT_PAPER.tex) — the full project paper: architecture, models, honest metrics, limitations
+- [docs/VALIDATION_PLAN.md](docs/VALIDATION_PLAN.md) — real-data validation playbook (public datasets + IGDS9-SF survey) to move the models from synthetic to validated
 - [PRIVACY.md](PRIVACY.md) — privacy & data handling
