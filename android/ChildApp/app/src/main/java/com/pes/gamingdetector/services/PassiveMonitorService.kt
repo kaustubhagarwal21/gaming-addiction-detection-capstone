@@ -133,29 +133,42 @@ class PassiveMonitorService : Service() {
     }
 
     // ── Tamper watchdog: liveness ping ────────────────────────────
+    // The status flags last successfully reported, as a compact key, so the poll loop can
+    // fire an IMMEDIATE heartbeat the moment a flag flips (Android gives no callback when
+    // a permission/setting is toggled) — making the parent's monitoring-health view
+    // near-real-time instead of waiting out the ~5-min periodic heartbeat. "" = not yet
+    // sent, so the first change always reports.
+    @Volatile private var lastStatusKey: String = ""
+
+    /** Current device-admin + capture-permission flags as a 4-char key (e.g. "1101"). */
+    private fun statusKey(): String =
+        "${if (isDeviceAdminActive()) 1 else 0}${if (hasUsageAccess()) 1 else 0}" +
+        "${if (isAccessibilityOn()) 1 else 0}${if (isKeyboardActive()) 1 else 0}"
+
+    /** Build + send one heartbeat (liveness + tz + status flags). Records the sent flags
+     *  only on success, so a failed (offline) send is retried on the next change/tick. */
+    private suspend fun sendHeartbeat() {
+        if (!prefs.isLoggedIn() || prefs.userId == -1) return
+        val key = statusKey()
+        try {
+            val tzMin = java.util.TimeZone.getDefault().getOffset(System.currentTimeMillis()) / 60000
+            ApiClient.getInstance(prefs.serverUrl).heartbeat(mapOf(
+                "user_id" to prefs.userId,
+                "tz_offset_min" to tzMin,
+                "device_admin" to key[0].digitToInt(),
+                "perm_usage" to key[1].digitToInt(),
+                "perm_accessibility" to key[2].digitToInt(),
+                "perm_keyboard" to key[3].digitToInt()))
+            lastStatusKey = key
+        } catch (_: Exception) { /* offline — server infers silence; retried next tick */ }
+    }
+
     // A periodic heartbeat so the server can tell the parent if monitoring goes silent
     // (uninstalled / force-stopped / killed / offline). Runs as long as the service is
     // alive; when the service dies the pings stop and the server raises the alert.
     private suspend fun heartbeatLoop() {
         while (true) {
-            try {
-                if (prefs.isLoggedIn() && prefs.userId != -1) {
-                    // Send the device's UTC offset so the server can apply child-local quiet
-                    // hours (don't alarm the parent for a phone that's just off overnight),
-                    // and whether Device Admin is active so the parent can see their real
-                    // tamper-protection level (instant uninstall-attempt alerting).
-                    val tzMin = java.util.TimeZone.getDefault().getOffset(System.currentTimeMillis()) / 60000
-                    // Also report capture-permission health so the parent can see when
-                    // monitoring is RUNNING but degraded (e.g. accessibility revoked).
-                    ApiClient.getInstance(prefs.serverUrl).heartbeat(mapOf(
-                        "user_id" to prefs.userId,
-                        "tz_offset_min" to tzMin,
-                        "device_admin" to if (isDeviceAdminActive()) 1 else 0,
-                        "perm_usage" to if (hasUsageAccess()) 1 else 0,
-                        "perm_accessibility" to if (isAccessibilityOn()) 1 else 0,
-                        "perm_keyboard" to if (isKeyboardActive()) 1 else 0))
-                }
-            } catch (_: Exception) { /* offline — server will infer silence */ }
+            sendHeartbeat()
             delay(HEARTBEAT_MS)
         }
     }
@@ -314,6 +327,11 @@ class PassiveMonitorService : Service() {
         while (currentCoroutineContext().isActive) {
             if (prefs.isLoggedIn()) {
                 checkForegroundGame()
+                // Near-real-time status: if a device-admin/permission flag flipped since the
+                // last report, push a heartbeat NOW (this loop ticks every 5 s with the
+                // screen on — i.e. exactly when the user is in Settings toggling things) so
+                // the parent's monitoring-health view updates within seconds, not ~5 min.
+                if (statusKey() != lastStatusKey) sendHeartbeat()
             }
             // Poll fast (5s) only when it matters — the screen is on, or a session is
             // running (so its grace-end stays prompt). While locked AND idle (phone in
