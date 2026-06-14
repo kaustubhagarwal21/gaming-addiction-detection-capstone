@@ -23,7 +23,11 @@ import android.os.Build
  * permission (declared in the manifest; fine for sideload distribution).
  */
 object GameDetector {
-    private val cache = HashMap<String, Boolean>()
+    // Concurrent: isGame()/isAutoDetectedGame() run on several threads at once (the
+    // monitor poll loop, the accessibility service, the keyboard, the notification
+    // listener) and both read and write this cache. A plain HashMap can corrupt under
+    // that — ConcurrentHashMap makes get/put/clear thread-safe.
+    private val cache = java.util.concurrent.ConcurrentHashMap<String, Boolean>()
 
     // Parent's manual overrides, cached. force-include closes the case the OS can't help
     // with (a real game reporting a non-game category, not curated); force-exclude lets
