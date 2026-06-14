@@ -2956,8 +2956,13 @@ def predict_now(sid):
 # ─────────────── CHAT ANALYSIS ───────────────────────────────────
 
 @app.route('/api/analyse/chat', methods=['POST'])
+@limiter.limit("30 per minute")
 def analyse_chat():
-    """Analyse a single chat message and return toxicity score (no DB write)."""
+    """Analyse a single chat message and return toxicity score (no DB write). Requires a
+    valid token: it's a stateless ML utility, so authenticate it like everything else
+    rather than leaving free model-compute open to the internet."""
+    deny = guard()
+    if deny: return deny
     data = request.get_json() or {}
     msg  = data.get('message', '')
     if not msg:

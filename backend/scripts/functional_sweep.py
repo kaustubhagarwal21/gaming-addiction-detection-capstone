@@ -330,7 +330,9 @@ check('reflection saved', r.status_code == 200)
 r = client.get('/api/model_card')
 check('model card public + honest note', r.status_code == 200 and 'chat_alert_note' in r.get_json())
 r = client.post('/api/analyse/chat', json={'message': 'you are trash'})
-check('analyse chat labels', r.status_code == 200 and r.get_json()['label'] in ('safe', 'borderline', 'toxic'))
+check('analyse chat requires auth -> 401', r.status_code == 401)
+r = client.post('/api/analyse/chat', json={'message': 'you are trash'}, headers=auth(tok_a))
+check('analyse chat labels (authed)', r.status_code == 200 and r.get_json()['label'] in ('safe', 'borderline', 'toxic'))
 
 print("== Parent-controlled deletion ==")
 r = client.post('/api/user/delete_data', json={'user_id': child_b, 'scope': 'account'},
