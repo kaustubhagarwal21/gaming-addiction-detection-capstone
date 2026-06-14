@@ -2231,13 +2231,11 @@ def update_profile():
         # Only a PARENT may change the family PIN. A child's own token passes the
         # ownership guard above (it's their row), but letting them rewrite parent_pin
         # would defeat the parent-PIN gate on logout/settings — the exact tamper
-        # protection it exists for. (Role is unknown only for legacy shadow-mode
-        # callers without a token, which production's AUTH_ENFORCE already rejects.)
-        role = (g.auth or {}).get('role')
-        if role is not None and role != 'parent':
+        # protection it exists for.
+        deny = deny_non_parent()
+        if deny:
             conn.close()
-            return jsonify({'success': False,
-                            'message': 'Only a parent can change the family PIN'}), 403
+            return deny
         c.execute("UPDATE users SET parent_pin_hash=?, parent_pin='' WHERE user_id=?",
                   (hash_pin(str(data['parent_pin'])), user_id))
     conn.commit()
@@ -2261,7 +2259,9 @@ _SESSION_TABLES = ['behavioral_data', 'chat_messages', 'voice_events', 'predicti
 
 
 def _delete_user_data(conn, user_id):
-    """Delete all collected monitoring data for a user (keeps the account row)."""
+    """Delete all collected monitoring data for a user (keeps the account row).
+    Guardian push-device cleanup is NOT here — it belongs only to full account removal,
+    not a data wipe (which keeps the account, and its push, working)."""
     c = conn.cursor()
     for t in _SESSION_TABLES:
         c.execute(f"DELETE FROM {t} WHERE session_id IN "
@@ -2269,15 +2269,6 @@ def _delete_user_data(conn, user_id):
     c.execute("DELETE FROM sessions WHERE user_id=?", (user_id,))
     for t in _USER_TABLES:
         c.execute(f"DELETE FROM {t} WHERE user_id=?", (user_id,))
-    # Guardian push-device tokens are keyed by family_code, not user_id. On a FULL
-    # account removal, drop the tokens belonging to this user's family so a deleted
-    # family leaves no push registrations behind.
-    c.execute("SELECT family_code FROM users WHERE user_id=?", (user_id,))
-    frow = c.fetchone()
-    if frow and frow['family_code']:
-        c.execute("DELETE FROM guardian_devices WHERE family_code=? AND NOT EXISTS "
-                  "(SELECT 1 FROM users u2 WHERE u2.family_code=? AND u2.user_id<>?)",
-                  (frow['family_code'], frow['family_code'], user_id))
     conn.commit()
 
 
@@ -2304,10 +2295,9 @@ def purge_old_data(force: bool = False):
             c.execute(f"DELETE FROM {t} WHERE timestamp < ?", (cutoff,))
         conn.commit()
         conn.close()
+        logger.info(f"Retention purge: removed raw events older than {DATA_RETENTION_DAYS} days")
     except Exception as e:
         logger.warning(f"retention purge skipped: {e}")
-    conn.close()
-    logger.info(f"Retention purge: removed raw events older than {DATA_RETENTION_DAYS} days")
 
 
 @app.route('/api/consent', methods=['POST'])
@@ -2361,17 +2351,25 @@ def delete_user_data():
     user_id = data.get('user_id')
     deny = guard(user_id)
     if deny: return deny
-    role = (g.auth or {}).get('role')
-    if role is not None and role != 'parent':
-        return jsonify({'success': False,
-                        'message': 'Data deletion is managed from the Parent app'}), 403
+    deny = deny_non_parent()           # deletion is parent-controlled (anti-tamper)
+    if deny: return deny
     if not user_id:
         return jsonify({'success': False, 'message': 'user_id required'}), 400
     scope = str(data.get('scope', 'data')).lower()
     conn = get_db()
     _delete_user_data(conn, int(user_id))
     if scope == 'account':
-        conn.cursor().execute("DELETE FROM users WHERE user_id=?", (int(user_id),))
+        c = conn.cursor()
+        # Drop the family's guardian push tokens only if no sibling remains — a data wipe
+        # keeps the account (and its push) working, so this is account-removal-only. Runs
+        # BEFORE deleting the user row, so the "sibling remains?" check can see this row.
+        c.execute("SELECT family_code FROM users WHERE user_id=?", (int(user_id),))
+        frow = c.fetchone()
+        if frow and frow['family_code']:
+            c.execute("DELETE FROM guardian_devices WHERE family_code=? AND NOT EXISTS "
+                      "(SELECT 1 FROM users u2 WHERE u2.family_code=? AND u2.user_id<>?)",
+                      (frow['family_code'], frow['family_code'], int(user_id)))
+        c.execute("DELETE FROM users WHERE user_id=?", (int(user_id),))
         conn.commit()
     conn.close()
     logger.info(f"Data deletion (scope={scope}) for user {user_id}")
@@ -2771,6 +2769,18 @@ def save_chat(sid):
 _voice_rescore_last: dict = {}
 
 
+def _prune_mono_cache(cache: dict, max_age_s: float, cap: int = 2000):
+    """Drop stale entries from a monotonic-timestamp throttle cache so it can't grow
+    unbounded over the worker's lifetime (every session/user id would otherwise stay
+    forever — a slow leak on the 512 MB free tier). Only sweeps once the cache is large,
+    so it's near-free on the hot path."""
+    if len(cache) < cap:
+        return
+    cutoff = time.monotonic() - max_age_s
+    for k in [k for k, ts in cache.items() if ts < cutoff]:
+        cache.pop(k, None)
+
+
 @app.route('/api/session/<int:sid>/voice', methods=['POST'])
 def save_voice(sid):
     """Accept audio file or pre-computed emotion from Android."""
@@ -2844,6 +2854,7 @@ def save_voice(sid):
     # flush); re-scoring once per burst gives the same final state for a fraction of the
     # CPU/DB work on the free tier.
     now_mono = time.monotonic()
+    _prune_mono_cache(_voice_rescore_last, max_age_s=3600)   # bound long-run growth
     if now_mono - _voice_rescore_last.get(sid, 0) >= 8:
         _voice_rescore_last[sid] = now_mono
         try:
@@ -4378,6 +4389,7 @@ def _detect_anomalies(user_id: int, force: bool = False):
     list of anomaly dicts. Severity: 'high' if z >= 2.5, 'medium' if >= 1.8.
     """
     now_mono = time.monotonic()
+    _prune_mono_cache(_anomaly_last_run, max_age_s=_ANOMALY_TTL_S * 4)   # bound long-run growth
     if not force and now_mono - _anomaly_last_run.get(user_id, 0) < _ANOMALY_TTL_S:
         return []
     _anomaly_last_run[user_id] = now_mono
