@@ -10,7 +10,9 @@ capstone** — a screening/awareness aid, **not** a medical or diagnostic device
 This policy explains, in plain language, what the app collects, why, who can see
 it, how long it is kept, and how to delete it.
 
-## What is collected (only on the monitored child's device, only during gaming)
+## What is collected (only on the monitored child's device)
+
+**While the child is in a monitored game session:**
 
 - **Gaming activity** — which game is in the foreground (any app the device
   classifies as a game, not just a fixed list) and session start/end times. To
@@ -25,8 +27,16 @@ it, how long it is kept, and how to delete it.
   enables retention for testing. The **spoken words are also transcribed to text
   and kept** (the transcript, not the audio), so the emotional tone of what was
   said can be read.
-- **Screen on/off events** — timing signals. **Game notifications** — the timing
-  and the **title** of notifications shown by games (e.g. event/reward prompts).
+
+**Also collected more broadly (including between sessions), as sleep-disruption and
+craving signals:**
+
+- **Screen on/off events** — timing only.
+- **Game notifications** — the timing and the **title** of notifications shown by
+  games (e.g. event/reward prompts).
+
+**Only when the child chooses to:**
+
 - **Daily check-ins** the child voluntarily submits (mood/sleep/energy).
 
 The app does **not** collect: messages outside games, web browsing,
@@ -40,11 +50,13 @@ indicators are **screening signals, not a diagnosis.**
 
 ## Who can see it
 
-Only the **parent linked to that child** (via the shared family PIN). The server
-authenticates every request with a signed token and authorizes by ownership — a
-parent can only access **their own** children's data, never another family's.
-PINs are stored as keyed hashes, never in plaintext. In production all traffic is
-over HTTPS.
+Only the **parent linked to that child** (the parent signs in with the family **code +
+PIN**). The server authenticates every request with a signed token and authorizes by
+ownership — a parent can only access **their own** children's data, never another
+family's — and applies a **role** check so parent-only actions and views (the alerts
+feed, dashboards, reports, feedback, limits, nudges, PIN change, deletion) cannot be
+reached with a child's token. PINs are stored as keyed hashes, never in plaintext. In
+production all traffic is over HTTPS.
 
 ## How long it is kept (retention)
 

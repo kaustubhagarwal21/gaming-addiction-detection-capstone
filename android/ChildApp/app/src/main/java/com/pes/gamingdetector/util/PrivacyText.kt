@@ -9,13 +9,16 @@ object PrivacyText {
     const val CONSENT_SUMMARY = """
 This device will be monitored by a parent to understand gaming wellbeing.
 
-While you play a game, the app collects:
+While you play a monitored game, the app collects:
 • which game is open and how long you play
-• in-game chat that you type
+• in-game chat that you type (only your own typing, never other players')
 • short voice clips to gauge tone — your spoken words are transcribed to text and
   kept; the raw audio is deleted right after analysis
-• screen on/off, and the timing and titles of game notifications
-• daily check-ins you choose to submit
+
+To spot late-night use and cravings, it also records — including between games:
+• screen on/off timing, and the timing and titles of notifications from games
+
+And the daily check-ins you choose to submit.
 
 It does NOT read messages outside games, your browsing, photos, contacts, or location.
 
@@ -28,25 +31,31 @@ This is a wellbeing screening aid, not a diagnosis.
     const val POLICY = """Gaming Wellbeing Monitor — Privacy Policy
 Consent version: 2026-06-01
 
-WHAT IS COLLECTED (only on this device, only while playing games)
+WHAT IS COLLECTED (only on this device)
+While you are in a monitored game session:
 • Gaming activity — which game is in the foreground (any app the device classifies
   as a game) and session times. To recognise games the app checks the category of
   installed apps on the device; the list of installed apps is never uploaded.
 • In-game chat you type — used for tone/toxicity signals. Not other players' messages.
-• Short voice clips during a session — to estimate emotional tone. The raw audio is
-  turned into numbers and deleted immediately (not stored or shared). The words you
-  speak are also transcribed to text and kept, to read the tone of what was said.
-• Screen on/off events (timing), and notifications from games — including the title
-  of each game notification (e.g. event/reward prompts).
+• Short voice clips — to estimate emotional tone. The raw audio is turned into numbers
+  and deleted immediately (not stored or shared). The words you speak are also
+  transcribed to text and kept, to read the tone of what was said.
+
+Also, between sessions (to detect sleep disruption and cravings):
+• Screen on/off events (timing only).
+• Notifications from games — the timing and title of each (e.g. event/reward prompts).
+
+When you choose to:
 • Daily check-ins you voluntarily submit (mood/sleep/energy).
 
 It does NOT collect messages outside games, browsing, contacts, photos, location,
 or anything you type outside in-game chat.
 
 WHO CAN SEE IT
-Only the parent linked to this account (via your family PIN). The server checks a
-signed token on every request and only lets a parent see their own children's data.
-PINs are stored hashed, never as plaintext; production traffic uses HTTPS.
+Only the parent linked to this account (they sign in with your family code + PIN).
+The server checks a signed token on every request, only lets a parent see their own
+children's data, and restricts parent-only actions and views to the parent. PINs are
+stored hashed, never as plaintext; production traffic uses HTTPS.
 
 YOUR RIGHTS
 Your parent can delete this data, or remove your account entirely, at any time from
