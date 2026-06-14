@@ -1,6 +1,6 @@
 # Privacy Policy — Gaming Wellbeing Monitor (PW26_SJ_05)
 
-_Last updated: 2026-06-01 · Consent version: 2026-06-01_
+_Last updated: 2026-06-14 · Consent version: 2026-06-01_
 
 This is a **parental wellbeing tool**: a parent installs the Child app on their
 child's device to understand the child's gaming patterns and emotional wellbeing,
@@ -60,9 +60,16 @@ production all traffic is over HTTPS.
 
 ## How long it is kept (retention)
 
-Raw events (chat, voice features, screen/notification events) can be automatically
-deleted after a configurable window (`DATA_RETENTION_DAYS`). Raw audio is always
-deleted right after feature extraction.
+**Raw audio is always deleted right after feature extraction** — it is never stored.
+
+Everything else collected (sessions, chat text, voice-emotion features, screen and
+notification events, predictions and alerts) is **kept while the child's account is
+active**, so the dashboards and trends keep working, and the **parent can delete it at
+any time** (see *Your rights* below). An operator may additionally enable an age-based
+auto-purge (`DATA_RETENTION_DAYS`): when set to *N* days, raw events (chat, voice
+features, screen/notification events) older than *N* days are deleted automatically.
+This is **off by default**, so unless it is enabled the data is retained until the parent
+deletes it or removes the account.
 
 ## Your rights — view and delete
 
