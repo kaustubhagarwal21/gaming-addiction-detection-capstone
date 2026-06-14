@@ -108,6 +108,7 @@ for label, path in [('alerts', f'/api/alerts?user_id={child_a}'),
                     ('emotions', f'/api/dashboard/emotions?user_id={child_a}'),
                     ('chat analysis', f'/api/dashboard/chat_analysis?user_id={child_a}'),
                     ('feedback summary', f'/api/feedback/summary?user_id={child_a}'),
+                    ('family roster', '/api/parent/children'),
                     ('anomalies', f'/api/anomalies?user_id={child_a}')]:
     r = client.get(path, headers=auth(tok_a))
     check(f'CHILD token blocked from {label} -> 403', r.status_code == 403)
@@ -184,6 +185,15 @@ r = client.post(f'/api/session/{sid}/end', headers=auth(tok_a))
 j = r.get_json()
 check('session end returns prediction', r.status_code == 200 and
       j['prediction']['risk_label'] in ('casual', 'at_risk', 'addicted'))
+# Idempotent re-end (manual End racing the passive auto-end): must report already_ended AND
+# return the full stored sub-scores, so the result screen doesn't render Behavior/Chat/Voice
+# as 0% on the duplicate.
+r2 = client.post(f'/api/session/{sid}/end', headers=auth(tok_a))
+j2 = r2.get_json()
+check('duplicate end is idempotent (already_ended)', r2.status_code == 200 and
+      j2.get('already_ended') is True)
+check('duplicate end carries full sub-scores', all(
+      k in (j2.get('prediction') or {}) for k in ('behavior_score', 'chat_score', 'voice_score')))
 
 silent = wav_bytes([0] * 16000)                      # 1 s of silence
 r = client.post(f'/api/session/{sid}/voice', headers=auth(tok_a),

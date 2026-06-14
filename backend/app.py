@@ -1369,7 +1369,7 @@ def compute_behavioral_features(session_id: int) -> dict:
     """Calculate all 20 behavioural features from real session history + current session."""
     conn = get_db()
     c    = conn.cursor()
-    c.execute('SELECT user_id, start_time FROM sessions WHERE session_id=?', (session_id,))
+    c.execute('SELECT user_id, start_time, end_time FROM sessions WHERE session_id=?', (session_id,))
     srow = c.fetchone()
     if not srow:
         conn.close()
@@ -1377,7 +1377,14 @@ def compute_behavioral_features(session_id: int) -> dict:
 
     user_id  = srow['user_id']
     start_dt = datetime.fromisoformat(srow['start_time'])
-    elapsed  = max(1, (datetime.now() - start_dt).total_seconds())
+    # For a CLOSED session use its recorded end (it may have ended in the past — auto-closed
+    # after a lost end-event, or scored late); only a still-live session measures to "now".
+    # Using now-start for an ended session inflates elapsed and the daily/weekly play features.
+    end_dt = datetime.now()
+    if srow['end_time']:
+        try:    end_dt = _parse_ts(srow['end_time'])
+        except Exception: end_dt = datetime.now()
+    elapsed  = max(1, (end_dt - start_dt).total_seconds())
 
     # Fetch past 30 days of sessions for this user, excluding the current one
     since_30d = (datetime.now() - timedelta(days=30)).isoformat()
@@ -2498,12 +2505,40 @@ def _finalize_closed_sessions(sids):
     NOT _save_behavioral_snapshot — because the snapshot recomputes features from
     now−start and would inflate a session dated in the past; run_prediction instead
     scores from the snapshots captured live during play. Call AFTER the caller commits
-    the end_time. Best-effort."""
-    for sid in sids or []:
+    the end_time. Best-effort.
+
+    Also raises the parent's risk alert + updates the healthy-day streak — the same
+    things end_session does for a normal end. A session whose end-event never arrived
+    (app killed / swiped / offline) can still be high-risk, and the parent must not miss
+    that alert just because the normal end path didn't run."""
+    for sid in dict.fromkeys(sids or []):          # de-dup: never score one session twice
         try:
-            run_prediction(sid, explain=False)
+            pred = run_prediction(sid, explain=False)
         except Exception as e:
             logger.warning("finalize closed session %s skipped: %s", sid, e)
+            continue
+        try:
+            conn = get_db()
+            c    = conn.cursor()
+            c.execute('SELECT user_id FROM sessions WHERE session_id=?', (sid,))
+            r   = c.fetchone()
+            uid = r['user_id'] if r else None
+            if uid is not None:
+                _maybe_create_alert(c, uid, pred)          # parent risk alert (poller notifies)
+                conn.commit()
+            conn.close()
+            if uid is not None:
+                conn = get_db()
+                c    = conn.cursor()
+                c.execute('SELECT COALESCE(ROUND(SUM(duration_seconds)/3600.0,2),0) AS wh '
+                          'FROM sessions WHERE user_id=? AND start_time>=?',
+                          (uid, (datetime.now() - timedelta(days=7)).isoformat()))
+                whr      = c.fetchone()
+                weekly_h = float(whr['wh'] or 0) if whr else 0.0
+                conn.close()
+                _update_streak(uid, weekly_h, pred.get('risk_category', 'casual'))
+        except Exception as e:
+            logger.warning("finalize alert/streak for %s skipped: %s", sid, e)
 
 
 @app.route('/api/session/start', methods=['POST'])
@@ -2524,8 +2559,10 @@ def start_session():
     if deny: return deny
     now       = datetime.now().isoformat()
     conn = get_db()
-    # Self-heal any session orphaned by a lost end-event before opening a new one.
-    _close_stale_sessions(conn.cursor(), user_id)
+    # Self-heal any session orphaned by a lost end-event before opening a new one. Collect the
+    # ids it (and the close-prior block below) closes so they get scored + alerted after commit
+    # — otherwise an auto-closed high-risk session would be invisible AND raise no parent alert.
+    _auto_closed = list(_close_stale_sessions(conn.cursor(), user_id) or [])
     # Invariant: at most ONE open session per user. Starting a new one means any session
     # still open is definitively over (you can't play two games at once) — close it at its
     # last activity. This clears a duplicate left when the app was killed mid-play and a
@@ -2551,6 +2588,7 @@ def start_session():
                 oend, odur = orow['start_time'], 0
             cc.execute("UPDATE sessions SET end_time=?, duration_seconds=? WHERE session_id=?",
                        (oend, odur, osid))
+            _auto_closed.append(osid)
     except Exception as e:
         logger.warning("close-prior-open-session skipped for user %s: %s", user_id, e)
     sid  = insert_returning_id(
@@ -2585,6 +2623,8 @@ def start_session():
         logger.warning(f"session_start alert skipped: {e}")
     conn.commit()
     conn.close()
+    # Score + alert any sessions closed above (now that end_time is committed). Best-effort.
+    _finalize_closed_sessions(_auto_closed)
     logger.info(f"Session {sid} started: {game_name}")
     return jsonify({'success': True, 'session_id': sid, 'start_time': now, 'game_name': game_name})
 
@@ -2605,16 +2645,22 @@ def end_session(sid):
     # raise duplicate alerts. If it's already closed, return the EXISTING result unchanged.
     if row['end_time']:
         dur = int(row['duration_seconds'] or 0)
-        c.execute('SELECT risk_category, final_risk_score FROM predictions '
-                  'WHERE session_id=? ORDER BY id DESC LIMIT 1', (sid,))
+        c.execute('SELECT risk_category, final_risk_score, behavior_score, chat_score, '
+                  'voice_score FROM predictions WHERE session_id=? ORDER BY id DESC LIMIT 1', (sid,))
         prow = c.fetchone()
         conn.close()
+        # Return the FULL stored sub-scores (not just label/score) so a duplicate-end — the
+        # passive auto-end racing the manual "End" — renders the same result screen as the
+        # first end, rather than showing Behavior/Chat/Voice as 0% (missing-field default).
         return jsonify({
             'success': True, 'session_id': sid, 'duration_seconds': dur,
             'short_session': dur < 60, 'already_ended': True,
             'prediction': {
-                'risk_label': (prow['risk_category'] if prow else 'casual'),
-                'risk_score': (prow['final_risk_score'] if prow else 0.0),
+                'risk_label':     (prow['risk_category'] if prow else 'casual'),
+                'risk_score':     (prow['final_risk_score'] if prow else 0.0),
+                'behavior_score': (prow['behavior_score'] if prow else 0.0),
+                'chat_score':     (prow['chat_score'] if prow else 0.0),
+                'voice_score':    (prow['voice_score'] if prow else 0.0),
             } if prow else None,
         })
     # How many seconds before "now" the player actually stopped — the grace / ancillary
@@ -4068,6 +4114,8 @@ def parent_children():
     between them WITHOUT re-entering the family code. The bearer token already carries the
     allowed child ids (set at login), so no family code/PIN is needed here."""
     deny = guard()                       # authenticate; populates g.auth {role, uid, allowed}
+    if deny: return deny
+    deny = deny_non_parent()             # the family roster is a parent-only view
     if deny: return deny
     allowed = (g.auth or {}).get('allowed') or []
     if not allowed:

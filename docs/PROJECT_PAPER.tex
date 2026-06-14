@@ -618,7 +618,7 @@ and is the first candidate for real-audio retraining.
   \item Production-deployed cloud backend (HTTPS, token auth, consent, durable
         managed Postgres); both apps build as signed release APKs.
   \item A layered test program, all passing: a 35-test API suite (isolated database),
-        a \textbf{78-check functional sweep run in production auth mode} with real
+        a \textbf{81-check functional sweep run in production auth mode} with real
         parent/child tokens (registration and family joins, role guards on every
         parent-only endpoint, the full nudge lifecycle, a real WAV upload through the
         silence floor and late re-score, the watchdog's quiet hours, end-session
@@ -635,17 +635,20 @@ and is the first candidate for real-audio retraining.
         512\,MB instance. Verified with a concurrent smoke test (288 mixed requests
         across 24 threads, zero errors). On the device side, state shared across the
         monitor, accessibility, keyboard and notification threads is made thread-safe
-        (concurrent game-detection cache; a snapshot-and-merge offline chat queue that
-        cannot lose a line captured mid-flush), and background push declares a default
+        (concurrent game-detection cache; a crash-safe offline chat queue that removes a
+        line from disk only after the server confirms it, so a process death mid-flush
+        loses nothing), and background push declares a default
         notification channel so a high-risk alert to a backgrounded parent is delivered
         at full priority.
   \item Graceful degradation when a modality is absent; an idempotent session-end (a
         repeated end --- manual plus the passive auto-end, or a retry --- returns the
-        existing result instead of double-counting); a self-healing stale-session guard
-        that also \emph{scores} the sessions it closes (from the snapshots captured
-        live, so a lost end-event still appears in the risk history rather than
-        vanishing); and an on-device offline retry queue for chat captured without
-        connectivity (kept on a server error, so nothing is silently dropped).
+        existing result, with its full per-model sub-scores, instead of double-counting);
+        a self-healing stale-session guard that also \emph{scores and raises the parent's
+        risk alert} for the sessions it closes (from the snapshots captured live, so a
+        lost end-event still appears in the risk history --- and a high-risk one still
+        alerts the parent --- rather than vanishing silently); and an on-device offline
+        retry queue for chat captured without connectivity (kept on a server or transient
+        429/408 error, so nothing is silently dropped).
 \end{itemize}
 
 \subsection{Real-device validation (and what it caught)}
@@ -696,7 +699,7 @@ Parent value & Per-day weighted risk + ``why'' (SHAP), live ``playing now'' + mo
 Child wellbeing & Mira check-in (typing indicator, double-send guard), gamified daily check-in + streak, reflections, breathing, break/limit nudges, today-vs-goal progress \\
 Reliability/anti-tamper & Heartbeat watchdog (uninstall/kill/offline alert, child-local quiet hours), optional Device Admin (uninstall block + instant disable alert), battery-optimisation exemption, double-start-safe services, consent-gated boot resume, parent-PIN lock on logout/settings (server-verified, constant-time), logout \emph{and} login alerts with honest monitoring status, idempotent session-end, self-scoring stale-session guard, per-child risk notifications, multi-guardian FCM push (lazy-init) \\
 Privacy/Security & Token auth + \emph{role} checks on every parent-only endpoint, peppered PIN hashes (validated, family-wide PIN change), HTTPS-only, encrypted token store, consent (versioned), raw-audio deletion, retention purge, 16\,MB body cap, family code always recoverable in PIN-gated Settings \\
-Engineering & Dual-dialect DB with pooled validated Postgres connections, per-client rate limiting, hot-path caching/throttling + audio-concurrency cap + bounded throttle caches, thread-safe device-side shared state (concurrent cache, snapshot-merge offline queue), signed APKs, layered tests (35 API + 78 production-mode + 25 live-cloud) + concurrency smoke, real-device validated, lint-clean, deployed + durable DB \\
+Engineering & Dual-dialect DB with pooled validated Postgres connections, per-client rate limiting, hot-path caching/throttling + audio-concurrency cap + bounded throttle caches, thread-safe device-side shared state (concurrent cache, crash-safe confirm-then-delete offline queue), signed APKs, layered tests (35 API + 81 production-mode + 25 live-cloud) + concurrency smoke, real-device validated, lint-clean, deployed + durable DB \\
 \bottomrule
 \end{tabularx}
 \end{center}
