@@ -945,10 +945,12 @@ def init_db():
         CREATE INDEX IF NOT EXISTS idx_nudges_user          ON child_nudges(user_id);
     ''')
 
-    # Seed default user if none exists
+    # Seed default user if none exists. Include a family_code: parent login now requires
+    # one, so a code-less default user would be impossible to sign into from the Parent app.
     c.execute("SELECT COUNT(*) AS n FROM users")
     if c.fetchone()['n'] == 0:
-        c.execute("INSERT INTO users (name, pin, parent_pin, age) VALUES ('Player','1234','0000',15)")
+        c.execute("INSERT INTO users (name, pin, parent_pin, age, family_code) "
+                  "VALUES ('Player','1234','0000',15,'FAM001')")
 
     # Backfill credential hashes for any row that still has plaintext but no hash,
     # then clear the plaintext (the columns are NOT NULL, so blank them) so the DB
@@ -2213,6 +2215,12 @@ def get_profile():
     return jsonify(dict(row))
 
 
+def _valid_pin(p) -> bool:
+    """Same rule registration enforces: 4–6 digits."""
+    s = str(p).strip()
+    return s.isdigit() and 4 <= len(s) <= 6
+
+
 @app.route('/api/user/update', methods=['POST'])
 def update_profile():
     data = request.get_json() or {}
@@ -2222,11 +2230,26 @@ def update_profile():
     conn = get_db()
     c    = conn.cursor()
     if 'name' in data:
-        c.execute('UPDATE users SET name=? WHERE user_id=?', (data['name'], user_id))
+        c.execute('UPDATE users SET name=? WHERE user_id=?', (str(data['name']).strip(), user_id))
     if 'age' in data:
-        c.execute('UPDATE users SET age=? WHERE user_id=?', (data['age'], user_id))
+        try:
+            age = int(data['age'])
+            if 1 <= age <= 100:
+                c.execute('UPDATE users SET age=? WHERE user_id=?', (age, user_id))
+        except (TypeError, ValueError):
+            pass
     if 'pin' in data:
-        c.execute("UPDATE users SET pin_hash=?, pin='' WHERE user_id=?", (hash_pin(str(data['pin'])), user_id))
+        # Mirror registration's rules: 4–6 digits, and globally unique (child login
+        # matches on pin_hash and takes the first row, so a duplicate would collide).
+        if not _valid_pin(data['pin']):
+            conn.close()
+            return jsonify({'success': False, 'message': 'Child PIN must be 4–6 digits'}), 400
+        new_h = hash_pin(str(data['pin']).strip())
+        c.execute('SELECT user_id FROM users WHERE pin_hash=? AND user_id<>?', (new_h, int(user_id)))
+        if c.fetchone():
+            conn.close()
+            return jsonify({'success': False, 'message': 'That child PIN is already taken'}), 409
+        c.execute("UPDATE users SET pin_hash=?, pin='' WHERE user_id=?", (new_h, user_id))
     if 'parent_pin' in data:
         # Only a PARENT may change the family PIN. A child's own token passes the
         # ownership guard above (it's their row), but letting them rewrite parent_pin
@@ -2236,8 +2259,22 @@ def update_profile():
         if deny:
             conn.close()
             return deny
-        c.execute("UPDATE users SET parent_pin_hash=?, parent_pin='' WHERE user_id=?",
-                  (hash_pin(str(data['parent_pin'])), user_id))
+        if not _valid_pin(data['parent_pin']):
+            conn.close()
+            return jsonify({'success': False, 'message': 'Family PIN must be 4–6 digits'}), 400
+        # Change it for the WHOLE family. Parent login matches family_code + parent_pin_hash
+        # across all siblings, so updating one child's row would split the family — the new
+        # PIN would see only that child and the old PIN might still reach the others.
+        new_pp = hash_pin(str(data['parent_pin']).strip())
+        c.execute('SELECT family_code FROM users WHERE user_id=?', (int(user_id),))
+        frow = c.fetchone()
+        fam  = frow['family_code'] if frow else None
+        if fam:
+            c.execute("UPDATE users SET parent_pin_hash=?, parent_pin='' WHERE family_code=?",
+                      (new_pp, fam))
+        else:
+            c.execute("UPDATE users SET parent_pin_hash=?, parent_pin='' WHERE user_id=?",
+                      (new_pp, int(user_id)))
     conn.commit()
     conn.close()
     return jsonify({'success': True})
@@ -2396,7 +2433,9 @@ def _close_stale_sessions(c, user_id):
     """Self-heal sessions orphaned by a lost end-event. Closes a session when EITHER it
     has been open past the 6-hour fallback, OR the monitoring app's heartbeat has gone
     silent (the app can't still be tracking play if it isn't checking in). Caller
-    commits. Best-effort: never raises into the request."""
+    commits. Returns the list of session ids it closed (the caller scores them via
+    _finalize_closed_sessions after committing). Best-effort: never raises into the request."""
+    closed = []
     try:
         cutoff = (datetime.now() - timedelta(hours=STALE_SESSION_HOURS)).isoformat()
         # Heartbeat-silent branch: if last_seen is older than the silence window, every
@@ -2440,9 +2479,25 @@ def _close_stale_sessions(c, user_id):
             dur = min(dur, STALE_SESSION_HOURS * 3600)   # cap against bad timestamps
             c.execute("UPDATE sessions SET end_time=?, duration_seconds=? WHERE session_id=?",
                       (end_ts, dur, sid))
+            closed.append(sid)
             logger.info("Auto-closed stale session %s (offline end-event presumed lost)", sid)
     except Exception as e:
         logger.warning("Stale-session sweep failed for user %s: %s", user_id, e)
+    return closed
+
+
+def _finalize_closed_sessions(sids):
+    """Give each auto-closed session a final risk score so it isn't invisible in the
+    risk history/trend (which filter on final_risk_score). Uses run_prediction ONLY —
+    NOT _save_behavioral_snapshot — because the snapshot recomputes features from
+    now−start and would inflate a session dated in the past; run_prediction instead
+    scores from the snapshots captured live during play. Call AFTER the caller commits
+    the end_time. Best-effort."""
+    for sid in sids or []:
+        try:
+            run_prediction(sid, explain=False)
+        except Exception as e:
+            logger.warning("finalize closed session %s skipped: %s", sid, e)
 
 
 @app.route('/api/session/start', methods=['POST'])
@@ -2534,11 +2589,28 @@ def end_session(sid):
     if deny: return deny
     conn = get_db()
     c    = conn.cursor()
-    c.execute('SELECT start_time FROM sessions WHERE session_id=?', (sid,))
+    c.execute('SELECT start_time, end_time, duration_seconds FROM sessions WHERE session_id=?', (sid,))
     row  = c.fetchone()
     if not row:
         conn.close()
         return jsonify({'error': 'Session not found'}), 404
+    # Idempotent: a session can be ended twice (manual "End" + the passive auto-end, or a
+    # client retry). Re-ending would rewrite the duration, create a second prediction, and
+    # raise duplicate alerts. If it's already closed, return the EXISTING result unchanged.
+    if row['end_time']:
+        dur = int(row['duration_seconds'] or 0)
+        c.execute('SELECT risk_category, final_risk_score FROM predictions '
+                  'WHERE session_id=? ORDER BY id DESC LIMIT 1', (sid,))
+        prow = c.fetchone()
+        conn.close()
+        return jsonify({
+            'success': True, 'session_id': sid, 'duration_seconds': dur,
+            'short_session': dur < 60, 'already_ended': True,
+            'prediction': {
+                'risk_label': (prow['risk_category'] if prow else 'casual'),
+                'risk_score': (prow['final_risk_score'] if prow else 0.0),
+            } if prow else None,
+        })
     # How many seconds before "now" the player actually stopped — the grace / ancillary
     # tail the auto-monitor waited out before ending. Sent as a delta (not an absolute
     # timestamp) so device/server clock skew is irrelevant. Clamped so a session can
@@ -3013,6 +3085,8 @@ def parent_dashboard():
     user_id = request.args.get('user_id', 1, type=int)
     deny = guard(user_id)
     if deny: return deny
+    deny = deny_non_parent()           # parent-only view
+    if deny: return deny
     conn    = get_db()
     c       = conn.cursor()
 
@@ -3022,8 +3096,9 @@ def parent_dashboard():
 
     # Self-heal lost end-events before reading live state, so this dashboard never
     # shows a child "perpetually playing" a session whose end never arrived.
-    _close_stale_sessions(c, user_id)
+    _closed = _close_stale_sessions(c, user_id)
     conn.commit()
+    _finalize_closed_sessions(_closed)   # score them so they show in the risk history
 
     # ── Live status strip ────────────────────────────────────────────
     # Is the child playing RIGHT NOW, and is the monitoring app checking in?
@@ -3314,6 +3389,8 @@ def emotion_dashboard():
     user_id = request.args.get('user_id', 1, type=int)
     deny = guard(user_id)
     if deny: return deny
+    deny = deny_non_parent()           # parent-only view
+    if deny: return deny
     since   = (datetime.now() - timedelta(days=30)).isoformat()
     conn    = get_db()
     c       = conn.cursor()
@@ -3357,6 +3434,8 @@ def chat_analysis_dashboard():
     """Chat analytics for parental insight screen."""
     user_id = request.args.get('user_id', 1, type=int)
     deny = guard(user_id)
+    if deny: return deny
+    deny = deny_non_parent()           # parent-only view
     if deny: return deny
     since   = (datetime.now() - timedelta(days=30)).isoformat()
     conn    = get_db()
@@ -3528,6 +3607,8 @@ def get_alerts():
     user_id = request.args.get('user_id', 1, type=int)
     deny = guard(user_id)
     if deny: return deny
+    deny = deny_non_parent()           # the alerts feed is the parent's (incl. tamper alerts)
+    if deny: return deny
     conn    = get_db()
     c       = conn.cursor()
     _check_heartbeat(c, user_id)   # raise an 'offline' alert if the child app went silent
@@ -3562,6 +3643,10 @@ def mark_alerts_read():
     data      = request.get_json() or {}
     alert_ids = data.get('alert_ids', [])
     deny = guard()   # require a valid token in enforce mode; populates g.auth
+    if deny: return deny
+    # Parent-only: otherwise a child could mark their own tamper/risk alerts read and
+    # hide them from the parent (e.g. the "logged out" alert).
+    deny = deny_non_parent()
     if deny: return deny
     if not alert_ids:
         return jsonify({'success': True, 'message': 'Nothing to mark'})
@@ -3656,6 +3741,8 @@ def feedback_summary():
         return jsonify({'success': False, 'message': 'user_id is required'}), 400
     deny = guard(user_id)
     if deny: return deny
+    deny = deny_non_parent()           # parent's own verdict history
+    if deny: return deny
     conn = get_db()
     c    = conn.cursor()
     c.execute('SELECT label, COUNT(*) AS n FROM feedback WHERE user_id=? GROUP BY label', (user_id,))
@@ -3682,8 +3769,9 @@ def child_status():
 
     # Self-heal any session orphaned by a lost end-event, so the parent view doesn't
     # show the child "playing" indefinitely.
-    _close_stale_sessions(c, user_id)
+    _closed = _close_stale_sessions(c, user_id)
     conn.commit()
+    _finalize_closed_sessions(_closed)   # score them so they show in the risk history
 
     # Check if currently in an active (not-ended) session
     c.execute('''SELECT session_id, game_name, start_time
@@ -3757,6 +3845,8 @@ def weekly_report():
     """7-day breakdown for parental weekly report screen."""
     user_id = request.args.get('user_id', 1, type=int)
     deny = guard(user_id)
+    if deny: return deny
+    deny = deny_non_parent()           # parent-only report
     if deny: return deny
     since7  = (datetime.now() - timedelta(days=7)).isoformat()
     since14 = (datetime.now() - timedelta(days=14)).isoformat()
@@ -3952,10 +4042,14 @@ def set_time_limit():
         return jsonify({'success': False, 'message': 'user_id and daily_limit_hours required'}), 400
     try:
         hours = float(hours)
-        if hours < 0 or hours > 24:
+        # Minimum 0.5h: a 0h "limit" is both philosophically wrong for a guidance (not
+        # lockdown) tool AND was silently ignored downstream — the child app treats a
+        # 0.0 limit as "no parent limit set" (bool(0.0) is false), so it fell back to the
+        # default goal. Disallowing it removes that contradiction at the source.
+        if hours < 0.5 or hours > 24:
             raise ValueError()
     except (TypeError, ValueError):
-        return jsonify({'success': False, 'message': 'daily_limit_hours must be 0–24'}), 400
+        return jsonify({'success': False, 'message': 'daily_limit_hours must be between 0.5 and 24'}), 400
     conn = get_db()
     c    = conn.cursor()
     c.execute('''INSERT INTO time_limits (user_id, daily_limit_hours, set_by_parent, updated_at)
@@ -4123,6 +4217,8 @@ def weekly_report_pdf():
 
     user_id = request.args.get('user_id', 1, type=int)
     deny = guard(user_id)
+    if deny: return deny
+    deny = deny_non_parent()           # parent-only report
     if deny: return deny
     conn    = get_db()
     c       = conn.cursor()
@@ -4470,6 +4566,8 @@ def get_anomalies():
     user_id = request.args.get('user_id', type=int)
     deny = guard(user_id)
     if deny: return deny
+    deny = deny_non_parent()           # parent-only insight
+    if deny: return deny
     if not user_id:
         return jsonify({'success': False, 'error': 'user_id required'}), 400
     fresh = _detect_anomalies(user_id, force=True)   # explicit fetch: bypass the throttle
@@ -4495,6 +4593,10 @@ def resolve_anomaly(aid: int):
         conn.close()
         return jsonify({'success': False, 'message': 'Not found'}), 404
     deny = guard(row['user_id'])
+    if deny:
+        conn.close()
+        return deny
+    deny = deny_non_parent()           # parent-only action
     if deny:
         conn.close()
         return deny

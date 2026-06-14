@@ -42,9 +42,13 @@ class PrefsManager(context: Context) {
         get() = prefs.getString("child_name", "") ?: ""
         set(v) = prefs.edit().putString("child_name", v).apply()
 
-    var lastRiskLevel: String
-        get() = prefs.getString(Constants.KEY_LAST_RISK_LEVEL, "") ?: ""
-        set(v) = prefs.edit().putString(Constants.KEY_LAST_RISK_LEVEL, v).apply()
+    // Per-child last risk level the poller has handled — keyed by child id so switching
+    // siblings can't suppress a risk-change notification for one because the other's
+    // level was last seen.
+    fun lastRiskLevel(childId: Int): String =
+        prefs.getString("${Constants.KEY_LAST_RISK_LEVEL}_$childId", "") ?: ""
+    fun setLastRiskLevel(childId: Int, v: String) =
+        prefs.edit().putString("${Constants.KEY_LAST_RISK_LEVEL}_$childId", v).apply()
 
     var fcmToken: String
         get() = prefs.getString(Constants.KEY_FCM_TOKEN, "") ?: ""

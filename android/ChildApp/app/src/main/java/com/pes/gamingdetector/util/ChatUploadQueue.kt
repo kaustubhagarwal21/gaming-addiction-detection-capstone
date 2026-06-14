@@ -61,14 +61,19 @@ object ChatUploadQueue {
                 if (offline) { remaining.put(o); continue }
                 if (now - o.optLong("ts") > MAX_AGE_MS) continue   // stale — drop
                 try {
-                    api.uploadChat(
+                    val resp = api.uploadChat(
                         o.getInt("sid"),
                         mapOf("message" to o.getString("msg"),
                               "source" to o.optString("src", "keyboard"))
                     )
-                    // Delivered (whatever the HTTP status): server has seen it — done.
+                    // Keep on a SERVER error (5xx) — the line wasn't saved, so retry it
+                    // later rather than silently dropping it. A 2xx means saved; a 4xx
+                    // (e.g. bad/closed session) will never succeed, so drop it. Stop the
+                    // pass on a 5xx so we don't hammer a struggling server.
+                    if (resp.code() >= 500) { offline = true; remaining.put(o) }
+                    // else (2xx/4xx): delivered or permanently rejected — drop from queue.
                 } catch (_: Exception) {
-                    offline = true              // still no network — keep this + the rest
+                    offline = true              // network failure — keep this + the rest
                     remaining.put(o)
                 }
             }

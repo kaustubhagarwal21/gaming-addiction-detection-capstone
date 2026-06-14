@@ -84,26 +84,35 @@ class AlertPollingService : Service() {
                     ?: emptyList()
                 if (newAlerts.isNotEmpty()) {
                     val worst = newAlerts.maxByOrNull { severityRank(it.severity) }!!
-                    sendAlertNotification(worst.message, worst.severity)
-                    prefs.setLastNotifiedAlertId(childUserId, newAlerts.last().id)
+                    // Only advance the high-water mark if the notification was actually
+                    // shown. If POST_NOTIFICATIONS is denied, leave it so the backlog
+                    // surfaces once the parent grants permission (instead of being lost).
+                    if (sendAlertNotification(worst.message, worst.severity)) {
+                        prefs.setLastNotifiedAlertId(childUserId, newAlerts.last().id)
+                    }
                 }
 
                 val statusResp = api.getChildStatus(childUserId)
                 if (statusResp.isSuccessful && statusResp.body()?.success == true) {
                     val status = statusResp.body()!!
                     val newRisk = status.currentRisk ?: ""
-                    if (newRisk.isNotEmpty() && newRisk != prefs.lastRiskLevel) {
-                        // Cooldown: when consecutive sessions score either side of a band
-                        // cut-off, the level genuinely flips back and forth — notifying
-                        // each flip would ping the parent every few minutes. One alert
-                        // per level per cooldown window is plenty.
+                    if (newRisk.isNotEmpty() && newRisk != prefs.lastRiskLevel(childUserId)) {
+                        val worthy = newRisk.lowercase() in listOf("at_risk", "addicted")
                         val now = System.currentTimeMillis()
-                        if (newRisk.lowercase() in listOf("at_risk", "addicted") &&
-                            now - (riskNotifiedAt[newRisk] ?: 0L) > RISK_RENOTIFY_MS) {
-                            riskNotifiedAt[newRisk] = now
-                            sendRiskChangeNotification(newRisk, status.currentGame)
+                        // Cooldown is per child+level: consecutive sessions either side of a
+                        // band cut-off flip the level back and forth, and one alert per level
+                        // per window is plenty. Keyed by child so siblings don't share it.
+                        val key = "$childUserId:$newRisk"
+                        if (worthy && now - (riskNotifiedAt[key] ?: 0L) > RISK_RENOTIFY_MS) {
+                            if (sendRiskChangeNotification(newRisk, status.currentGame)) {
+                                riskNotifiedAt[key] = now
+                                prefs.setLastRiskLevel(childUserId, newRisk)
+                            }
+                            // not shown (permission denied) → don't advance; retry next poll
+                        } else {
+                            // not notify-worthy, or within cooldown → consider it handled
+                            prefs.setLastRiskLevel(childUserId, newRisk)
                         }
-                        prefs.lastRiskLevel = newRisk
                     }
                 }
             }
@@ -117,7 +126,14 @@ class AlertPollingService : Service() {
         else     -> 0
     }
 
-    private fun sendAlertNotification(message: String, severity: String) {
+    /** Returns true only if the notification was actually posted (POST_NOTIFICATIONS
+     *  granted), so the caller knows whether to advance its "already notified" marker. */
+    private fun canNotify(): Boolean =
+        ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) ==
+            PackageManager.PERMISSION_GRANTED
+
+    private fun sendAlertNotification(message: String, severity: String): Boolean {
+        if (!canNotify()) return false
         val intent = PendingIntent.getActivity(
             this, 0,
             Intent(this, AlertsActivity::class.java),
@@ -132,14 +148,12 @@ class AlertPollingService : Service() {
             .setPriority(if (severity.lowercase() == "high") NotificationCompat.PRIORITY_HIGH
                 else NotificationCompat.PRIORITY_DEFAULT)
             .build()
-
-        if (ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS)
-                == PackageManager.PERMISSION_GRANTED) {
-            NotificationManagerCompat.from(this).notify(Constants.NOTIF_ALERT, notif)
-        }
+        NotificationManagerCompat.from(this).notify(Constants.NOTIF_ALERT, notif)
+        return true
     }
 
-    private fun sendRiskChangeNotification(risk: String, game: String?) {
+    private fun sendRiskChangeNotification(risk: String, game: String?): Boolean {
+        if (!canNotify()) return false
         val gameStr = if (game != null) " while playing $game" else ""
         val notif = NotificationCompat.Builder(this, Constants.CHANNEL_ALERTS)
             .setContentTitle("Risk Level Changed")
@@ -148,14 +162,8 @@ class AlertPollingService : Service() {
             .setAutoCancel(true)
             .setPriority(NotificationCompat.PRIORITY_HIGH)
             .build()
-
-        // Android 13+ requires POST_NOTIFICATIONS at runtime; without it notify() is a
-        // no-op (and lint-flagged). Guard inline so a denied permission never surfaces as
-        // an error. (On API < 33 checkSelfPermission returns granted automatically.)
-        if (ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS)
-                == PackageManager.PERMISSION_GRANTED) {
-            NotificationManagerCompat.from(this).notify(Constants.NOTIF_ALERT + 1, notif)
-        }
+        NotificationManagerCompat.from(this).notify(Constants.NOTIF_ALERT + 1, notif)
+        return true
     }
 
     override fun onDestroy() {

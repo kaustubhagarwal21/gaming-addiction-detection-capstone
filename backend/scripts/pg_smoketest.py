@@ -28,17 +28,19 @@ from app import app, USE_POSTGRES, get_db, hash_pin
 
 assert USE_POSTGRES, "DATABASE_URL is set but USE_POSTGRES is False — check the scheme"
 
-# Seed two siblings under one parent PIN directly, the same way seed_demo does.
+# Seed two siblings under one parent PIN + family code, the same way registration does.
+# (Parent login now requires the family code, so seed it here too.)
+FAM = 'PGFAM1'
 conn = get_db()
 c = conn.cursor()
 for uid, name, pin, page in [(101, 'PgKid', '4321', 12), (102, 'PgKid2', '8765', 9)]:
     c.execute("SELECT user_id FROM users WHERE user_id=?", (uid,))
     if not c.fetchone():
-        c.execute("INSERT INTO users (user_id, name, pin, parent_pin, pin_hash, parent_pin_hash, age) "
-                  "VALUES (?,?,'','',?,?,?)", (uid, name, hash_pin(pin), hash_pin('1111'), page))
+        c.execute("INSERT INTO users (user_id, name, pin, parent_pin, pin_hash, parent_pin_hash, age, family_code) "
+                  "VALUES (?,?,'','',?,?,?,?)", (uid, name, hash_pin(pin), hash_pin('1111'), page, FAM))
     else:
-        c.execute("UPDATE users SET pin_hash=?, parent_pin_hash=?, pin='', parent_pin='' WHERE user_id=?",
-                  (hash_pin(pin), hash_pin('1111'), uid))
+        c.execute("UPDATE users SET pin_hash=?, parent_pin_hash=?, pin='', parent_pin='', family_code=? WHERE user_id=?",
+                  (hash_pin(pin), hash_pin('1111'), FAM, uid))
 conn.commit()
 conn.close()
 
@@ -65,7 +67,7 @@ check("own dashboard -> 200", r.status_code == 200)
 r = cl.get('/api/dashboard/user?user_id=102', headers={'Authorization': f'Bearer {ctok}'})
 check("cross-user (101->102) -> 403", r.status_code == 403)
 
-r = cl.post('/api/user/login', json={'pin': '1111', 'role': 'parent'})
+r = cl.post('/api/user/login', json={'pin': '1111', 'role': 'parent', 'family_code': FAM})
 j = r.get_json()
 kids = sorted(ch['user_id'] for ch in (j or {}).get('children', []))
 check("parent sees both children", kids == [101, 102])
@@ -74,8 +76,12 @@ for u in (101, 102):
     rr = cl.get(f'/api/dashboard/parent?user_id={u}', headers={'Authorization': f'Bearer {ptok}'})
     check(f"parent -> child {u} -> 200", rr.status_code == 200)
 
-# A query that uses the SUBSTR-based hour/date logic, to prove it runs on PG too.
+# Child token must NOT reach a parent-only report (role lock), even for its own id.
 r = cl.get('/api/anomalies?user_id=101', headers={'Authorization': f'Bearer {ctok}'})
+check("child -> anomalies (parent-only) -> 403", r.status_code == 403)
+
+# A query that uses the SUBSTR-based hour/date logic, to prove it runs on PG too.
+r = cl.get('/api/anomalies?user_id=101', headers={'Authorization': f'Bearer {ptok}'})
 check("anomalies query (SUBSTR date logic) runs", r.status_code == 200)
 
 print(f"\n{'ALL PASSED' if not fails else 'FAILURES: ' + ', '.join(fails)}")

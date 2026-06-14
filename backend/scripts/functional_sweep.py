@@ -101,6 +101,21 @@ r = client.post('/api/parent/nudge', json={'user_id': child_a, 'message': 'hi'},
 check('CHILD token cannot send nudge -> 403', r.status_code == 403)
 r = client.post('/api/feedback', json={'user_id': child_a, 'label': 'accurate'}, headers=auth(tok_a))
 check('CHILD token cannot submit feedback -> 403', r.status_code == 403)
+# Parent-only READ endpoints must reject a child token for its own id too (the alerts
+# feed is the parent's; a child marking them read could hide tamper alerts).
+for label, path in [('alerts', f'/api/alerts?user_id={child_a}'),
+                    ('parent dashboard', f'/api/dashboard/parent?user_id={child_a}'),
+                    ('emotions', f'/api/dashboard/emotions?user_id={child_a}'),
+                    ('chat analysis', f'/api/dashboard/chat_analysis?user_id={child_a}'),
+                    ('feedback summary', f'/api/feedback/summary?user_id={child_a}'),
+                    ('anomalies', f'/api/anomalies?user_id={child_a}')]:
+    r = client.get(path, headers=auth(tok_a))
+    check(f'CHILD token blocked from {label} -> 403', r.status_code == 403)
+r = client.post('/api/alerts/mark_read', json={'alert_ids': [1]}, headers=auth(tok_a))
+check('CHILD token cannot mark alerts read -> 403', r.status_code == 403)
+# A child CAN still read its own dashboards (not parent-gated).
+r = client.get(f'/api/dashboard/user?user_id={child_a}', headers=auth(tok_a))
+check('child reads own user dashboard -> 200', r.status_code == 200)
 r = client.post('/api/verify_parent_pin', json={'user_id': child_a, 'pin': '9876'}, headers=auth(tok_a))
 check('verify parent PIN (right)', r.status_code == 200 and r.get_json()['valid'] is True)
 r = client.post('/api/verify_parent_pin', json={'user_id': child_a, 'pin': '0000'}, headers=auth(tok_a))

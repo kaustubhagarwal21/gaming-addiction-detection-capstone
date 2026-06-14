@@ -410,8 +410,8 @@ class ParentalDashboardActivity : AppCompatActivity() {
             .setView(editText)
             .setPositiveButton("Set Limit") { _, _ ->
                 val hours = editText.text.toString().toDoubleOrNull()
-                if (hours == null || hours < 0 || hours > 24) {
-                    Toast.makeText(this, "Enter a valid number between 0 and 24", Toast.LENGTH_SHORT).show()
+                if (hours == null || hours < 0.5 || hours > 24) {
+                    Toast.makeText(this, "Enter a number between 0.5 and 24 hours", Toast.LENGTH_SHORT).show()
                     return@setPositiveButton
                 }
                 lifecycleScope.launch {

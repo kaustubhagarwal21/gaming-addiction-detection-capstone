@@ -11,6 +11,10 @@ class BootReceiver : BroadcastReceiver() {
         if (intent.action != Intent.ACTION_BOOT_COMPLETED) return
         val prefs = PrefsManager(context)
         if (!prefs.isLoggedIn()) return
+        // Don't resume monitoring on boot unless consent was given — otherwise a reboot
+        // silently restarts capture even when the parent declined (or never completed)
+        // the consent step. HomeActivity re-requests consent on next open before starting.
+        if (!prefs.consentDone) return
 
         // Always restart passive monitor (screen events + auto-session detection)
         ContextCompat.startForegroundService(

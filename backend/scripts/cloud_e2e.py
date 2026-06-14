@@ -56,6 +56,7 @@ for label, path in [
     ('Emotion Insights', '/api/dashboard/emotions?user_id=1'),
     ('Chat Analysis',    '/api/dashboard/chat_analysis?user_id=1'),
     ('Child status',     '/api/child/status?user_id=1'),
+    ('Anomalies',        '/api/anomalies?user_id=1'),
 ]:
     code, j = call('GET', path, token=ptok)
     check(label, code == 200)
@@ -76,7 +77,6 @@ for label, path in [
     ('Sessions',                   '/api/sessions?user_id=1&limit=10'),
     ('Streak',                     '/api/child/streak?user_id=1'),
     ('Time limit',                 '/api/child/get_limit?user_id=1'),
-    ('Anomalies',                  '/api/anomalies?user_id=1'),
     ('Consent status',             '/api/consent?user_id=1'),
 ]:
     code, j = call('GET', path, token=ctok)
