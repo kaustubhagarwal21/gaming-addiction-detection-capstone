@@ -30,6 +30,12 @@
 \setlength{\parindent}{0pt}
 \setlength{\emergencystretch}{3em}  % last-resort stretch so lines don't overflow the right margin
 
+% Compact, build-safe capability marks for the comparison table (avoid amssymb /
+% \part clash). \capY = yes, \capP = partial, \capN = no.
+\newcommand{\capY}{\textcolor{green!50!black}{\textbf{Y}}}
+\newcommand{\capP}{\textcolor{orange!90!black}{\textbf{P}}}
+\newcommand{\capN}{\textcolor{black!45}{\textbf{--}}}
+
 \lstset{
   basicstyle=\ttfamily\footnotesize,
   breaklines=true,
@@ -173,6 +179,51 @@ surveillance~\cite{iftikhar2021}; commercial tools such as Bark~\cite{bark2025} 
 demand but are largely screen-time/keyword based. We position our system as
 \emph{screening and guidance, not punishment}, with privacy-conscious handling and
 explainable output.
+
+\textbf{How our system differs.} Existing solutions fall into three groups, each with a
+structural gap our platform closes. \emph{Screen-time / parental-control tools} (e.g.\
+Google Family Link, built-in Digital Wellbeing) report \emph{how long} a phone is used
+but nothing about \emph{how} the child plays. \emph{Keyword/heuristic monitors} (e.g.\
+Bark~\cite{bark2025}) scan text for flagged words but model neither behavioural play
+patterns nor chat inside canvas/engine games. \emph{Academic gaming-disorder
+studies}~\cite{huang2024,jiang2024,strojny2024} demonstrate predictive signal but are
+typically single-modality, offline, and evaluated on collected datasets rather than
+shipped as a live, privacy-engineered system. Our contribution is the \emph{combination,
+actually deployed}: (i)~a custom-keyboard (IME) path that captures the child's typed
+in-game chat even in canvas games such as Roblox that the accessibility API cannot read,
+without screen OCR; (ii)~an availability-weighted fusion of behaviour, chat and voice
+into a single \emph{calibrated, SHAP-explainable} risk band; (iii)~a production-engineered,
+privacy-conscious two-app + cloud system with tamper- and capture-permission health
+monitoring and two-way nudges (guidance, not just alerts); and (iv)~an honest,
+realistic-stream evaluation. The novelty lies in the deployed system and the canvas-game
+capture technique --- \emph{not} in the individual classical models, which we
+deliberately keep lightweight and explainable. Table~\ref{tab:compare} summarises the
+comparison.
+
+\begin{table}[ht]
+\centering
+\small
+\caption{Capability comparison with existing approaches
+(\capY~= yes,\ \capP~= partial,\ \capN~= no).}
+\label{tab:compare}
+\begin{tabularx}{\linewidth}{@{}X *{4}{>{\centering\arraybackslash}p{1.85cm}}@{}}
+\toprule
+\textbf{Capability} & \textbf{Screen-time tools} & \textbf{Keyword monitors (Bark)} &
+\textbf{Academic prototypes} & \textbf{Ours} \\
+\midrule
+Behavioural play-pattern signals (beyond duration)      & \capN & \capN & \capY & \capY \\
+In-game chat capture                                    & \capN & \capY & \capP & \capY \\
+Chat capture in canvas/engine games (Roblox), no OCR    & \capN & \capN & \capN & \capY \\
+Voice-emotion signal                                    & \capN & \capN & \capP & \capY \\
+Multimodal fusion into one risk band                    & \capN & \capN & \capP & \capY \\
+Calibrated, SHAP-explainable output                     & \capN & \capN & \capP & \capY \\
+Deployed end-to-end (apps + cloud)                      & \capY & \capY & \capN & \capY \\
+Two-way guidance (nudges), not just alerts              & \capP & \capP & \capN & \capY \\
+Tamper / capture-permission health awareness            & \capP & \capP & \capN & \capY \\
+Honest realistic-stream evaluation                      & \capN & \capN & \capP & \capY \\
+\bottomrule
+\end{tabularx}
+\end{table}
 
 % =====================================================================
 \section{System Architecture with Explanation}
