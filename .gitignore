@@ -75,3 +75,21 @@ android/*/keystore.properties
 *.fls
 *.fdb_latexmk
 docs/PROJECT_PAPER.pdf
+
+# Downloaded ML corpora (fetched by the training/eval scripts — not repo content;
+# RAVDESS alone is ~600 MB extracted, and datasets carry their own licences)
+data/voice/
+data/conda/
+
+# Downloaded survey data (CC-BY 4.0; fetched by ml/analyze_survey.py instructions)
+data/survey/
+data/chat_extra/
+docs/figures/chat_scores_cache.npz
+
+# LaTeX build artifacts
+docs/*.aux
+docs/*.log
+docs/*.out
+docs/*.toc
+docs/*.fls
+docs/*.fdb_latexmk

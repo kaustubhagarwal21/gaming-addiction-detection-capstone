@@ -1,0 +1,41 @@
+# Weekly score-distribution drift check against the PRODUCTION database.
+# Turns ml/monitor_drift.py from "monitorable" into "monitored": PSI/KS over the
+# served prediction scores, red run (exit 2) when any channel drifts past PSI 0.2.
+#
+# Needs the repo secret DATABASE_URL — the Render Postgres EXTERNAL connection
+# string. Without it the job reports itself as not configured and exits green
+# (so forks and pre-deploy checkouts don't fail).
+name: Drift monitor
+
+on:
+  schedule:
+    - cron: '0 3 * * 1'   # Mondays 03:00 UTC
+  workflow_dispatch:
+
+jobs:
+  drift:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install dependencies
+        run: pip install numpy scipy psycopg2-binary
+      - name: Compare recent vs reference score distributions
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+        run: |
+          if [ -z "$DATABASE_URL" ]; then
+            echo "::warning::DATABASE_URL secret not set — drift monitor is not configured; skipping."
+            exit 0
+          fi
+          python ml/monitor_drift.py --recent-days 7 --reference-days 28 \
+            --json drift_report.json --fail-on-drift
+      - name: Upload report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: drift-report
+          path: drift_report.json
+          if-no-files-found: ignore
