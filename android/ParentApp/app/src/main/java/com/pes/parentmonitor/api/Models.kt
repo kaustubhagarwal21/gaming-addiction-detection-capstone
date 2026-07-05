@@ -223,7 +223,30 @@ data class ModelCard(
     @SerializedName("thresholds_note") val thresholdsNote: String?,
     @SerializedName("data_note") val dataNote: String?,
     @SerializedName("evaluation_note") val evaluationNote: String?,
+    // In-domain (real gaming chat) evaluation + real-audio voice metrics — the
+    // "why trust this" evidence surfaced to the parent.
+    @SerializedName("chat_metrics_gaming") val chatMetricsGaming: ChatGamingMetrics?,
+    @SerializedName("voice_metrics") val voiceMetrics: VoiceMetrics?,
     val disclaimer: String?
+)
+
+data class ChatGamingMetrics(
+    val rows: Int?,
+    @SerializedName("toxic_base_rate") val toxicBaseRate: Double?,
+    @SerializedName("pr_auc") val prAuc: Double?,
+    @SerializedName("at_alert_threshold") val atAlertThreshold: ThresholdMetrics?
+)
+
+data class ThresholdMetrics(
+    val threshold: Double?,
+    @SerializedName("precision_toxic") val precisionToxic: Double?,
+    @SerializedName("recall_toxic") val recallToxic: Double?
+)
+
+data class VoiceMetrics(
+    val model: String?,
+    val accuracy: Double?,
+    @SerializedName("macro_f1") val macroF1: Double?
 )
 
 data class Calibration(

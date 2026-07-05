@@ -18,8 +18,10 @@ class GameNotificationService : NotificationListenerService() {
         val prefs = PrefsManager(this)
         if (!prefs.isLoggedIn()) return
 
+        // getCharSequence, not getString: many apps post the title as a SpannableString,
+        // for which getString() returns null — silently dropping every title.
         val title = sbn.notification.extras
-            .getString(android.app.Notification.EXTRA_TITLE) ?: ""
+            .getCharSequence(android.app.Notification.EXTRA_TITLE)?.toString() ?: ""
         val gameName = GameDetector.displayName(this, pkg)
 
         scope.launch {

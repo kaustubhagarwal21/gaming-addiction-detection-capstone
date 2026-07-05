@@ -26,8 +26,6 @@ import org.vosk.Recognizer
 import java.io.DataOutputStream
 import java.io.File
 import java.io.FileOutputStream
-import java.nio.ByteBuffer
-import java.nio.ByteOrder
 import java.util.zip.ZipInputStream
 
 class VoiceRecorderService : Service() {
@@ -128,7 +126,14 @@ class VoiceRecorderService : Service() {
         try {
             while (currentCoroutineContext().isActive) {
                 val read = recorder.read(chunkBuffer, 0, chunkBuffer.size)
-                if (read <= 0) continue
+                if (read < 0) {
+                    // Persistent error (ERROR_INVALID_OPERATION etc. — mic revoked or
+                    // claimed by another app mid-session). `continue` here hot-spun the
+                    // loop at 100% CPU until session end; stop capturing instead.
+                    Log.w("VoiceRecorder", "AudioRecord.read error $read — stopping voice capture")
+                    break
+                }
+                if (read == 0) continue
 
                 // Feed to Vosk recognizer for real-time STT
                 if (recognizer != null) {
@@ -170,11 +175,23 @@ class VoiceRecorderService : Service() {
         }
     }
 
+    companion object {
+        // Bump when assets/vosk_model.zip changes. Without this marker an app UPDATE
+        // kept serving the previously-extracted model forever (extraction only ran
+        // when the dir was missing), silently ignoring a bundled model swap — e.g.
+        // the en-us -> Indian-English (en-in) change for Hinglish-speaking users.
+        private const val VOSK_MODEL_VERSION = "small-en-in-0.4"
+    }
+
     private fun loadVoskModel(): Model? {
         return try {
             val modelDir = File(filesDir, "vosk_model")
+            val marker = File(modelDir, ".model_version")
+            val stale = !marker.exists() || marker.readText().trim() != VOSK_MODEL_VERSION
+            if (stale && modelDir.exists()) modelDir.deleteRecursively()
             if (!modelDir.exists() || modelDir.list().isNullOrEmpty()) {
                 extractModelZip(modelDir)
+                if (modelDir.exists()) marker.writeText(VOSK_MODEL_VERSION)
             }
             if (modelDir.exists() && !modelDir.list().isNullOrEmpty()) {
                 Model(modelDir.absolutePath)
@@ -239,22 +256,8 @@ class VoiceRecorderService : Service() {
     }
 
     private fun writePcmToWav(pcmData: ByteArray, wav: File) {
-        // All WAV header fields are Little-Endian
-        val buf = ByteBuffer.allocate(44 + pcmData.size).order(ByteOrder.LITTLE_ENDIAN)
-        buf.put("RIFF".toByteArray())
-        buf.putInt(36 + pcmData.size)   // chunk size
-        buf.put("WAVEfmt ".toByteArray())
-        buf.putInt(16)                  // subchunk1 size
-        buf.putShort(1)                 // PCM format
-        buf.putShort(1)                 // mono
-        buf.putInt(sampleRate)
-        buf.putInt(sampleRate * 2)      // byte rate = sampleRate * channels * bitsPerSample/8
-        buf.putShort(2)                 // block align = channels * bitsPerSample/8
-        buf.putShort(16)                // bits per sample
-        buf.put("data".toByteArray())
-        buf.putInt(pcmData.size)
-        buf.put(pcmData)
-        FileOutputStream(wav).use { it.write(buf.array()) }
+        // Header maths lives in WavUtil (pure, JVM-unit-tested).
+        FileOutputStream(wav).use { it.write(com.pes.gamingdetector.util.WavUtil.pcmToWav(pcmData, sampleRate)) }
     }
 
     override fun onDestroy() {

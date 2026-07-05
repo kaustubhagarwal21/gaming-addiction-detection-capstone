@@ -12,6 +12,7 @@ import androidx.core.content.ContextCompat
 import com.pes.parentmonitor.R
 import com.pes.parentmonitor.activities.AlertsActivity
 import com.pes.parentmonitor.api.ApiClient
+import com.pes.parentmonitor.util.AlertTriage
 import com.pes.parentmonitor.util.Constants
 import com.pes.parentmonitor.util.PrefsManager
 import kotlinx.coroutines.*
@@ -26,8 +27,8 @@ class AlertPollingService : Service() {
     // only ONE poll loop must run — duplicates would double every notification.
     @Volatile private var pollStarted = false
     // Last time each risk level was notified (in-memory; resets with the service).
+    // Which alerts/levels notify, and when, is decided by AlertTriage (pure, unit-tested).
     private val riskNotifiedAt = HashMap<String, Long>()
-    private val RISK_RENOTIFY_MS = 30 * 60 * 1000L
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         prefs = PrefsManager(this)
@@ -78,12 +79,9 @@ class AlertPollingService : Service() {
                 // mark suppressed a sibling's older-id alerts after viewing another child
                 // — the mark is now kept per child.
                 val lastId  = prefs.lastNotifiedAlertId(childUserId)
-                val newAlerts = body.alerts
-                    ?.filter { !it.read && it.id > lastId }
-                    ?.sortedBy { it.id }
-                    ?: emptyList()
+                val newAlerts = AlertTriage.newAlertsSince(body.alerts, lastId)
                 if (newAlerts.isNotEmpty()) {
-                    val worst = newAlerts.maxByOrNull { severityRank(it.severity) }!!
+                    val worst = AlertTriage.worstOf(newAlerts)!!
                     // Only advance the high-water mark if the notification was actually
                     // shown. If POST_NOTIFICATIONS is denied, leave it so the backlog
                     // surfaces once the parent grants permission (instead of being lost).
@@ -97,13 +95,11 @@ class AlertPollingService : Service() {
                     val status = statusResp.body()!!
                     val newRisk = status.currentRisk ?: ""
                     if (newRisk.isNotEmpty() && newRisk != prefs.lastRiskLevel(childUserId)) {
-                        val worthy = newRisk.lowercase() in listOf("at_risk", "addicted")
+                        val worthy = AlertTriage.isNotifyWorthyRisk(newRisk)
                         val now = System.currentTimeMillis()
-                        // Cooldown is per child+level: consecutive sessions either side of a
-                        // band cut-off flip the level back and forth, and one alert per level
-                        // per window is plenty. Keyed by child so siblings don't share it.
+                        // Cooldown is per child+level: keyed by child so siblings don't share it.
                         val key = "$childUserId:$newRisk"
-                        if (worthy && now - (riskNotifiedAt[key] ?: 0L) > RISK_RENOTIFY_MS) {
+                        if (worthy && AlertTriage.riskCooldownPassed(riskNotifiedAt[key] ?: 0L, now)) {
                             if (sendRiskChangeNotification(newRisk, status.currentGame)) {
                                 riskNotifiedAt[key] = now
                                 prefs.setLastRiskLevel(childUserId, newRisk)
@@ -117,13 +113,6 @@ class AlertPollingService : Service() {
                 }
             }
         } catch (_: Exception) {}
-    }
-
-    private fun severityRank(s: String): Int = when (s.lowercase()) {
-        "high"   -> 3
-        "medium" -> 2
-        "low"    -> 1
-        else     -> 0
     }
 
     /** Returns true only if the notification was actually posted (POST_NOTIFICATIONS
@@ -148,8 +137,15 @@ class AlertPollingService : Service() {
             .setPriority(if (severity.lowercase() == "high") NotificationCompat.PRIORITY_HIGH
                 else NotificationCompat.PRIORITY_DEFAULT)
             .build()
-        NotificationManagerCompat.from(this).notify(Constants.NOTIF_ALERT, notif)
-        return true
+        // try/catch as well as the canNotify() pre-check: the permission can be revoked
+        // between check and notify, and a false return correctly leaves the high-water
+        // mark unadvanced so the alert is retried on a later poll.
+        return try {
+            NotificationManagerCompat.from(this).notify(Constants.NOTIF_ALERT, notif)
+            true
+        } catch (_: SecurityException) {
+            false
+        }
     }
 
     private fun sendRiskChangeNotification(risk: String, game: String?): Boolean {
@@ -162,8 +158,12 @@ class AlertPollingService : Service() {
             .setAutoCancel(true)
             .setPriority(NotificationCompat.PRIORITY_HIGH)
             .build()
-        NotificationManagerCompat.from(this).notify(Constants.NOTIF_ALERT + 1, notif)
-        return true
+        return try {
+            NotificationManagerCompat.from(this).notify(Constants.NOTIF_ALERT + 1, notif)
+            true
+        } catch (_: SecurityException) {   // revoked between check and notify
+            false
+        }
     }
 
     override fun onDestroy() {

@@ -30,8 +30,8 @@ import org.json.JSONObject
  */
 object ChatUploadQueue {
     private const val KEY = "pending_chat_queue"
-    private const val MAX_LINES = 50
-    private const val MAX_AGE_MS = 24 * 60 * 60 * 1000L   // a day-old line is stale — drop
+    // Decision rules (bounds, staleness, retry vs drop, removal matching) live in
+    // ChatQueueLogic — pure and JVM-unit-tested; this object owns storage and I/O.
 
     private val lock = Any()
     @Volatile private var flushing = false
@@ -43,8 +43,8 @@ object ChatUploadQueue {
         if (sessionId == -1 || message.isBlank()) return
         val prefs = SecurePrefs.get(context, Constants.PREFS_NAME)
         synchronized(lock) {
-            val arr = readArr(prefs)
-            arr.put(
+            val arr = ChatQueueLogic.boundedAppend(
+                readArr(prefs),
                 JSONObject()
                     .put("id", java.util.UUID.randomUUID().toString())  // stable handle for removal
                     .put("sid", sessionId)
@@ -52,9 +52,17 @@ object ChatUploadQueue {
                     .put("src", source)
                     .put("ts", System.currentTimeMillis())
             )
-            while (arr.length() > MAX_LINES) arr.remove(0)   // bounded: drop oldest
             prefs.edit().putString(KEY, arr.toString()).apply()
         }
+        // Durable retry: fires when connectivity returns even if the monitoring service
+        // (whose poll loop is the low-latency flush path) has since been killed.
+        ChatFlushWorker.schedule(context)
+    }
+
+    /** Lines still waiting on disk — lets the flush worker decide success vs retry. */
+    fun pendingCount(context: android.content.Context): Int {
+        val prefs = SecurePrefs.get(context, Constants.PREFS_NAME)
+        synchronized(lock) { return readArr(prefs).length() }
     }
 
     /** Try to deliver everything pending. Cheap to call often: no-op when empty or a
@@ -78,7 +86,7 @@ object ChatUploadQueue {
             val now = System.currentTimeMillis()
             for (i in 0 until snapshot.length()) {
                 val o = snapshot.getJSONObject(i)
-                if (now - o.optLong("ts") > MAX_AGE_MS) {     // stale — drop without sending
+                if (ChatQueueLogic.isStale(o.optLong("ts"), now)) {  // stale — drop without sending
                     removeEntry(prefs, o)
                     continue
                 }
@@ -88,12 +96,11 @@ object ChatUploadQueue {
                         mapOf("message" to o.getString("msg"),
                               "source" to o.optString("src", "keyboard"))
                     )
-                    val code = resp.code()
                     // Keep on a server error (5xx) or a transient client error (408 timeout,
                     // 429 rate-limited) — the line wasn't saved. Stop the pass so we don't
                     // hammer a struggling/throttling server and so order is preserved. Any
                     // other 4xx is a permanent reject (e.g. closed session) → drop it.
-                    if (code in 500..599 || code == 408 || code == 429) break
+                    if (ChatQueueLogic.isTransientFailure(resp.code())) break
                     removeEntry(prefs, o)                     // 2xx saved, or 4xx permanent → done
                 } catch (_: Exception) {
                     break                                     // network failure — keep this + the rest
@@ -108,17 +115,7 @@ object ChatUploadQueue {
      *  content for legacy entries written before ids existed). Re-reads under the lock so
      *  lines enqueued during the flush are preserved. */
     private fun removeEntry(prefs: SharedPreferences, target: JSONObject) = synchronized(lock) {
-        val cur  = readArr(prefs)
-        val tid  = target.optString("id")
-        val kept = JSONArray()
-        var removed = false
-        for (i in 0 until cur.length()) {
-            val o = cur.getJSONObject(i)
-            val match = if (tid.isNotEmpty()) o.optString("id") == tid
-                        else o.toString() == target.toString()
-            if (match && !removed) removed = true            // skip the first match (drop it)
-            else kept.put(o)
-        }
+        val kept = ChatQueueLogic.removeFirstMatch(readArr(prefs), target)
         prefs.edit().putString(KEY, kept.toString()).apply()
     }
 }

@@ -110,6 +110,24 @@ class SettingsActivity : AppCompatActivity() {
                 "(Brier ${"%.3f".format(cal.brierUncalibrated ?: 0.0)} → " +
                 "${"%.3f".format(cal.brierCalibrated ?: 0.0)}, lower = better).\n")
         }
+
+        // "Why trust this" — evidence measured on REAL data, in plain language.
+        mc.chatMetricsGaming?.let { g ->
+            g.atAlertThreshold?.let { t ->
+                sb.append("\nChat alerts, tested on real in-game chat " +
+                    "(${g.rows ?: 0} real messages): when a single message is flagged, " +
+                    "it's right ${pct(t.precisionToxic)} of the time. Per-message alerts " +
+                    "catch ${pct(t.recallToxic)} of toxic lines — repeated toxic language " +
+                    "in one session raises an extra pattern alert on top.\n")
+            }
+        }
+        mc.voiceMetrics?.let { v ->
+            if ((v.model ?: "").contains("REAL", ignoreCase = true)) {
+                sb.append("\nVoice emotion, tested on real recorded speech: " +
+                    "${pct(v.accuracy)} accuracy across four emotions (guessing would be " +
+                    "25%). It's a supporting signal and carries the lowest weight.\n")
+            }
+        }
         mc.thresholdsNote?.let { sb.append("\n$it\n") }
         mc.dataNote?.let { sb.append("\n$it") }
         mc.disclaimer?.let { sb.append("\n\n$it") }
