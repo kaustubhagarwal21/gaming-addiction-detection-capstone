@@ -1,81 +1,38 @@
 # Model Validation Plan — from synthetic to real-data credibility
 
-> **Why this doc exists.** The system is engineered to a production standard, but the three
-> ML models are trained on **synthetic / illustrative** data (stated honestly in the paper).
-> That is the single biggest limitation a panel or reviewer can raise. This plan is the
-> concrete, costed path to replace "trained on synthetic data" with **"validated against
-> real, labelled data — honestly reported."** Done even partially, it is the change that
-> moves the capstone from *methodologically sound* to *empirically validated*.
+> **STATUS (2026-07-05): the public-dataset tier of this plan has been EXECUTED** — and
+> went further than planned (retraining, not just evaluation). What remains open is the
+> human-study tier (IGDS9-SF survey), whose full recipe below is still current.
 >
-> It expands, with datasets/links/how-to, the directions summarised in the paper's
-> **Future Work** (Tier 1/2/3). Nothing here changes the deployed system; it is an
-> evaluation + (optional) retraining programme.
+> Executed and now documented in the paper (§4.2, §6, ablations) — do not redo:
+> - **Chat**: trained on general corpus + **CONDA** train split + **Davidson** offensive-
+>   language tweets; evaluated on CONDA's held-out validation split. PR-AUC 0.834; alert
+>   precision 0.950 at the re-derived threshold **0.90**. Scripts: `ml/eval_chat_conda.py`
+>   (eval + retrain), `ml/ablation_studies.py`.
+> - **Voice**: trained on **RAVDESS + CREMA-D + EMO-DB + URDU** (9,817 clips, 163 speakers,
+>   3 languages) through the serving extractor; **speaker-independent** held-out accuracy
+>   0.574 (the honest protocol — random splits inflated it by ~9 points). Script:
+>   `ml/train_voice_real.py`. TESS was assessed and skipped (2 elderly speakers,
+>   credential-walled mirrors).
+> - **Label-side stepping stone**: the open **IGDS9-SF Latin-America dataset (n=11,191)**
+>   grounds the severity base rate (6.4% ≥36) and validates the chat-channel premise
+>   (toxic-speech involvement ↔ higher IGD severity, r=+0.156). Script: `ml/analyze_igds.py`.
+> - **Behaviour distribution grounding**: play-time bands + peer percentiles from the
+>   **Gamers & Anxiety** survey (n=13,464). Script: `ml/analyze_survey.py`.
+>
+> **What this document is now for:** the remaining piece — construct-validating the
+> behaviour model against IGDS9-SF collected from *real users of this system* (or a
+> survey population). That recipe follows, unchanged and still accurate.
 
 ---
 
-## The principle
+## The remaining principle
 
-Each of the 3 models needs **at least one evaluation on real, labelled data**:
-
-| Model | Real-data label source | Difficulty |
+| Model | Real-data label source | Status |
 |---|---|---|
-| Chat toxicity (TF-IDF + LogReg) | Public toxicity datasets | **Easy** — download & evaluate |
-| Voice emotion (GradientBoosting) | Public speech-emotion datasets | **Easy** — download & evaluate |
-| Behaviour / addiction (RandomForest) | A **validated psychometric instrument** (IGDS9-SF) collected from real users | **Medium** — needs a small survey/study |
-
-Do them in that order: the first two need **no recruitment** and can be done in days; the
-third is the headline and needs a small human study (a Google Form is the practical way).
-
----
-
-## Tier 1 — Validate chat + voice on PUBLIC datasets (no recruitment, ~1–2 weeks)
-
-No human subjects, no ethics overhead. Download labelled data → run the **existing**
-trained model → report honest metrics next to the synthetic ones.
-
-### 1A. Chat toxicity model
-
-**Datasets (pick one or both):**
-- **Jigsaw Toxic Comment Classification Challenge** (large, standard benchmark) —
-  <https://www.kaggle.com/c/jigsaw-toxic-comment-classification-challenge/data>
-- **CONDA** — in-game (gaming chat) toxicity, domain-matched, the better fit —
-  <https://github.com/usydnlp/CONDA>
-
-**How to:**
-1. Download the dataset CSV(s).
-2. Write `backend/scripts/eval_chat_real.py`: load comments + their toxic/non-toxic labels →
-   run them through the **same** TF-IDF + LogisticRegression pipeline the server uses →
-   collect predictions.
-3. Compute and print: **precision, recall, F1, ROC-AUC**, and a **confusion matrix** at the
-   production threshold (0.75).
-4. (Optional) sweep the threshold and report a precision–recall curve to justify 0.75.
-
-**Report:** add a "real-data" column to the chat results table in the paper / model card,
-beside the synthetic numbers. If real-data F1 is lower (it usually is), **say so** — an
-honestly reported drop is more credible than a perfect synthetic score.
-
-### 1B. Voice emotion model
-
-**Datasets (free, widely cited):**
-- **RAVDESS** — 24 actors, 8 emotions — <https://zenodo.org/record/1188976>
-  (Kaggle mirror: <https://www.kaggle.com/datasets/uwrfkaggler/ravdess-emotional-speech-audio>)
-- **CREMA-D** — 91 actors, more naturalistic — <https://github.com/CheyneyComputerScience/CREMA-D>
-  (Kaggle: <https://www.kaggle.com/datasets/ejlok1/cremad>)
-- **TESS** — clean studio set, easy starter — <https://www.kaggle.com/datasets/ejlok1/toronto-emotional-speech-set-tess>
-
-**How to:**
-1. Download a dataset (start with RAVDESS or TESS — smallest).
-2. Write `backend/scripts/eval_voice_real.py`: extract the **same acoustic features** the
-   server pipeline uses (apply the existing RMS silence floor) → run the GradientBoosting
-   model → collect predictions. Map the dataset's emotion labels onto the model's classes
-   (angry / frustrated / excited / neutral) — document the mapping.
-3. Compute: **per-class precision/recall, macro-F1, confusion matrix** on real human speech.
-
-**Report:** same as 1A — real metrics alongside the synthetic `0.9925`, with the honest
-note that the synthetic figure was internal-validity only.
-
-> **Effort/payoff:** ~1–2 weeks, low risk. Alone it moves **2 of 3 models** from synthetic
-> to real-validated — the highest return for the time. Start here.
+| Chat toxicity | Public toxicity + gaming corpora | ✅ **done** (trained + held-out evaluated) |
+| Voice emotion | Public speech-emotion corpora | ✅ **done** (4 corpora, speaker-independent) |
+| Behaviour / addiction | **IGDS9-SF** collected from real users | ⏳ **open** — needs a small survey/study |
 
 ---
 
@@ -211,16 +168,19 @@ synthetic data — this is the actual ~9.5 move.
 ---
 
 ## How this maps to the codebase
-- Honest-metrics + model-card infrastructure already exists (`/api/model_card`), so each eval
-  script just loads real data, runs the trained model, computes metrics, and the numbers slot
-  into the model card / paper evaluation tables.
-- Suggested new scripts: `eval_chat_real.py`, `eval_voice_real.py`, `eval_behavior_survey.py`
-  under `backend/scripts/`.
-- Cross-reference: paper **Future Work** (Tier 1 voice/RAVDESS; Tier 3 clinical validation).
+- Honest-metrics + model-card infrastructure already exists (`/api/model_card`); the executed
+  tier's numbers already flow through it (`chat_metrics_gaming`, real-audio `voice_metrics`).
+- Delivered scripts (see TESTING.md's table): `ml/eval_chat_conda.py`, `ml/train_voice_real.py`,
+  `ml/analyze_igds.py`, `ml/analyze_survey.py`, `ml/analyze_reflections.py` (risk vs next-day
+  self-reports — the weak-label check that activates as soon as a pilot has history),
+  `ml/tune_from_feedback.py` and `ml/monitor_drift.py` (the pilot instruments).
+- Still to write when survey data arrives: `eval_behavior_survey.py` (IGDS scoring →
+  correlation → AUC/sensitivity/specificity → calibration in one pass).
+- Cross-reference: paper **Future Work** (data-dependent tier + clinical validation).
 
-## Suggested sequencing (if the deadline is tight)
-1. **Tier 1 now** — highest ROI, no recruitment; banks 2/3 models on real data within a week.
-2. **Start the ethics check + build the Google Form in parallel** — the data-collection window
+## Suggested sequencing (updated)
+1. ~~Public-dataset tier~~ — **done** (see status block above).
+2. **Start the ethics check + build the Google Form now** — the data-collection window
    is the long pole, so kick it off immediately.
-3. **Tier 2 analysis** once ~50–100 responses are in; add the real-data validation (and,
-   ideally, a retrained behaviour model) to the paper/model card.
+3. **Survey analysis** once ~50–100 responses are in; add the construct-validity numbers
+   (and, ideally, a behaviour model retrained on real labels) to the paper/model card.

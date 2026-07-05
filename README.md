@@ -108,8 +108,11 @@ for an emulator, or your LAN IP for a real device).
 ### Tests
 ```bash
 cd backend
-pytest tests/ -v           # 35 tests, isolated DB — no real data needed
+pytest tests/ -v           # 54 tests, isolated DB — no real data needed
 ```
+CI runs this suite + Android Lint on every push (`.github/workflows/ci.yml`).
+ML training/eval scripts (retrain, real-audio voice, in-domain chat eval, feedback
+threshold tuner, reflections analysis) are documented in `TESTING.md`.
 
 ---
 

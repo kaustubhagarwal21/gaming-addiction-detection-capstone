@@ -135,17 +135,24 @@ as a tamper event, not just a passive badge.
 
 ## 5. Honest talking points (for Q&A)
 
-- **Architecture:** multimodal 3-model ensemble — behavioral telemetry (20 features,
-  server-computed from session history), chat toxicity (TF-IDF + Logistic Regression),
-  and voice emotion (GradientBoosting on MFCC + prosodic features, fused with lexical
+- **Architecture:** multimodal 3-model ensemble — behavioral telemetry (10 objective
+  features, server-computed from session history; 10 psychometric proxies serve as
+  UI-level explanations), chat toxicity (calibrated Logistic Regression on
+  word+char_wb TF-IDF, trained on real gaming-domain corpora — CONDA + Davidson —
+  with **0.95 alert precision on held-out real gaming chat**), and voice emotion
+  (HistGradientBoosting on 36 acoustic features, trained on 4 real speech corpora /
+  163 speakers / 3 languages, **speaker-independent** evaluation; fused with lexical
   valence from on-device Vosk transcription).
 - **Ensemble weighting (40/30/30):** a clinically-motivated *prior* — behavior dominant
-  per DSM-5 IGD / ICD-11 Gaming Disorder; weights re-normalize by data availability;
-  to be calibrated against labeled outcomes via the planned active-learning loop.
-- **Known limitations (state these proactively):** models are demo-grade pending real
-  labeled data; the voice model is adult-trained so it leans toward arousal detection;
-  the weights are priors, not fitted. These are exactly what the active-learning /
-  retraining roadmap addresses.
+  per DSM-5 IGD / ICD-11 Gaming Disorder; weights re-normalize by data availability.
+  The chat channel's premise is empirically supported (toxic-speech involvement ↔
+  higher IGDS9-SF severity, r=+0.156, n=11,191); weight *fitting* awaits real labels
+  via the feedback loop.
+- **Known limitations (state these proactively):** the behaviour model's *labels* are
+  synthetic screening priors (its play-time distributions are survey-grounded); the
+  voice corpora are acted adult speech, a proxy for child gaming speech; the ensemble
+  weights are priors, not fitted. The feedback loop + drift monitor + validation plan
+  are exactly the instruments that address these with pilot data.
 - **Privacy:** raw audio is processed and discarded after feature extraction (the
   spoken words are transcribed to text and kept, the audio is not); capture is scoped
   to active gaming sessions of any app the device classifies as a game.

@@ -10,7 +10,7 @@ cloud check, and an on-device manual checklist. Run the automated layers any tim
 
 | Command | What it proves | Expected |
 |---|---|---|
-| `python -m pytest tests/ -q` | 35-test suite: API contracts, dashboards, feedback, auth shadow mode — isolated throwaway DB | `35 passed` |
+| `python -m pytest tests/ -q` | 54-test suite: API contracts, dashboards, feedback (incl. alert-ownership guards), auth shadow mode, input robustness, session-level toxicity-streak alert, and ML-unit tests (shared audio extractor, noisy-OR fusion, Hinglish lexicon, deleted-account token check, threshold-tuner math) — isolated throwaway DB | `54 passed` |
 | `python scripts/functional_sweep.py` | **81 checks in production mode** (`AUTH_ENFORCE=1`, real tokens): registration/family joins, role guards (child token blocked from family-PIN change, data deletion, set-limit, nudge, feedback, alerts feed + mark-read, parent dashboards/reports/anomalies, **family roster**, analyse-chat utility), consent, session lifecycle + observation mode + **idempotent re-end carrying full sub-scores**, chat de-dupe + toxicity alert + auto language-nudge, full nudge lifecycle (delivered exactly once), real WAV voice upload (silence floor, raw-audio deletion, late re-score), stale-session self-healing (incl. heartbeat-aware close + one-open-session invariant), heartbeat watchdog **with child-local quiet hours**, tamper events (logout clears monitoring status; re-login alerts the parent; admin-disable attempt flips the uninstall-protection flag), **capture-permission revocation raises a one-shot `permission` alert (no re-spam while still off)**, feedback agreement + re-rating, dashboards/PDF, parent-controlled deletion | `81/81 checks passed` |
 | `python scripts/cloud_e2e.py` | **25 checks against the LIVE Render deployment**: every screen's endpoint with real parent/child tokens, PDF bytes, cross-user 403 / no-token 401 guards | `25/25 passed` |
 
@@ -18,6 +18,24 @@ Notes
 - The first `cloud_e2e` call may take ~30–60 s if the free instance was asleep.
 - `cloud_e2e` exercises the seeded demo family (`FAM789` / `0000`); reseed via
   `seed_demo.py` if logins fail (see DEMO_RUNBOOK §2).
+- **CI**: `.github/workflows/ci.yml` runs the pytest suite + Android Lint (both apps)
+  automatically on every push/PR to `main`.
+
+### ML training / evaluation scripts (run from the project root)
+
+| Command | What it does |
+|---|---|
+| `python ml/retrain_models.py` | Retrains behaviour (10 objective features) + chat (with isotonic calibration layer) + voice; **merges** into `model_metadata.json` |
+| `python ml/calibrate_behavior.py` | Fits the behaviour isotonic calibrator; reports the Brier improvement |
+| `python ml/eval_chat_voice.py` | Honest chat metrics (balanced + realistic imbalanced, PR-AUC/Brier); skips voice if the deployed voice model is real-audio-trained |
+| `python ml/train_voice_real.py --jobs 8` | Trains the voice model on real speech (RAVDESS/CREMA-D/EMO-DB/URDU under `data/voice/`); `--smoke` self-tests without data |
+| `python ml/eval_chat_conda.py --csv data/conda/CONDA_train.csv` | In-domain gaming-chat evaluation (threshold sweep, PR-AUC) → `chat_metrics_gaming` |
+| `python ml/tune_from_feedback.py` | Converts parent-feedback verdicts into conservative threshold recommendations (`threshold_tuning.json`) + labelled CSV export |
+| `python ml/analyze_reflections.py` | Correlates daily risk vs next-day mood/sleep/energy self-reports (Spearman) |
+| `python ml/ablation_studies.py` | One-component-at-a-time ablations for all three channels (bootstrap 95% CIs) → `docs/ablation_results.json`; `--only chat\|voice\|behaviour` re-runs a section |
+| `python ml/make_figures.py` | Regenerates the paper's figures (PR curve, confusion matrices) into `docs/figures/` |
+| `python ml/analyze_igds.py` | IGDS9-SF open dataset (n=11,191): severity base rate + toxicity-involvement vs IGD severity (chat-channel premise validation) |
+| `python ml/monitor_drift.py` | Score-distribution drift monitor (PSI + KS, band shares, modality-presence rates) — recent window vs reference; the pilot-phase health check |
 
 ---
 
