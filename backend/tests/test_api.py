@@ -326,9 +326,109 @@ def test_feedback_bad_label(client):
     assert r.status_code == 400
 
 
+def test_feedback_unknown_alert_rejected(client):
+    """A verdict must not attach to a non-existent alert id."""
+    r = client.post('/api/feedback', json={'alert_id': 999999, 'label': 'accurate'})
+    assert r.status_code == 404
+
+
+def test_feedback_alert_user_mismatch_rejected(client):
+    """alert_id must belong to the stated child — a crafted foreign alert_id previously
+    deleted/planted feedback on another family's alert feed."""
+    alerts = client.get('/api/alerts?user_id=1').get_json()['alerts']
+    aid = alerts[0]['id']
+    r = client.post('/api/feedback', json={'alert_id': aid, 'user_id': 4242, 'label': 'accurate'})
+    assert r.status_code == 400
+
+
 def test_feedback_summary_validation(client):
     r = client.get('/api/feedback/summary')
     assert r.status_code == 400
+
+
+# ─── Input robustness (malformed bodies must not 500) ──────────────
+
+def test_chat_non_string_message_rejected_cleanly(client):
+    """A non-string 'message' used to crash .strip() into a 500."""
+    r = client.post('/api/session/start', json={'user_id': 1, 'game_name': 'BGMI'})
+    sid = r.get_json()['session_id']
+    r = client.post(f'/api/session/{sid}/chat', json={'message': 12345})
+    assert r.status_code == 200          # coerced to the string "12345"
+    r = client.post(f'/api/session/{sid}/chat', json={'message': None})
+    assert r.status_code == 400          # empty after coercion
+    client.post(f'/api/session/{sid}/end')
+
+
+def test_voice_garbage_intensity_rejected_cleanly(client):
+    """Garbage intensity/duration in the JSON voice path used to 500."""
+    r = client.post('/api/session/start', json={'user_id': 1, 'game_name': 'BGMI'})
+    sid = r.get_json()['session_id']
+    r = client.post(f'/api/session/{sid}/voice',
+                    json={'emotion': 'angry', 'intensity': 'not-a-number', 'duration_seconds': None})
+    assert r.status_code == 200
+    body = r.get_json()
+    assert body['success'] is True
+    assert 0.0 <= body['intensity'] <= 1.0
+    client.post(f'/api/session/{sid}/end')
+
+
+def test_export_user_data(client):
+    """Access/portability: the bundle carries the deletion-scope tables and NEVER the
+    credential/push fields."""
+    r = client.get('/api/user/export?user_id=1')
+    assert r.status_code == 200
+    d = r.get_json()
+    assert d['success'] is True
+    for secret in ('pin', 'parent_pin', 'pin_hash', 'parent_pin_hash', 'fcm_token'):
+        assert secret not in d['profile']
+    assert set(d['data']) >= {'sessions', 'chat_messages', 'voice_events',
+                              'predictions', 'alerts', 'reflections', 'feedback'}
+    assert isinstance(d['data']['sessions'], list) and d['data']['sessions']
+    r = client.get('/api/user/export')                # missing user_id
+    assert r.status_code == 400
+
+
+def test_tamper_missing_user_id_is_400(client):
+    r = client.post('/api/child/tamper', json={'event': 'logout'})
+    assert r.status_code == 400
+
+
+def test_session_chat_score_is_max_of_messages(client, monkeypatch):
+    """The session chat score must be the MAX of per-message scores (chosen by a
+    707-conversation experiment) — one toxic line among clean ones must NOT be
+    diluted the way the old concatenated-blob scoring diluted it."""
+    import app as appmod
+    monkeypatch.setattr(appmod, '_ml_toxicity',
+                        lambda text: 0.9 if 'zzz' in str(text) else 0.05)
+    sid = client.post('/api/session/start',
+                      json={'user_id': 1, 'game_name': 'BGMI'}).get_json()['session_id']
+    client.post(f'/api/session/{sid}/chat', json={'message': 'plain words one'})
+    client.post(f'/api/session/{sid}/chat', json={'message': 'zzz bad words here'})
+    client.post(f'/api/session/{sid}/chat', json={'message': 'plain words two'})
+    pred = client.post(f'/api/session/{sid}/end').get_json()['prediction']
+    assert pred['chat_score'] == pytest.approx(0.9, abs=0.01)
+
+
+def test_toxicity_streak_session_alert(client, monkeypatch):
+    """Three moderately-toxic messages (below the per-message alert bar) in one session
+    must raise exactly ONE aggregate 'toxicity_streak' alert — and never a second."""
+    import app as appmod
+    monkeypatch.setattr(appmod, '_ml_toxicity', lambda text: 0.7)   # bar<=0.7<alert_t
+    sid = client.post('/api/session/start',
+                      json={'user_id': 1, 'game_name': 'BGMI'}).get_json()['session_id']
+
+    def streaks():
+        alerts = client.get('/api/alerts?user_id=1').get_json()['alerts']
+        return [a for a in alerts if a['type'] == 'toxicity_streak']
+
+    client.post(f'/api/session/{sid}/chat', json={'message': 'plain words one'})
+    client.post(f'/api/session/{sid}/chat', json={'message': 'plain words two'})
+    assert not streaks()                          # 2 flagged — below the streak count
+    client.post(f'/api/session/{sid}/chat', json={'message': 'plain words three'})
+    assert len(streaks()) == 1                    # 3rd flagged message fires the alert
+    client.post(f'/api/session/{sid}/chat', json={'message': 'plain words four'})
+    assert len(streaks()) == 1                    # 4th must not re-fire it
+    client.post(f'/api/session/{sid}/end')
 
 
 # ─── Auth gate (enforce mode) ──────────────────────────────────────

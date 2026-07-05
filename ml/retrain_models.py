@@ -11,7 +11,10 @@ from sklearn.linear_model import LogisticRegression
 from sklearn.preprocessing import StandardScaler, LabelEncoder
 from sklearn.model_selection import train_test_split, cross_val_score
 from sklearn.feature_extraction.text import TfidfVectorizer
-from sklearn.metrics import classification_report, mean_absolute_error
+from sklearn.pipeline import FeatureUnion
+from sklearn.metrics import classification_report, confusion_matrix, mean_absolute_error, brier_score_loss
+from sklearn.calibration import CalibratedClassifierCV
+from sklearn.frozen import FrozenEstimator
 
 warnings.filterwarnings('ignore')
 
@@ -66,10 +69,21 @@ def generate_behavior_dataset(n=25000, seed=42):
         return rows
 
     def make_class(size, label):
-        # Wider distributions + realistic class overlap → target ~87% accuracy
+        # Wider distributions + realistic class overlap. PLAY-TIME levels are grounded
+        # in REAL survey data — the "Gamers & Anxiety" dataset (Sauter & Draschkow
+        # 2017, n=13,464; aged<=24 cohort n=11,731, CC-BY 4.0) — via the percentile
+        # bands computed by ml/analyze_survey.py:
+        #   casual   ~ pct  5-50 : weekly 14.2 +/- 4.8 h
+        #   at-risk  ~ pct 60-90 : weekly 26.3 +/- 6.6 h
+        #   heavy    ~ pct 92+   : weekly 50.0 +/- 12.8 h
+        # daily means are set so that daily * 7 * E[consistency-U] hits those weekly
+        # targets. The remaining features (late-night, breaks, re-logins, ...) have no
+        # public telemetry source and stay hand-set priors; the LABELS remain synthetic
+        # screening priors either way — grounding narrows the sim-to-real gap for the
+        # dominant features, it does not make the labels real.
         if label == 0:
-            daily  = clip(rng.normal(1.5,  1.1,  size), 0.1,  5.0)
-            weekly = clip(daily * 7 * rng.uniform(0.4, 0.80, size), 1, 30)
+            daily  = clip(rng.normal(3.4,  1.35, size), 0.3,  8.0)
+            weekly = clip(daily * 7 * rng.uniform(0.4, 0.80, size), 2, 35)
             spd    = clip(rng.normal(1.2,  0.6,  size), 0.3,  4.0)
             dur    = clip(rng.normal(60,   30,   size), 10, 150)
             lnr    = clip(rng.normal(0.08, 0.10, size), 0, 0.45)
@@ -79,8 +93,8 @@ def generate_behavior_dataset(n=25000, seed=42):
             brk    = clip(rng.normal(180,  80,   size), 30, 600)
             rlr    = clip(rng.normal(0.05, 0.08, size), 0, 0.40)
         elif label == 1:
-            daily  = clip(rng.normal(4.5,  1.6,  size), 1.5, 10.0)
-            weekly = clip(daily * 7 * rng.uniform(0.5, 0.90, size), 8, 65)
+            daily  = clip(rng.normal(5.4,  1.6,  size), 2.0, 11.0)
+            weekly = clip(daily * 7 * rng.uniform(0.5, 0.90, size), 10, 55)
             spd    = clip(rng.normal(2.5,  0.9,  size), 0.8,  6.0)
             dur    = clip(rng.normal(100,  35,   size), 30, 250)
             lnr    = clip(rng.normal(0.30, 0.16, size), 0.0, 0.75)
@@ -90,7 +104,7 @@ def generate_behavior_dataset(n=25000, seed=42):
             brk    = clip(rng.normal(90,   55,   size), 10, 300)
             rlr    = clip(rng.normal(0.25, 0.14, size), 0.0, 0.70)
         else:
-            daily  = clip(rng.normal(9.0,  2.5,  size), 4.0, 16.0)
+            daily  = clip(rng.normal(8.9,  2.3,  size), 4.0, 16.0)
             weekly = clip(daily * 7 * rng.uniform(0.65, 0.95, size), 25, 112)
             spd    = clip(rng.normal(4.5,  1.1,  size), 2.0,  8.0)
             dur    = clip(rng.normal(160,  45,   size), 60, 360)
@@ -142,7 +156,16 @@ def train_behavior_model():
     df.to_csv(os.path.join(DATA_DIR, 'behavior_dataset.csv'), index=False)
     print(f"Saved balanced training data -> data/behavior_dataset.csv")
 
-    X = df[feature_names].values
+    # Train on the 10 OBJECTIVE features only. The 10 psychometric proxies are
+    # deterministic functions of these (behavior_features.derive_psychometrics) plus
+    # training noise — they add no information the model can use, and including them
+    # made SHAP attributions partly circular (a "craving score" driver shown to a
+    # parent is really late-night ratio x re-login ratio in disguise). The proxies are
+    # still generated into the dataset CSV and served as UI-level explanations; the
+    # backend sizes its model input from the fitted scaler, so old 20-feature models
+    # keep working during rollout.
+    model_features = feature_names[:10]
+    X = df[model_features].values
     y = df['addiction_label'].values
 
     X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42, stratify=y)
@@ -150,7 +173,7 @@ def train_behavior_model():
     scaler = StandardScaler()
     X_train_s = scaler.fit_transform(X_train)
     X_test_s  = scaler.transform(X_test)
-    scaler.feature_names_in_ = np.array(feature_names)
+    scaler.feature_names_in_ = np.array(model_features)
 
     # max_depth=6 and high min_samples_leaf regularise model → realistic ~87% accuracy
     clf = RandomForestClassifier(
@@ -189,9 +212,7 @@ def train_behavior_model():
         row['binge_sessions_per_week'] = 0.2 if psy < 4 else (2.0 if psy < 7 else 5.5)
         row['avg_break_between_sessions_min'] = 200 if psy < 4 else (90 if psy < 7 else 25)
         row['rapid_relogin_ratio'] = 0.05 if psy < 4 else (0.25 if psy < 7 else 0.6)
-        for fn in feature_names[10:]:
-            row[fn] = psy
-        X_row = pd.DataFrame([row])[feature_names].values
+        X_row = pd.DataFrame([row])[model_features].values
         X_row_s = scaler.transform(X_row)
         pred = clf.predict(X_row_s)[0]
         proba = clf.predict_proba(X_row_s)[0]
@@ -203,9 +224,9 @@ def train_behavior_model():
     with open(os.path.join(MODELS_DIR, 'feature_scaler.pkl'), 'wb') as f:
         pickle.dump(scaler, f)
     with open(os.path.join(MODELS_DIR, 'feature_names.pkl'), 'wb') as f:
-        pickle.dump(feature_names, f)
+        pickle.dump(model_features, f)
 
-    # Save model metadata for the /api/health endpoint
+    # Save model metadata for the /api/health + /api/model_card endpoints
     metadata = {
         'trained_at':        datetime.now().isoformat(),
         'test_accuracy':     round(test_accuracy, 4),
@@ -215,24 +236,49 @@ def train_behavior_model():
             'at_risk':  round(float(rep['at_risk']['f1-score']), 4),
             'addicted': round(float(rep['addicted']['f1-score']), 4),
         },
+        'per_class_precision': {
+            'casual':   round(float(rep['casual']['precision']), 4),
+            'at_risk':  round(float(rep['at_risk']['precision']), 4),
+            'addicted': round(float(rep['addicted']['precision']), 4),
+        },
         'per_class_recall': {
             'casual':   round(float(rep['casual']['recall']), 4),
             'at_risk':  round(float(rep['at_risk']['recall']), 4),
             'addicted': round(float(rep['addicted']['recall']), 4),
         },
+        'confusion_matrix':  confusion_matrix(y_test, y_pred).tolist(),
+        'confusion_labels':  ['casual', 'at_risk', 'addicted'],
         'cv_mean_accuracy':  round(float(cv_scores.mean()), 4),
         'cv_std_accuracy':   round(float(cv_scores.std()), 4),
         'cv_fold_scores':    [round(float(s), 4) for s in cv_scores],
         'n_estimators':      clf.n_estimators,
         'max_depth':         clf.max_depth,
         'train_samples':     len(X_train),
-        'feature_count':     len(feature_names),
+        'test_samples':      len(X_test),
+        'feature_count':     len(model_features),
+        'model_features':    ('objective-10: the 10 psychometric proxies are deterministic '
+                              'functions of these (behavior_features.py) and are excluded '
+                              'from the model input to keep SHAP attributions non-circular; '
+                              'they remain as UI-level explanations'),
         'class_balance':     'balanced (35/40/25) + class_weight; psychometrics derived from behaviour (train/serve aligned)',
     }
-    with open(os.path.join(MODELS_DIR, 'model_metadata.json'), 'w') as f:
-        json.dump(metadata, f, indent=2)
+    # MERGE into the existing file rather than overwrite: calibration (calibrate_behavior.py)
+    # and chat_metrics/voice_metrics + notes (eval_chat_voice.py) live in the same JSON —
+    # a wholesale rewrite here silently wiped them from /api/model_card until those
+    # scripts were rerun.
+    meta_path = os.path.join(MODELS_DIR, 'model_metadata.json')
+    merged = {}
+    if os.path.exists(meta_path):
+        try:
+            with open(meta_path) as f:
+                merged = json.load(f)
+        except Exception:
+            merged = {}
+    merged.update(metadata)
+    with open(meta_path, 'w') as f:
+        json.dump(merged, f, indent=2)
     print("[OK] Saved behavior_model.pkl, feature_scaler.pkl, feature_names.pkl, model_metadata.json")
-    return clf, scaler, feature_names
+    return clf, scaler, model_features
 
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -250,10 +296,34 @@ def train_chat_model():
     # it; the real chat lever is real gaming-chat data / threshold tuning, not cleanup.
     df = pd.read_csv(os.path.join(DATA_DIR, 'chat_dataset.csv'))
     df = df[['text', 'toxicity_score']].dropna()
+    df['toxic'] = (df['toxicity_score'] >= 0.5).astype(int)
+    df = df[['text', 'toxic']]
+    # Gaming-DOMAIN data (CONDA train split — real Dota 2 in-game chat) is included
+    # whenever it's on disk: the deployed model is gaming-domain-trained, and a full
+    # retrain run must never silently regress it to a general-corpus-only model.
+    conda = os.path.join(DATA_DIR, 'conda', 'CONDA_train.csv')
+    if os.path.exists(conda):
+        g = pd.read_csv(conda)
+        g = pd.DataFrame({'text': g['utterance'].astype(str),
+                          'toxic': g['intentClass'].astype(str).str.strip().str.upper()
+                                    .isin({'E', 'I'}).astype(int)})
+        df = pd.concat([df, g], ignore_index=True)
+        print(f"Included gaming-domain chat: {len(g)} rows (CONDA train split)")
+    else:
+        print("WARNING: data/conda/CONDA_train.csv not found — training on the general "
+              "corpus only will UNDERPERFORM the deployed gaming-domain model in-domain.")
+    # Additional REAL corpora normalised to (text,toxic) live in data/chat_extra/
+    # (e.g. Davidson et al. hate/offensive tweets — informal, slang-heavy language
+    # close to gaming chat's register). Included whenever present.
+    import glob as _glob
+    for extra in sorted(_glob.glob(os.path.join(DATA_DIR, 'chat_extra', '*.csv'))):
+        e = pd.read_csv(extra)
+        if {'text', 'toxic'} <= set(e.columns):
+            df = pd.concat([df, e[['text', 'toxic']]], ignore_index=True)
+            print(f"Included extra corpus: {len(e)} rows ({os.path.basename(extra)})")
     # Apply the SAME clean_text the backend uses at serving (no train/serve skew).
     df['text'] = df['text'].astype(str).map(clean_text)
     df = df[df['text'].str.len() > 2]
-    df['toxic'] = (df['toxicity_score'] >= 0.5).astype(int)
     print(f"Dataset: {df.shape}")
     print(f"Toxic: {df['toxic'].sum():,} ({df['toxic'].mean()*100:.1f}%)  Non-toxic: {(df['toxic']==0).sum():,}")
 
@@ -266,26 +336,47 @@ def train_chat_model():
     X_train, X_test, y_train, y_test = train_test_split(
         df_bal['text'], df_bal['toxic'], test_size=0.2, random_state=42, stratify=df_bal['toxic']
     )
-
-    # Word n-grams on cleaned text. (Char n-grams were tried but over-fired on clean
-    # gaming phrases like "nice shot ... clutch" via spurious substrings; the slang
-    # map in clean_text already canonicalises the common obfuscations we care about.)
-    vectorizer = TfidfVectorizer(
-        max_features=20000, ngram_range=(1, 2), min_df=2,
-        sublinear_tf=True, strip_accents='unicode'
+    # Carve a CALIBRATION slice out of the training split (never the test split — that
+    # stays untouched so eval_chat_voice.py's held-out metrics remain honest). The
+    # isotonic layer makes the served P(toxic) meaningful, mirroring the behaviour
+    # model's calibration pattern (chat_calibrated.pkl is optional; raw model fallback).
+    X_fit, X_cal, y_fit, y_cal = train_test_split(
+        X_train, y_train, test_size=0.15, random_state=42, stratify=y_train
     )
-    X_train_v = vectorizer.fit_transform(X_train)
-    X_test_v  = vectorizer.transform(X_test)
+
+    # Word n-grams + WORD-BOUNDED char n-grams (char_wb) on cleaned text. Raw char
+    # n-grams were originally rejected — trained on the general corpus alone they
+    # over-fired on clean gaming phrases via spurious substrings. Re-tested with
+    # gaming-domain training data and char_wb (which never crosses word boundaries),
+    # the union wins DECISIVELY on held-out real gaming chat: PR-AUC 0.714 -> 0.794
+    # and precision at the deployed alert point 0.836 -> 0.924 — char n-grams catch
+    # the misspellings/obfuscations word tokens miss, once the training data teaches
+    # them what gaming chat looks like.
+    vectorizer = FeatureUnion([
+        ('word', TfidfVectorizer(max_features=20000, ngram_range=(1, 2), min_df=2,
+                                 sublinear_tf=True, strip_accents='unicode')),
+        ('char', TfidfVectorizer(analyzer='char_wb', ngram_range=(3, 5),
+                                 max_features=30000, min_df=2, sublinear_tf=True)),
+    ])
+    X_fit_v  = vectorizer.fit_transform(X_fit)
+    X_cal_v  = vectorizer.transform(X_cal)
+    X_test_v = vectorizer.transform(X_test)
 
     clf = LogisticRegression(
         C=1.0, solver='lbfgs', max_iter=1000,
         class_weight='balanced', random_state=42, n_jobs=-1
     )
-    clf.fit(X_train_v, y_train)
+    clf.fit(X_fit_v, y_fit)
+
+    calibrated = CalibratedClassifierCV(FrozenEstimator(clf), method='isotonic')
+    calibrated.fit(X_cal_v, y_cal)
 
     y_pred = clf.predict(X_test_v)
     print("\nClassification Report:")
     print(classification_report(y_test, y_pred, target_names=['clean', 'toxic']))
+    brier_raw = brier_score_loss(y_test, clf.predict_proba(X_test_v)[:, 1])
+    brier_cal = brier_score_loss(y_test, calibrated.predict_proba(X_test_v)[:, 1])
+    print(f"Brier (held-out): raw={brier_raw:.4f}  calibrated={brier_cal:.4f}")
 
     # Sanity check — predict_proba[1] is the toxicity score
     test_messages = [
@@ -305,9 +396,11 @@ def train_chat_model():
 
     with open(os.path.join(MODELS_DIR, 'chat_model.pkl'), 'wb') as f:
         pickle.dump(clf, f)
+    with open(os.path.join(MODELS_DIR, 'chat_calibrated.pkl'), 'wb') as f:
+        pickle.dump(calibrated, f)
     with open(os.path.join(MODELS_DIR, 'tfidf_vectorizer.pkl'), 'wb') as f:
         pickle.dump(vectorizer, f)
-    print("[OK] Saved chat_model.pkl, tfidf_vectorizer.pkl")
+    print("[OK] Saved chat_model.pkl, chat_calibrated.pkl, tfidf_vectorizer.pkl")
     return clf, vectorizer
 
 
@@ -455,7 +548,9 @@ def verify_end_to_end(behavior_clf, scaler, feature_names, chat_clf, vectorizer)
         # Score: weighted toward higher risk classes
         b_score = float(b_prob[1] * 0.5 + b_prob[2])
 
-        vec     = vectorizer.transform([s['chat']])
+        # clean_text first — the model is trained AND served on cleaned text, so verifying
+        # on raw text would report scores the live system never produces.
+        vec     = vectorizer.transform([clean_text(s['chat'])])
         c_score = float(chat_clf.predict_proba(vec)[0][1])
 
         v_score = VOICE_RISK[s['voice']]

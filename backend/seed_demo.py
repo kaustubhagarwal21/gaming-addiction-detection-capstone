@@ -142,7 +142,10 @@ def seed_child(c, conn, user_id, name, plan):
                    1, chat_present, voice_present))
 
         for msg in chats:
-            tox = 0.75 if any(w in msg for w in ['kys','die','trash','loser','idiot','stupid']) else 0.4
+            # 0.93 clears the live alert threshold (CHAT_ALERT_T=0.90) so the demo's
+            # toxic lines actually render as 'toxic' in Chat Analysis — the old 0.75
+            # was crafted for a previous threshold and would now show as 'borderline'.
+            tox = 0.93 if any(w in msg for w in ['kys','die','trash','loser','idiot','stupid']) else 0.4
             c.execute('''INSERT INTO chat_messages (session_id, message, source, confidence, timestamp)
                          VALUES (?,?,?,?,?)''', (sid, msg, 'keyboard', tox, start_dt.isoformat()))
 

@@ -35,8 +35,11 @@ def main():
     scaler = joblib.load(os.path.join(MODELS, 'feature_scaler.pkl'))
 
     # Reproduce the EXACT train/test split (seed=42) so the RF never saw X_test.
+    # Subset to the columns the RF was actually trained on (new models: the 10
+    # objective features; legacy models: all 20) — sized from the fitted estimator.
     df, feature_names = generate_behavior_dataset(25000)
-    X = df[feature_names].values
+    feats = feature_names[:int(rf.n_features_in_)]
+    X = df[feats].values
     y = df['addiction_label'].values
     _, X_test, _, y_test = train_test_split(X, y, test_size=0.2, random_state=42, stratify=y)
 

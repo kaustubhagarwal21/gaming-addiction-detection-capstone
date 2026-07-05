@@ -1,0 +1,181 @@
+{
+  "alert_threshold": 0.9,
+  "chat": [
+    {
+      "config": "full recipe (deployed)",
+      "pr_auc": 0.8337,
+      "pr_auc_ci95": [
+        0.8166,
+        0.8487
+      ],
+      "roc_auc": 0.9281,
+      "precision@alert": 0.9499,
+      "recall@alert": 0.4913,
+      "f1@alert": 0.6476,
+      "mcc@alert": 0.6327
+    },
+    {
+      "config": "- keyword fusion",
+      "pr_auc": 0.8236,
+      "pr_auc_ci95": [
+        0.8061,
+        0.8384
+      ],
+      "roc_auc": 0.9259,
+      "precision@alert": 0.9512,
+      "recall@alert": 0.4341,
+      "f1@alert": 0.5961,
+      "mcc@alert": 0.591
+    },
+    {
+      "config": "- calibration",
+      "pr_auc": 0.8459,
+      "pr_auc_ci95": [
+        0.8288,
+        0.8608
+      ],
+      "roc_auc": 0.9295,
+      "precision@alert": 0.9507,
+      "recall@alert": 0.4642,
+      "f1@alert": 0.6238,
+      "mcc@alert": 0.6132
+    },
+    {
+      "config": "- char_wb n-grams",
+      "pr_auc": 0.8111,
+      "pr_auc_ci95": [
+        0.7942,
+        0.8278
+      ],
+      "roc_auc": 0.9119,
+      "precision@alert": 0.9456,
+      "recall@alert": 0.4497,
+      "f1@alert": 0.6095,
+      "mcc@alert": 0.6001
+    },
+    {
+      "config": "- Davidson corpus",
+      "pr_auc": 0.8051,
+      "pr_auc_ci95": [
+        0.7864,
+        0.8226
+      ],
+      "roc_auc": 0.9199,
+      "precision@alert": 0.8582,
+      "recall@alert": 0.6303,
+      "f1@alert": 0.7268,
+      "mcc@alert": 0.678
+    },
+    {
+      "config": "- CONDA corpus (domain data)",
+      "pr_auc": 0.513,
+      "pr_auc_ci95": [
+        0.4873,
+        0.5361
+      ],
+      "roc_auc": 0.7426,
+      "precision@alert": 0.8663,
+      "recall@alert": 0.0897,
+      "f1@alert": 0.1626,
+      "mcc@alert": 0.2392
+    },
+    {
+      "config": "original (general-only, word-only)",
+      "pr_auc": 0.5571,
+      "pr_auc_ci95": [
+        0.5317,
+        0.5806
+      ],
+      "roc_auc": 0.7391,
+      "precision@alert": 0.8804,
+      "recall@alert": 0.1951,
+      "f1@alert": 0.3194,
+      "mcc@alert": 0.3622
+    }
+  ],
+  "voice": [
+    {
+      "config": "full (36 feats, 4 corpora, aug x1)",
+      "accuracy": 0.5622,
+      "acc_ci95": [
+        0.5399,
+        0.5835
+      ],
+      "macro_f1": 0.557,
+      "train_rows": 10528,
+      "test_rows": 1880
+    },
+    {
+      "config": "17-feature prefix",
+      "accuracy": 0.4989,
+      "acc_ci95": [
+        0.4755,
+        0.5208
+      ],
+      "macro_f1": 0.4881,
+      "train_rows": 10528,
+      "test_rows": 1880
+    },
+    {
+      "config": "- augmentation",
+      "accuracy": 0.566,
+      "acc_ci95": [
+        0.5447,
+        0.5888
+      ],
+      "macro_f1": 0.5609,
+      "train_rows": 5276,
+      "test_rows": 1880
+    },
+    {
+      "config": "English-only training corpora",
+      "accuracy": 0.5457,
+      "acc_ci95": [
+        0.5245,
+        0.5681
+      ],
+      "macro_f1": 0.5414,
+      "train_rows": 8784,
+      "test_rows": 1880
+    }
+  ],
+  "behaviour": [
+    {
+      "config": "objective-10 (deployed)",
+      "accuracy": 0.916,
+      "acc_ci95": [
+        0.9087,
+        0.9233
+      ],
+      "macro_f1": 0.9184
+    },
+    {
+      "config": "all-20 (incl. derived proxies)",
+      "accuracy": 0.9191,
+      "acc_ci95": [
+        0.9122,
+        0.9259
+      ],
+      "macro_f1": 0.9211
+    },
+    {
+      "config": "volume features only (5)",
+      "accuracy": 0.8706,
+      "acc_ci95": [
+        0.8614,
+        0.8793
+      ],
+      "macro_f1": 0.8749
+    },
+    {
+      "config": "pattern features only (5)",
+      "accuracy": 0.9021,
+      "acc_ci95": [
+        0.8943,
+        0.9101
+      ],
+      "macro_f1": 0.9049
+    }
+  ],
+  "protocol": "One component removed per row from the deployed recipe; fixed held-out data per table; bootstrap 95% CIs over 1,000 test-set resamples. Voice rows use speaker-independent splits with a FIXED test set of un-augmented clips from unseen speakers; chat rows evaluate on CONDA_valid, which no config trains on."
+}

@@ -1,59 +1,59 @@
 {
-  "trained_at": "2026-06-02T17:18:35.229855",
-  "test_accuracy": 0.9243,
-  "macro_f1": 0.9261,
+  "trained_at": "2026-07-04T09:22:55.039549",
+  "test_accuracy": 0.916,
+  "macro_f1": 0.9184,
   "per_class_f1": {
-    "casual": 0.9401,
-    "at_risk": 0.9077,
-    "addicted": 0.9303
+    "casual": 0.9286,
+    "at_risk": 0.8971,
+    "addicted": 0.9296
   },
   "per_class_recall": {
-    "casual": 0.9375,
-    "at_risk": 0.8995,
-    "addicted": 0.9478
+    "casual": 0.9276,
+    "at_risk": 0.8848,
+    "addicted": 0.9519
   },
-  "cv_mean_accuracy": 0.923,
-  "cv_std_accuracy": 0.0033,
+  "cv_mean_accuracy": 0.9209,
+  "cv_std_accuracy": 0.0021,
   "cv_fold_scores": [
-    0.9209,
-    0.9187,
-    0.9272,
-    0.9217,
-    0.9267
+    0.9191,
+    0.9193,
+    0.9248,
+    0.9202,
+    0.9211
   ],
   "n_estimators": 200,
   "max_depth": 6,
   "train_samples": 23000,
-  "feature_count": 20,
+  "feature_count": 10,
   "class_balance": "balanced (35/40/25) + class_weight; psychometrics derived from behaviour (train/serve aligned)",
   "calibration": {
     "method": "isotonic",
     "fit": "held-out split the RF never trained on (FrozenEstimator, prefit)",
-    "brier_uncalibrated": 0.1254,
-    "brier_calibrated": 0.1213,
+    "brier_uncalibrated": 0.1343,
+    "brier_calibrated": 0.1275,
     "eval_samples": 2875,
     "note": "Calibrates the served probability only; the RF used for SHAP/feature-importances is unchanged."
   },
   "per_class_precision": {
-    "casual": 0.9428,
-    "at_risk": 0.9161,
-    "addicted": 0.9134
+    "casual": 0.9296,
+    "at_risk": 0.9097,
+    "addicted": 0.9083
   },
   "confusion_matrix": [
     [
-      1814,
-      121,
+      1795,
+      140,
       0
     ],
     [
-      110,
-      2140,
-      129
+      136,
+      2105,
+      138
     ],
     [
       0,
-      75,
-      1361
+      69,
+      1367
     ]
   ],
   "confusion_labels": [
@@ -65,59 +65,69 @@
   "data_note": "Trained and evaluated on synthetic/illustrative data with realistic class overlap; a screening signal, not a validated clinical instrument.",
   "evaluation_note": "Held-out 20% split (seed=42) the model never trained on. Psychometric features use the shared derive_psychometrics() \u2014 identical in training and serving.",
   "chat_metrics": {
-    "model": "LogisticRegression + TF-IDF (1-2gram)",
+    "model": "LogisticRegression + TF-IDF (word 1-2gram + char_wb 3-5gram union) + isotonic calibration",
     "balanced_holdout": {
-      "precision_toxic": 0.887,
-      "recall_toxic": 0.9313,
-      "f1_toxic": 0.9086,
-      "accuracy": 0.9063,
+      "precision_toxic": 0.8962,
+      "recall_toxic": 0.9534,
+      "f1_toxic": 0.9239,
+      "accuracy": 0.9215,
       "confusion": [
         [
-          1078,
-          145
+          1088,
+          135
         ],
         [
-          84,
-          1138
+          57,
+          1165
         ]
-      ]
+      ],
+      "pr_auc": 0.9379,
+      "brier": 0.0636,
+      "brier_uncalibrated": 0.0657
     },
     "realistic_holdout": {
       "toxic_base_rate": 0.007,
+      "alert_threshold": 0.9,
       "at_threshold_0.5": {
-        "precision_toxic": 0.0478,
-        "recall_toxic": 0.9313,
-        "f1_toxic": 0.0909,
-        "accuracy": 0.8703,
+        "precision_toxic": 0.053,
+        "recall_toxic": 0.9534,
+        "f1_toxic": 0.1005,
+        "accuracy": 0.8811,
         "confusion": [
           [
-            151595,
-            22680
+            153469,
+            20806
           ],
           [
-            84,
-            1138
+            57,
+            1165
           ]
-        ]
+        ],
+        "pr_auc": 0.0929,
+        "brier": 0.0912,
+        "brier_uncalibrated": 0.0867
       },
-      "at_alert_threshold_0.75": {
-        "precision_toxic": 0.0735,
-        "recall_toxic": 0.6628,
-        "f1_toxic": 0.1323,
-        "accuracy": 0.9395,
+      "at_alert_threshold": {
+        "precision_toxic": 0.0889,
+        "recall_toxic": 0.4959,
+        "f1_toxic": 0.1507,
+        "accuracy": 0.9611,
         "confusion": [
           [
-            164062,
-            10213
+            168062,
+            6213
           ],
           [
-            412,
-            810
+            616,
+            606
           ]
-        ]
+        ],
+        "pr_auc": 0.0929,
+        "brier": 0.0912,
+        "brier_uncalibrated": 0.0867
       }
     },
-    "note": "Balanced split flatters the model; the realistic set reflects the true ~imbalanced stream. Toxic precision is low at 0.5 (the model over-flags gaming language), which is exactly why the live alert threshold is 0.75 (higher precision, lower recall). The real fix is real gaming-chat data.",
+    "note": "Balanced split flatters the model; the realistic set reflects the true ~imbalanced stream. Toxic precision is low at 0.5 (the model over-flags gaming language), which is exactly why the live alert threshold is 0.9 (higher precision, lower recall). The real fix is real gaming-chat data.",
     "confusion_labels": [
       "clean",
       "toxic"
@@ -125,54 +135,123 @@
     "eval": "Held-out rows the deployed model never trained on (seeds match retrain)."
   },
   "voice_metrics": {
-    "model": "GradientBoosting on 17 acoustic features (synthetic)",
-    "accuracy": 0.9925,
-    "macro_f1": 0.9925,
-    "per_class_precision": {
-      "neutral": 0.9926,
-      "excited": 0.9899,
-      "frustrated": 0.9925,
-      "angry": 0.995
-    },
-    "per_class_recall": {
-      "neutral": 1.0,
-      "excited": 0.985,
-      "frustrated": 0.9875,
-      "angry": 0.9975
-    },
+    "model": "HistGradientBoosting on 36 acoustic features (REAL audio: RAVDESS/CREMA-D/EMO-DB/URDU)",
+    "accuracy": 0.574,
+    "macro_f1": 0.568,
     "confusion": [
       [
-        400,
-        0,
-        0,
-        0
+        497,
+        148,
+        22,
+        56
       ],
       [
-        1,
-        394,
-        3,
-        2
+        145,
+        334,
+        70,
+        147
       ],
       [
-        2,
-        3,
-        395,
-        0
+        78,
+        116,
+        292,
+        216
       ],
       [
-        0,
-        1,
-        0,
-        399
+        26,
+        73,
+        92,
+        479
       ]
     ],
     "confusion_labels": [
-      "neutral",
+      "angry",
       "excited",
       "frustrated",
-      "angry"
+      "neutral"
     ],
-    "eval": "Held-out 20% split (seed=42).",
-    "note": "Trained and evaluated on SYNTHETIC acoustic features, not real microphone audio \u2014 so this high accuracy is internal validity only; real-world voice accuracy is unproven. Lowest ensemble weight for this reason."
+    "train_rows": 10073,
+    "test_rows": 2791,
+    "augment_per_clip": 1,
+    "eval": "Held-out 20% of real labelled speech, SPEAKER-INDEPENDENT split (no speaker appears in both train and test), features via the SERVING extractor.",
+    "note": "Acted-emotion corpora (adult, studio conditions) \u2014 closer to reality than synthetic features, but child gaming speech remains the validation target."
+  },
+  "model_features": "objective-10: the 10 psychometric proxies are deterministic functions of these (behavior_features.py) and are excluded from the model input to keep SHAP attributions non-circular; they remain as UI-level explanations",
+  "chat_metrics_gaming": {
+    "dataset": "CONDA_valid.csv",
+    "rows": 7721,
+    "toxic_base_rate": 0.2151,
+    "pr_auc": 0.8337,
+    "brier": 0.1253,
+    "at_threshold_0.5": {
+      "threshold": 0.5,
+      "precision_toxic": 0.547,
+      "recall_toxic": 0.8688,
+      "f1_toxic": 0.6713
+    },
+    "at_alert_threshold": {
+      "threshold": 0.9,
+      "precision_toxic": 0.9499,
+      "recall_toxic": 0.4913,
+      "f1_toxic": 0.6476
+    },
+    "threshold_sweep": [
+      {
+        "threshold": 0.3,
+        "precision_toxic": 0.4095,
+        "recall_toxic": 0.9452,
+        "f1_toxic": 0.5714
+      },
+      {
+        "threshold": 0.5,
+        "precision_toxic": 0.547,
+        "recall_toxic": 0.8688,
+        "f1_toxic": 0.6713
+      },
+      {
+        "threshold": 0.6,
+        "precision_toxic": 0.6215,
+        "recall_toxic": 0.8405,
+        "f1_toxic": 0.7146
+      },
+      {
+        "threshold": 0.7,
+        "precision_toxic": 0.6941,
+        "recall_toxic": 0.8031,
+        "f1_toxic": 0.7446
+      },
+      {
+        "threshold": 0.85,
+        "precision_toxic": 0.8883,
+        "recall_toxic": 0.6604,
+        "f1_toxic": 0.7576
+      },
+      {
+        "threshold": 0.9,
+        "precision_toxic": 0.9499,
+        "recall_toxic": 0.4913,
+        "f1_toxic": 0.6476
+      },
+      {
+        "threshold": 0.9,
+        "precision_toxic": 0.9499,
+        "recall_toxic": 0.4913,
+        "f1_toxic": 0.6476
+      },
+      {
+        "threshold": 0.97,
+        "precision_toxic": 0.9841,
+        "recall_toxic": 0.0373,
+        "f1_toxic": 0.0719
+      }
+    ],
+    "best_f1_threshold": {
+      "threshold": 0.85,
+      "precision_toxic": 0.8883,
+      "recall_toxic": 0.6604,
+      "f1_toxic": 0.7576
+    },
+    "scoring": "as served: clean_text -> TF-IDF -> LogReg + isotonic fused with keyword lexicon (noisy-OR)",
+    "note": "In-DOMAIN evaluation on real in-game chat \u2014 the honest complement to the general-corpus metrics in chat_metrics. Use best_f1_threshold to inform CHAT_ALERT_T (env-overridable), alongside the false-alarm evidence from ml/tune_from_feedback.py."
   }
 }

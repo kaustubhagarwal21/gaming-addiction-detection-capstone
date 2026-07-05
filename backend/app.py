@@ -26,11 +26,11 @@ from itsdangerous import URLSafeTimedSerializer, BadSignature, SignatureExpired
 import numpy as np
 import pandas as pd
 
-try:
-    import librosa
-    LIBROSA_AVAILABLE = True
-except ImportError:
-    LIBROSA_AVAILABLE = False
+# Acoustic feature extraction lives in audio_features.py — a SHARED module also used
+# by the real-audio trainer (ml/train_voice_real.py), so voice is trained and served on
+# the identical pipeline (silence floor → gain normalisation → optional VAD → features).
+from audio_features import (LIBROSA_AVAILABLE,
+                            extract_features as _af_extract_features)
 
 try:
     from fpdf import FPDF
@@ -119,6 +119,21 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
+# Production error monitoring — enabled only when SENTRY_DSN is set (the SDK was in
+# requirements but never initialised, so server errors vanished into logs nobody
+# tails). send_default_pii=False: never attach request bodies/user context — this
+# system handles children's data, so crash reports must carry stack traces only.
+_SENTRY_DSN = os.environ.get('SENTRY_DSN', '').strip()
+if _SENTRY_DSN:
+    try:
+        import sentry_sdk
+        from sentry_sdk.integrations.flask import FlaskIntegration
+        sentry_sdk.init(dsn=_SENTRY_DSN, integrations=[FlaskIntegration()],
+                        traces_sample_rate=0.0, send_default_pii=False)
+        logger.info("Sentry error monitoring enabled")
+    except Exception as _e:
+        logger.warning(f"Sentry init failed (continuing without): {_e}")
+
 # ─────────────────────────── AUTH / AUTHORIZATION ───────────────────────────
 # Signed bearer tokens (HMAC via itsdangerous — ships with Flask, no extra dep).
 # A token carries the caller's role, their own user_id, and the set of user_ids
@@ -181,6 +196,32 @@ def _read_token():
     return _token_signer.loads(tok, max_age=TOKEN_TTL)
 
 
+# Tokens are stateless (signed, 30-day TTL), so account deletion cannot recall them —
+# a deleted child's token would otherwise keep writing rows for a dead user_id for up
+# to a month. guard() therefore probes that the target account still EXISTS, TTL-cached
+# so it costs about one DB round trip per user per 5 minutes, not one per request.
+_user_exists_cache: dict = {}
+_USER_EXISTS_TTL_S = 300
+
+
+def _user_exists(uid: int) -> bool:
+    now_mono = time.monotonic()
+    hit = _user_exists_cache.get(uid)
+    if hit is not None and now_mono - hit[1] < _USER_EXISTS_TTL_S:
+        return hit[0]
+    try:
+        conn = get_db()
+        row = conn.execute('SELECT 1 FROM users WHERE user_id=?', (uid,)).fetchone()
+        conn.close()
+        exists = row is not None
+    except Exception:
+        return True   # a DB hiccup must not lock every user out — fail open
+    if len(_user_exists_cache) > 5000:   # bound long-run growth (cheap full reset)
+        _user_exists_cache.clear()
+    _user_exists_cache[uid] = (exists, now_mono)
+    return exists
+
+
 def guard(target_uid=None):
     """Authenticate the caller and authorize access to target_uid's data.
 
@@ -216,6 +257,14 @@ def guard(target_uid=None):
                 return jsonify({'success': False, 'message': 'Not authorized for this user'}), 403
             logger.warning("AUTHZ(shadow): uid=%s would be denied target=%s allowed=%s",
                            g.auth.get('uid'), tid, allowed)
+        elif g.auth is not None and not _user_exists(tid):
+            # Authorized by the token, but the account was deleted after the token was
+            # minted (see _user_exists) — treat as signed-out, not merely forbidden.
+            if AUTH_ENFORCE:
+                logger.warning("AUTHZ DENY: token for deleted user %s", tid)
+                return jsonify({'success': False,
+                                'message': 'Account no longer exists — please sign in again'}), 401
+            logger.warning("AUTHZ(shadow): token references deleted user %s", tid)
     return None
 
 
@@ -484,6 +533,7 @@ def insert_returning_id(conn, sql, params, pk='id'):
 behavior_model      = None   # RandomForest — used for predictions, SHAP, importances
 behavior_calibrated = None   # optional isotonic calibrator over the RF — served probability only
 chat_model       = None
+chat_calibrated  = None   # optional isotonic calibrator over the chat model — probability only
 voice_model      = None
 tfidf_vectorizer = None
 feature_scaler   = None
@@ -538,15 +588,36 @@ SCREENING_DISCLAIMER = ("Wellbeing screening indicator based on gaming patterns 
 # (roughly even tertiles), NOT thresholds fitted to labelled outcomes — there is no
 # real labelled data yet. They live here (one source of truth) so serving and every
 # dashboard aggregate agree, and so the model card can report them transparently.
-RISK_T1 = 0.33   # below → casual (low concern)
-RISK_T2 = 0.67   # below → at_risk (some concern); at/above → addicted (high concern)
+# Env-overridable so real feedback labels can tune them WITHOUT a code change:
+# ml/tune_from_feedback.py analyses the parent-feedback table and writes recommended
+# values (backend/models/threshold_tuning.json) to set as env vars on the service.
+RISK_T1 = float(os.environ.get('RISK_T1', '0.33'))   # below → casual (low concern)
+RISK_T2 = float(os.environ.get('RISK_T2', '0.67'))   # below → at_risk; at/above → addicted
 
-# Per-message chat-toxicity alert cutoffs. Deliberately high: on a realistic
-# imbalanced stream the chat model's precision at 0.5 is poor (~0.20 — many false
-# alarms), so we only raise a parent-facing alert when we're quite confident. This
-# trades a little recall for far fewer false accusations of normal gaming chat.
-CHAT_ALERT_T      = 0.75   # at/above → raise a toxicity alert
-CHAT_ALERT_HIGH_T = 0.85   # at/above → mark that alert 'high' severity (else 'medium')
+# Per-message chat-toxicity alert cutoffs. Deliberately high: a per-message alert is
+# an accusation about a SPECIFIC line the parent may confront the child over, so it is
+# precision-first. Defaults are chosen from the MEASURED held-out curve of the served
+# pipeline on real gaming chat (CONDA_valid; model trained on general corpus + CONDA
+# train split + Davidson offensive-language tweets):
+#   0.90 → toxic precision 0.950, recall 0.491  (the alert)
+#   0.95 → toxic precision 0.987               (the 'high'-severity marker)
+# Each model revision re-derives these from its own curve — calibration shifts where
+# probabilities land, so thresholds never survive a model change unexamined.
+# Recall that per-message recall gives up is recovered by the SESSION-level streak
+# alert below, which aggregates repeated moderately-flagged messages.
+# Env-overridable for the same feedback-driven tuning as the risk bands above.
+CHAT_ALERT_T      = float(os.environ.get('CHAT_ALERT_T', '0.90'))       # at/above → toxicity alert
+CHAT_ALERT_HIGH_T = float(os.environ.get('CHAT_ALERT_HIGH_T', '0.95'))  # at/above → 'high' severity
+
+# Session-level escalation. The per-message threshold is precision-first (in-domain
+# recall ~0.26 per message) — but toxic players repeat, and repetition is itself
+# evidence: at 3 moderately-flagged messages the chance the session contained real
+# toxicity is far higher than any single message conveys (P[>=1 true hit] rises
+# 0.26 -> ~0.59 at 3 messages). So when CHAT_STREAK_N messages in one session score
+# >= CHAT_STREAK_BAR (a lower, "concerning" bar), ONE aggregate alert is raised even
+# though no single message crossed the per-message cutoff.
+CHAT_STREAK_BAR = float(os.environ.get('CHAT_STREAK_BAR', '0.6'))
+CHAT_STREAK_N   = int(os.environ.get('CHAT_STREAK_N', '3'))
 
 # Tamper watchdog: child app heartbeats ~every 5 min; if the server hasn't heard from it
 # for this long, flag it to the parent (uninstalled / force-stopped / killed / offline).
@@ -599,11 +670,13 @@ def _is_late_night(dt, shift_min: int = 0) -> bool:
 
 
 def load_models():
-    global behavior_model, behavior_calibrated, chat_model, voice_model, tfidf_vectorizer, feature_scaler
+    global behavior_model, behavior_calibrated, chat_model, chat_calibrated, \
+        voice_model, tfidf_vectorizer, feature_scaler
     mapping = {
         'behavior_model':      'behavior_model.pkl',
         'behavior_calibrated': 'behavior_calibrated.pkl',  # optional; falls back to RF if absent
         'chat_model':          'chat_model.pkl',
+        'chat_calibrated':     'chat_calibrated.pkl',      # optional; falls back to raw LogReg
         'voice_model':         'voice_model.pkl',
         'tfidf_vectorizer':    'tfidf_vectorizer.pkl',
         'feature_scaler':      'feature_scaler.pkl',
@@ -937,6 +1010,10 @@ def init_db():
     c.executescript('''
         CREATE INDEX IF NOT EXISTS idx_sessions_user        ON sessions(user_id);
         CREATE INDEX IF NOT EXISTS idx_sessions_start       ON sessions(start_time);
+        -- Composite indexes for the hottest query shape (user_id AND a time filter):
+        -- dashboards, weekly report, anomaly scan, alert feed all filter on both.
+        CREATE INDEX IF NOT EXISTS idx_sessions_user_start  ON sessions(user_id, start_time);
+        CREATE INDEX IF NOT EXISTS idx_alerts_user_created  ON alerts(user_id, created_at);
         CREATE INDEX IF NOT EXISTS idx_behavioral_session   ON behavioral_data(session_id);
         CREATE INDEX IF NOT EXISTS idx_chat_session         ON chat_messages(session_id);
         CREATE INDEX IF NOT EXISTS idx_voice_session        ON voice_events(session_id);
@@ -1030,29 +1107,49 @@ GAME_GENRES = {
 }
 
 # ─────────────── PEER COMPARISON DATA ───────────────────────────
-# Weekly gaming hours → approximate percentile, used only to render a relatable
-# "vs. peers" message on the parent dashboard. This is an ILLUSTRATIVE distribution
-# hand-set from general screen-time ranges — NOT a validated population statistic.
-# Do not present it as empirically derived; replace with real survey data if obtained.
-_PEER_HOURS      = [2,  4,  6,  8,  10, 12, 14, 16, 18, 20, 25, 30, 40]
-_PEER_PERCENTILE = [5, 10, 20, 30,  45, 55, 65, 73, 80, 85, 90, 95, 99]
+# Weekly gaming hours → percentile among GAMERS AGED ≤24, computed from REAL survey
+# data: the "Gamers & Anxiety" dataset (Sauter & Draschkow 2017; 13,464 respondents,
+# 11,731 aged ≤24; CC-BY 4.0) — see ml/analyze_survey.py, which recomputes this table
+# from the raw CSV. This replaces a hand-set illustrative table that was materially
+# off (it placed 10 h/week at the 45th percentile; the real value is the 20th).
+# Honest caveats carried into interpretation: respondents are self-selected gamers
+# (mostly competitive-PC players) aged 18–24, a proxy for — not a sample of — the
+# adolescent mobile gamers this system monitors.
+_PEER_HOURS      = [5,  8, 10, 14, 16, 20, 25, 30, 35, 40, 50, 70]
+_PEER_PERCENTILE = [5, 10, 20, 30, 40, 55, 70, 80, 85, 90, 95, 99]
+
+def _model_features() -> list:
+    """Feature columns the LOADED behaviour model was trained on.
+
+    Newly trained models use only the 10 OBJECTIVE features: the 10 psychometric
+    proxies are deterministic functions of them (behavior_features.derive_psychometrics),
+    so they carry no additional information — and worse, they made SHAP attributions
+    partly circular (a "Gaming cravings" driver shown to a parent is really late-night
+    ratio x re-login ratio in disguise). Sized from the fitted scaler/model so an older
+    20-feature model keeps working unchanged."""
+    n = getattr(feature_scaler, 'n_features_in_', None) \
+        or getattr(behavior_model, 'n_features_in_', None) \
+        or len(BEHAVIORAL_FEATURES)
+    return BEHAVIORAL_FEATURES[:int(n)]
+
 
 def _explain_behavior(feat_dict: dict) -> list:
     """Return top-3 behavioral factors by contribution using RF feature importances."""
     if behavior_model is None or feature_scaler is None:
         return []
     try:
+        feats    = _model_features()
         importances = behavior_model.feature_importances_        # (n_features,)
-        X_df     = pd.DataFrame([feat_dict])[BEHAVIORAL_FEATURES]
+        X_df     = pd.DataFrame([feat_dict])[feats]
         X_scaled = feature_scaler.transform(X_df)[0]            # (n_features,)
         contribs = importances * np.abs(X_scaled)
         total    = contribs.sum() or 1.0
         top_idx  = np.argsort(contribs)[::-1][:3]
         return [
             {
-                'feature':          BEHAVIORAL_FEATURES[i],
-                'label':            FEATURE_LABELS.get(BEHAVIORAL_FEATURES[i], BEHAVIORAL_FEATURES[i]),
-                'value':            round(float(feat_dict.get(BEHAVIORAL_FEATURES[i], 0)), 2),
+                'feature':          feats[i],
+                'label':            FEATURE_LABELS.get(feats[i], feats[i]),
+                'value':            round(float(feat_dict.get(feats[i], 0)), 2),
                 'contribution_pct': round(float(contribs[i] / total * 100), 1),
             }
             for i in top_idx
@@ -1112,7 +1209,8 @@ def _shap_explain_impl(feat_dict: dict, top_n: int = 4) -> list:
     if explainer is None or feature_scaler is None:
         return _explain_behavior(feat_dict)
     try:
-        X_df     = pd.DataFrame([feat_dict])[BEHAVIORAL_FEATURES]
+        feats    = _model_features()
+        X_df     = pd.DataFrame([feat_dict])[feats]
         X_scaled = feature_scaler.transform(X_df)
         arrs     = _shap_per_class(explainer.shap_values(X_scaled))
         n        = len(arrs)
@@ -1129,9 +1227,9 @@ def _shap_explain_impl(feat_dict: dict, top_n: int = 4) -> list:
         order   = np.argsort(np.abs(contrib))[::-1][:top_n]
         return [
             {
-                'feature':          BEHAVIORAL_FEATURES[i],
-                'label':            FEATURE_LABELS.get(BEHAVIORAL_FEATURES[i], BEHAVIORAL_FEATURES[i]),
-                'value':            round(float(feat_dict.get(BEHAVIORAL_FEATURES[i], 0)), 2),
+                'feature':          feats[i],
+                'label':            FEATURE_LABELS.get(feats[i], feats[i]),
+                'value':            round(float(feat_dict.get(feats[i], 0)), 2),
                 'impact':           round(float(contrib[i]), 4),
                 'direction':        'raises' if contrib[i] > 0 else 'lowers',
                 # backward-compatible magnitude (% of total absolute attribution)
@@ -1175,51 +1273,19 @@ def extract_audio_features(audio_path):
 
 
 def _extract_audio_features_inner(audio_path):
-    try:
-        y, sr = librosa.load(audio_path, sr=22050, duration=30)
-        duration = len(y) / sr
-        if len(y) < 512:
-            return None, duration
+    # Delegates to the SHARED audio_features module (silence floor → gain
+    # normalisation → optional webrtcvad speech gate → 17 features), which the
+    # real-audio trainer imports too, so train and serve can never diverge.
+    return _af_extract_features(audio_path)
 
-        # Gain normalization: the voice model keys heavily on ABSOLUTE RMS energy,
-        # so raw phone audio (variable mic gain / distance) classified inconsistently
-        # — loud sessions read as all-"angry", and peak-normalization amplified quiet
-        # clips into "angry" too. Instead, scale each clip to a fixed reference RMS so
-        # the energy feature is gain-INVARIANT and emotion is driven by prosodic/
-        # spectral shape (pitch, MFCC, energy variation). Target tuned on real device
-        # clips to give a sensible neutral/frustrated/angry spread; override with
-        # VOICE_RMS_TARGET. Set VOICE_DEBUG=1 to print the feature values used.
-        rms_target = float(os.environ.get('VOICE_RMS_TARGET', '0.045'))
-        cur_rms = float(np.sqrt(np.mean(y ** 2)))
-        # Silence floor: a segment with essentially no speech must NOT be gain-boosted —
-        # normalisation would amplify room/mic noise up to speech level and the model
-        # would read the noise as an emotion. Treat it as "no voice" instead (the event
-        # falls back to a low-confidence neutral). This is the cheap interim form of the
-        # VAD step planned in Future Work.
-        if cur_rms < float(os.environ.get('VOICE_SILENCE_RMS', '0.0015')):
-            return None, duration
-        y = y * (rms_target / cur_rms)
 
-        mfcc      = np.mean(librosa.feature.mfcc(y=y, sr=sr, n_mfcc=13), axis=1).tolist()
-        try:
-            f0      = librosa.yin(y, fmin=50, fmax=500, sr=sr)
-            f0v     = f0[f0 > 0]
-            p_mean  = float(np.mean(f0v)) if len(f0v) > 0 else 0.0
-            p_std   = float(np.std(f0v))  if len(f0v) > 0 else 0.0
-        except Exception:
-            p_mean, p_std = 150.0, 30.0
-        rms   = librosa.feature.rms(y=y)[0]
-        e_mean = float(np.mean(rms))
-        e_std  = float(np.std(rms))
-
-        if os.environ.get('VOICE_DEBUG', '').lower() in ('1', 'true', 'yes'):
-            logger.info(f"[VOICE_DEBUG] rms_in={cur_rms:.4f} e_mean={e_mean:.4f} e_std={e_std:.4f} "
-                        f"p_mean={p_mean:.1f} p_std={p_std:.1f} mfcc0={mfcc[0]:.1f}")
-
-        return mfcc + [p_mean, p_std, e_mean, e_std], round(duration, 2)
-    except Exception as e:
-        logger.error(f"Audio feature error: {e}")
-        return None, 0.0
+def _voice_X(features):
+    """Feature matrix sized to the LOADED voice model. The shared extractor only ever
+    APPENDS new features (first 17 frozen — see audio_features.py), so an older model
+    is served exactly the prefix it was trained on — the same rollout-safety pattern
+    as _model_features() on the behaviour channel."""
+    n = int(getattr(voice_model, 'n_features_in_', len(features)) or len(features))
+    return np.array([features[:n]])
 
 
 def analyse_audio(audio_path):
@@ -1228,7 +1294,7 @@ def analyse_audio(audio_path):
        caller can do distribution-aware fusion instead of relying on the argmax."""
     features, duration = extract_audio_features(audio_path)
     if features is not None and voice_model is not None:
-        X      = np.array([features])
+        X      = _voice_X(features)
         pred   = voice_model.predict(X)[0]
         probs  = voice_model.predict_proba(X)[0]
         probs_dict = {str(c): float(p) for c, p in zip(voice_model.classes_, probs)}
@@ -1313,21 +1379,39 @@ def _label_from_va(v, a):
     return min(_EMO_VA, key=lambda l: (v - _EMO_VA[l][0]) ** 2 + (a - _EMO_VA[l][1]) ** 2)
 
 
+def _ml_toxicity(text) -> float:
+    """P(toxic) from the trained chat pipeline. Serves the isotonic-calibrated layer
+       (chat_calibrated.pkl) when available so the probability is meaningful — the raw
+       LogReg is the fallback. 0.0 when the model isn't loaded or scoring fails."""
+    if not text or not str(text).strip() or chat_model is None or tfidf_vectorizer is None:
+        return 0.0
+    try:
+        model = chat_calibrated if chat_calibrated is not None else chat_model
+        proba = model.predict_proba(tfidf_vectorizer.transform([clean_text(text)]))[0]
+        return float(proba[1]) if len(proba) > 1 else float(proba[0])
+    except Exception:
+        return 0.0
+
+
+def fuse_toxicity(kw_score: float, ml_score: float) -> float:
+    """Combine the keyword-lexicon score and the model probability as INDEPENDENT
+       evidence via noisy-OR: 1-(1-kw)(1-ml). The old max() rule threw away whichever
+       signal was weaker — but two moderate, independent signals (e.g. kw 0.5 + ml 0.55)
+       are stronger evidence of toxicity than either alone. Noisy-OR keeps the output a
+       probability-shaped 0..1 that still equals a single signal when the other is 0,
+       and can only be >= max(), never less."""
+    kw = float(np.clip(kw_score, 0.0, 1.0))
+    ml = float(np.clip(ml_score, 0.0, 1.0))
+    return float(1.0 - (1.0 - kw) * (1.0 - ml))
+
+
 def _chat_toxicity(text):
-    """Toxicity in [0,1] from the trained chat model (+ keyword fallback). Used as an
-       extra, trained negative-valence signal in voice fusion — generalises beyond the
-       hand-built lexicon for hostile speech the word list would miss."""
+    """Toxicity in [0,1] from the trained chat model fused with the keyword lexicon.
+       Used as an extra, trained negative-valence signal in voice fusion — generalises
+       beyond the hand-built lexicon for hostile speech the word list would miss."""
     if not text or not text.strip():
         return 0.0
-    kw = keyword_toxicity(text)
-    ml = 0.0
-    if chat_model is not None and tfidf_vectorizer is not None:
-        try:
-            proba = chat_model.predict_proba(tfidf_vectorizer.transform([clean_text(text)]))[0]
-            ml    = float(proba[1]) if len(proba) > 1 else float(proba[0])
-        except Exception:
-            pass
-    return float(np.clip(max(kw, ml), 0, 1))
+    return fuse_toxicity(keyword_toxicity(text), _ml_toxicity(text))
 
 
 def fuse_emotion(acoustic_label, valence, probs=None, valence_conf=0.0, toxicity=0.0):
@@ -1501,11 +1585,13 @@ def run_prediction(session_id: int, explain: bool = True) -> dict:
 
     # Typed chat only for the chat-toxicity channel. Spoken words (source='voice_stt')
     # already feed the voice channel via valence fusion, so excluding them here avoids
-    # double-counting the same utterance across two modalities. (Join in Python —
-    # dialect-neutral vs GROUP_CONCAT/STRING_AGG.)
-    c.execute("SELECT message FROM chat_messages WHERE session_id=? "
+    # double-counting the same utterance across two modalities. Fetch the PER-MESSAGE
+    # served scores stored at upload (confidence) — the session channel aggregates
+    # those rather than re-scoring a concatenated blob (see the chat block below).
+    c.execute("SELECT message, confidence FROM chat_messages WHERE session_id=? "
               "AND (source IS NULL OR source <> 'voice_stt')", (session_id,))
-    chat_text = ' '.join(r['message'] for r in c.fetchall() if r['message'])
+    chat_rows = c.fetchall()
+    chat_text = ' '.join(r['message'] for r in chat_rows if r['message'])
 
     # Fetch voice events
     c.execute('SELECT emotion, intensity, duration_s, audio_file FROM voice_events WHERE session_id=?', (session_id,))
@@ -1518,7 +1604,7 @@ def run_prediction(session_id: int, explain: bool = True) -> dict:
     if brow and behavior_model is not None:
         try:
             feat_dict = {f: float(brow[f] or 0) for f in BEHAVIORAL_FEATURES}
-            X_df  = pd.DataFrame([feat_dict])[BEHAVIORAL_FEATURES]
+            X_df  = pd.DataFrame([feat_dict])[_model_features()]
             if feature_scaler is not None:
                 X_arr = feature_scaler.transform(X_df)
             else:
@@ -1535,18 +1621,27 @@ def run_prediction(session_id: int, explain: bool = True) -> dict:
             logger.error(f"Behaviour prediction error: {e}")
 
     # ── Chat score ───────────────────────────────────────────────
+    # Session chat score = MAX of the per-message served scores stored at upload.
+    # Chosen empirically: on 707 real CONDA conversations, max beat scoring the
+    # concatenated text (PR-AUC 0.916 vs 0.907) and mean/top-3 aggregation — and a
+    # blob score DILUTES one toxic line among many clean ones, exactly the case a
+    # parent cares about. It also unifies semantics with the per-message alert path
+    # (identical scores) and drops the TF-IDF recompute from this hot path (this
+    # runs on every live/voice re-score). Concatenation survives only as the
+    # fallback for legacy rows stored before per-message scores existed.
     c_score, c_conf = 0.0, 0.5
     c_present = False
-    if chat_text.strip() and chat_model is not None and tfidf_vectorizer is not None:
+    if chat_rows:
         try:
-            vec      = tfidf_vectorizer.transform([clean_text(chat_text)])
-            proba    = chat_model.predict_proba(vec)[0]
-            # Class index 1 = toxic
-            ml_score = float(proba[1]) if len(proba) > 1 else float(proba[0])
-            kw_score = keyword_toxicity(chat_text)
-            c_score  = float(np.clip(max(ml_score, kw_score), 0, 1))
-            c_conf   = 0.85 if kw_score > 0.3 else round(float(max(proba)), 3)
-            c_present = True
+            stored = [float(r['confidence']) for r in chat_rows if r['confidence'] is not None]
+            if stored:
+                c_score = float(np.clip(max(stored), 0.0, 1.0))
+                c_present = True
+            elif chat_text.strip() and chat_model is not None and tfidf_vectorizer is not None:
+                c_score = fuse_toxicity(keyword_toxicity(chat_text), _ml_toxicity(chat_text))
+                c_present = True
+            if c_present:
+                c_conf = round(max(c_score, 1.0 - c_score), 3)
         except Exception as e:
             logger.error(f"Chat prediction error: {e}")
 
@@ -1564,7 +1659,7 @@ def run_prediction(session_id: int, explain: bool = True) -> dict:
                         if os.path.exists(fp):
                             feats, _ = extract_audio_features(fp)
                             if feats is not None:
-                                all_probs.append(voice_model.predict_proba(np.array([feats]))[0])
+                                all_probs.append(voice_model.predict_proba(_voice_X(feats))[0])
             if all_probs:
                 avg   = np.mean(all_probs, axis=0)
                 cls   = list(voice_model.classes_)
@@ -1963,6 +2058,7 @@ def health():
             'behavior':            behavior_model      is not None,
             'behavior_calibrated': behavior_calibrated is not None,
             'chat':                chat_model          is not None,
+            'chat_calibrated':     chat_calibrated     is not None,
             'voice':               voice_model         is not None,
             'tfidf':               tfidf_vectorizer    is not None,
             'scaler':              feature_scaler      is not None,
@@ -1999,7 +2095,9 @@ def model_card():
         'train_samples':       m.get('train_samples'),
         'test_samples':        m.get('test_samples'),
         'feature_count':       m.get('feature_count'),
+        'model_features':      m.get('model_features'),
         'chat_metrics':        m.get('chat_metrics'),
+        'chat_metrics_gaming': m.get('chat_metrics_gaming'),   # in-domain eval (ml/eval_chat_conda.py)
         'voice_metrics':       m.get('voice_metrics'),
         'risk_bands': {
             'casual':   f'score < {RISK_T1}',
@@ -2391,6 +2489,71 @@ def get_consent():
     })
 
 
+# Fields never exported: credentials and push routing are the SYSTEM's secrets, not
+# the child's data record.
+_EXPORT_EXCLUDE = {'pin', 'parent_pin', 'pin_hash', 'parent_pin_hash', 'fcm_token'}
+
+
+@app.route('/api/user/export', methods=['GET'])
+@limiter.limit("5 per hour")
+def export_user_data():
+    """Data ACCESS/PORTABILITY: one JSON bundle of everything the system holds about a
+    child. Parent-controlled like deletion, and the export scope is intentionally
+    IDENTICAL to what /api/user/delete_data erases (_SESSION_TABLES + _USER_TABLES +
+    the sessions themselves) — 'show me my data' and 'erase my data' are two views of
+    one inventory, so neither can quietly drift from the other. Rate-limited: this is
+    the heaviest read in the API."""
+    user_id = request.args.get('user_id', type=int)
+    if not user_id:
+        return jsonify({'success': False, 'message': 'user_id required'}), 400
+    deny = guard(user_id)
+    if deny: return deny
+    deny = deny_non_parent()           # like deletion: the parent controls the data
+    if deny: return deny
+
+    CAP = 20000                        # per-table bound (free-tier memory safety)
+    conn = get_db()
+    c = conn.cursor()
+    c.execute('SELECT * FROM users WHERE user_id=?', (user_id,))
+    urow = c.fetchone()
+    if not urow:
+        conn.close()
+        return jsonify({'success': False, 'message': 'User not found'}), 404
+    profile = {k: v for k, v in dict(urow).items() if k not in _EXPORT_EXCLUDE}
+
+    data, truncated = {}, []
+
+    def grab(table, sql, params):
+        c.execute(sql, params + (CAP + 1,))
+        rows = [dict(r) for r in c.fetchall()]
+        if len(rows) > CAP:
+            rows = rows[:CAP]
+            truncated.append(table)
+        data[table] = rows
+
+    grab('sessions',
+         'SELECT * FROM sessions WHERE user_id=? ORDER BY session_id LIMIT ?', (user_id,))
+    for t in _SESSION_TABLES:
+        grab(t, f'SELECT * FROM {t} WHERE session_id IN '
+                f'(SELECT session_id FROM sessions WHERE user_id=?) ORDER BY id LIMIT ?',
+             (user_id,))
+    for t in _USER_TABLES:
+        pk = 'user_id' if t in ('streaks', 'time_limits') else 'id'
+        grab(t, f'SELECT * FROM {t} WHERE user_id=? ORDER BY {pk} LIMIT ?', (user_id,))
+    conn.close()
+
+    logger.info(f"Data export for user {user_id} "
+                f"({sum(len(v) for v in data.values())} rows)")
+    return jsonify({'success': True,
+                    'exported_at': datetime.now().isoformat(),
+                    'profile': profile,
+                    'data': data,
+                    'truncated_tables': truncated,
+                    'note': ('Complete record of collected data for this child; the '
+                             'same inventory /api/user/delete_data erases. Credential '
+                             'and push-token fields are never exported.')})
+
+
 @app.route('/api/user/delete_data', methods=['POST'])
 def delete_user_data():
     """Erase a child's collected data ('data'), or the whole account ('account').
@@ -2421,6 +2584,9 @@ def delete_user_data():
                       (frow['family_code'], frow['family_code'], int(user_id)))
         c.execute("DELETE FROM users WHERE user_id=?", (int(user_id),))
         conn.commit()
+        # Lock the deleted account's still-valid tokens out NOW, not when the
+        # existence cache's TTL happens to lapse.
+        _user_exists_cache.pop(int(user_id), None)
     conn.close()
     logger.info(f"Data deletion (scope={scope}) for user {user_id}")
     return jsonify({'success': True, 'scope': scope})
@@ -2836,21 +3002,17 @@ def save_chat(sid):
     deny = guard_session(sid)
     if deny: return deny
     data    = request.get_json() or {}
-    message = data.get('message', '').strip()
+    # str() coercion: a non-string JSON value (e.g. a number) crashed .strip() into a 500.
+    # The cap bounds a runaway/abusive body — real chat lines are short, and an unbounded
+    # message bloats the DB and skews the TF-IDF features.
+    message = str(data.get('message') or '').strip()[:2000]
     if not message:
         return jsonify({'error': 'Empty message'}), 400
 
     # Real-time toxicity scoring for alert generation
-    kw_score = keyword_toxicity(message)
-    ml_score = 0.0
-    if chat_model is not None and tfidf_vectorizer is not None:
-        try:
-            vec      = tfidf_vectorizer.transform([clean_text(message)])
-            proba    = chat_model.predict_proba(vec)[0]
-            ml_score = float(proba[1]) if len(proba) > 1 else float(proba[0])
-        except Exception:
-            pass
-    tox_score = float(np.clip(max(ml_score, kw_score), 0, 1))
+    kw_score  = keyword_toxicity(message)
+    ml_score  = _ml_toxicity(message)
+    tox_score = fuse_toxicity(kw_score, ml_score)
 
     conn = get_db()
     c    = conn.cursor()
@@ -2881,8 +3043,28 @@ def save_chat(sid):
             c.execute("SELECT 1 FROM child_nudges WHERE user_id=? AND kind='language' AND delivered=0 LIMIT 1",
                       (srow['user_id'],))
             if not c.fetchone():
-                c.execute("INSERT INTO child_nudges (user_id, message, kind) VALUES (?,?,?)",
-                          (srow['user_id'], "Let's keep it friendly — mind the language 🙂", 'language'))
+                c.execute("INSERT INTO child_nudges (user_id, message, kind, created_at) VALUES (?,?,?,?)",
+                          (srow['user_id'], "Let's keep it friendly — mind the language 🙂", 'language',
+                           datetime.now().isoformat()))
+
+    # Session-level escalation (see CHAT_STREAK_BAR): repeated moderately-toxic messages
+    # in ONE session earn one aggregate alert, recovering recall the precision-first
+    # per-message threshold gives up. De-duped per session via an in-memory marker
+    # (worker restart mid-session could at worst repeat one alert — acceptable).
+    if tox_score >= CHAT_STREAK_BAR and sid not in _streak_alerted:
+        c.execute('SELECT COUNT(*) AS n FROM chat_messages WHERE session_id=? AND confidence>=?',
+                  (sid, CHAT_STREAK_BAR))
+        n_flagged = c.fetchone()['n']
+        if n_flagged >= CHAT_STREAK_N:
+            _prune_mono_cache(_streak_alerted, max_age_s=24 * 3600)   # bound long-run growth
+            _streak_alerted[sid] = time.monotonic()
+            c.execute('SELECT user_id FROM sessions WHERE session_id=?', (sid,))
+            srow = c.fetchone()
+            if srow:
+                _insert_alert(c, srow['user_id'], 'toxicity_streak',
+                              f'Repeated concerning language this gaming session — '
+                              f'{n_flagged} messages flagged. A pattern, not a one-off.',
+                              'high')
 
     conn.commit()
     conn.close()
@@ -2891,6 +3073,8 @@ def save_chat(sid):
 
 # Last voice-driven re-score per session (monotonic seconds) — see save_voice.
 _voice_rescore_last: dict = {}
+# Sessions whose toxicity-streak alert has already fired (sid → monotonic seconds).
+_streak_alerted: dict = {}
 
 
 def _prune_mono_cache(cache: dict, max_age_s: float, cap: int = 2000):
@@ -2957,11 +3141,19 @@ def save_voice(sid):
             except Exception:
                 pass
     else:
-        body      = request.get_json() or {}
-        emotion   = body.get('emotion', 'neutral')
-        intensity = float(body.get('intensity', 0.5))
-        duration  = float(body.get('duration_seconds', 0.0))
-        fname     = None
+        body    = request.get_json() or {}
+        emotion = str(body.get('emotion') or 'neutral')[:32]
+        # Defensive coercion: garbage values 500'd the upload; clamp intensity to the
+        # 0..1 range every consumer (VOICE_RISK weighting, dashboards) assumes.
+        try:
+            intensity = float(np.clip(float(body.get('intensity', 0.5)), 0.0, 1.0))
+        except (TypeError, ValueError):
+            intensity = 0.5
+        try:
+            duration = max(0.0, float(body.get('duration_seconds', 0.0)))
+        except (TypeError, ValueError):
+            duration = 0.0
+        fname = None
 
     conn = get_db()
     c    = conn.cursor()
@@ -3020,19 +3212,11 @@ def analyse_chat():
     if not msg:
         return jsonify({'error': 'No message'}), 400
 
-    ml_score = 0.0
-    if chat_model is not None and tfidf_vectorizer is not None:
-        try:
-            vec      = tfidf_vectorizer.transform([clean_text(msg)])
-            # The chat model is a classifier: use P(toxic), not predict() (a 0/1 class
-            # label) — the same continuous score the alert path and ensemble use. The
-            # old `predict()*1.5` collapsed this to a crude binary 0/1.
-            proba    = chat_model.predict_proba(vec)[0]
-            ml_score = float(proba[1]) if len(proba) > 1 else float(proba[0])
-        except Exception:
-            pass
+    # P(toxic) from the trained pipeline (calibrated layer when available), fused with
+    # the keyword lexicon via noisy-OR — the same scoring the alert path and ensemble use.
+    ml_score = _ml_toxicity(msg)
     kw_score = keyword_toxicity(msg)
-    final    = float(np.clip(max(ml_score, kw_score), 0, 1))
+    final    = fuse_toxicity(kw_score, ml_score)
     # Label bands aligned with the alert threshold: don't call a message 'toxic' in the UI
     # unless it would actually raise an alert — avoids scaring parents over normal gaming
     # chat the model tends to over-score.
@@ -3647,7 +3831,10 @@ def child_heartbeat():
 def child_tamper():
     """A child-initiated event the parent should know about (currently: logout)."""
     data  = request.get_json() or {}
-    uid   = data.get('user_id')
+    try:
+        uid = int(data.get('user_id'))
+    except (TypeError, ValueError):
+        return jsonify({'success': False, 'message': 'user_id required'}), 400
     event = str(data.get('event', '')).strip()
     deny  = guard(uid)
     if deny: return deny
@@ -3788,17 +3975,31 @@ def submit_feedback():
     conn = get_db()
     c    = conn.cursor()
 
-    # Which child is this about? Prefer an explicit user_id; otherwise derive from the alert.
+    # Which child is this about? Resolve the alert FIRST whenever alert_id is given, and
+    # require it to belong to the same child. Without this, a crafted alert_id attached
+    # feedback to (and DELETEd the existing verdict of) another family's alert — the
+    # /api/alerts feed joins feedback on alert_id alone, so the label would even render
+    # in their app. The guard below then authorizes against the alert's true owner.
     user_id = data.get('user_id')
-    if user_id is None and alert_id is not None:
+    if user_id is not None:
+        try:
+            user_id = int(user_id)
+        except (TypeError, ValueError):
+            conn.close()
+            return jsonify({'success': False, 'message': 'user_id must be an integer'}), 400
+    if alert_id is not None:
         c.execute('SELECT user_id FROM alerts WHERE id=?', (alert_id,))
         arow = c.fetchone()
-        if arow:
-            user_id = arow['user_id']
+        if not arow:
+            conn.close()
+            return jsonify({'success': False, 'message': 'alert not found'}), 404
+        if user_id is not None and user_id != int(arow['user_id']):
+            conn.close()
+            return jsonify({'success': False, 'message': 'alert does not belong to this user'}), 400
+        user_id = int(arow['user_id'])
     if user_id is None:
         conn.close()
         return jsonify({'success': False, 'message': 'user_id or a valid alert_id is required'}), 400
-    user_id = int(user_id)
 
     deny = guard(user_id)
     if deny:
@@ -3822,10 +4023,14 @@ def submit_feedback():
     if alert_id is not None:
         c.execute('DELETE FROM feedback WHERE alert_id=?', (alert_id,))
 
+    # Explicit local timestamp — the column DEFAULT differs by engine (SQLite's
+    # CURRENT_TIMESTAMP is UTC, Postgres' now() carries a tz suffix), which skewed
+    # these rows against every other timestamp the app writes via datetime.now().
     c.execute('''INSERT INTO feedback (user_id, alert_id, prediction_id, label,
-                                       risk_category, risk_score, note)
-                 VALUES (?,?,?,?,?,?,?)''',
-              (user_id, alert_id, pred_id, label, pred_cat, pred_sc, note))
+                                       risk_category, risk_score, note, created_at)
+                 VALUES (?,?,?,?,?,?,?,?)''',
+              (user_id, alert_id, pred_id, label, pred_cat, pred_sc, note,
+               datetime.now().isoformat()))
     conn.commit()
     conn.close()
     return jsonify({'success': True, 'message': 'Feedback recorded', 'label': label})
@@ -4165,10 +4370,10 @@ def set_time_limit():
     # so repeated edits don't stack.
     c.execute("DELETE FROM child_nudges WHERE user_id=? AND kind='limit' AND delivered=0",
               (int(user_id),))
-    c.execute("INSERT INTO child_nudges (user_id, message, kind) VALUES (?,?,?)",
+    c.execute("INSERT INTO child_nudges (user_id, message, kind, created_at) VALUES (?,?,?,?)",
               (int(user_id),
                f'Your parent set a {hours:.1f}h daily gaming limit. Keep an eye on your playtime!',
-               'limit'))
+               'limit', datetime.now().isoformat()))
     conn.commit()
     conn.close()
     return jsonify({'success': True, 'daily_limit_hours': hours})
@@ -4189,8 +4394,8 @@ def send_nudge():
         return jsonify({'success': False, 'message': 'user_id and message required'}), 400
     conn = get_db()
     c    = conn.cursor()
-    c.execute("INSERT INTO child_nudges (user_id, message, kind) VALUES (?,?,?)",
-              (int(user_id), message, 'parent'))
+    c.execute("INSERT INTO child_nudges (user_id, message, kind, created_at) VALUES (?,?,?,?)",
+              (int(user_id), message, 'parent', datetime.now().isoformat()))
     conn.commit()
     conn.close()
     return jsonify({'success': True, 'message': 'Nudge sent'})
@@ -4580,11 +4785,25 @@ _ANOMALY_TTL_S    = 300
 _anomaly_last_run: dict = {}
 
 
+def _mad_z(value: float, series) -> float:
+    """Modified z-score (median/MAD) — robust to the exact thing we're hunting.
+    A single huge day inflates a std-based z's DENOMINATOR, so the next spike looks
+    normal (the outlier masks its successors); median/MAD is the standard fix for
+    small, skewed samples like daily play hours. 0.6745 scales MAD to std-equivalent
+    units; the 0.3 h floor stops a near-constant history (MAD ~ 0) from making any
+    tiny wiggle look extreme."""
+    arr = np.asarray(list(series), dtype=float)
+    med = float(np.median(arr))
+    mad = float(np.median(np.abs(arr - med)))
+    return 0.6745 * (float(value) - med) / max(mad, 0.3)
+
+
 def _detect_anomalies(user_id: int, force: bool = False):
     """Detect statistically unusual patterns in a child's session history.
 
-    Uses simple z-score on daily hours over the trailing 28 days. Returns a
-    list of anomaly dicts. Severity: 'high' if z >= 2.5, 'medium' if >= 1.8.
+    Uses the ROBUST modified z-score (median/MAD, see _mad_z) on daily hours over
+    the trailing 28 days. Returns a list of anomaly dicts. Severity follows the
+    conventional modified-z bands: 'high' if z >= 3.5, 'medium' if >= 2.5.
     """
     now_mono = time.monotonic()
     _prune_mono_cache(_anomaly_last_run, max_age_s=_ANOMALY_TTL_S * 4)   # bound long-run growth
@@ -4605,8 +4824,7 @@ def _detect_anomalies(user_id: int, force: bool = False):
         return []
 
     hours = [r['hours'] for r in rows]
-    mean = float(np.mean(hours))
-    std = float(np.std(hours)) or 0.001
+    median_h = float(np.median(hours))
 
     # rows[-1] is the latest day WITH sessions, which is not necessarily today — a big
     # day from last week must not keep raising "Today's playtime is +X%" all week. Key
@@ -4616,14 +4834,14 @@ def _detect_anomalies(user_id: int, force: bool = False):
     yesterday_str = (datetime.now().date() - timedelta(days=1)).isoformat()
     today_hours     = by_day.get(today_str, 0.0)
     yesterday_hours = by_day.get(yesterday_str, 0.0)
-    z_today = (today_hours - mean) / std
+    z_today = _mad_z(today_hours, hours)
 
     out = []
-    if today_hours > 0 and z_today >= 1.8:
-        sev = 'high' if z_today >= 2.5 else 'medium'
-        delta_pct = ((today_hours - mean) / max(mean, 0.1)) * 100
+    if today_hours > 0 and z_today >= 2.5:
+        sev = 'high' if z_today >= 3.5 else 'medium'
+        delta_pct = ((today_hours - median_h) / max(median_h, 0.1)) * 100
         msg = (f"Today's playtime ({today_hours:.1f}h) is {delta_pct:+.0f}% "
-               f"vs. 4-week average ({mean:.1f}h)")
+               f"vs. a typical day this month ({median_h:.1f}h)")
         out.append({
             'kind': 'spike_daily_hours',
             'severity': sev,
@@ -4635,14 +4853,14 @@ def _detect_anomalies(user_id: int, force: bool = False):
     baseline = [h for d, h in by_day.items() if d not in (today_str, yesterday_str)]
     if baseline and (today_hours > 0 or yesterday_hours > 0):
         last2_avg = (today_hours + yesterday_hours) / 2
-        prev_avg  = float(np.mean(baseline))
-        if prev_avg > 0 and last2_avg > prev_avg * 1.75:
+        prev_med  = float(np.median(baseline))
+        if prev_med > 0 and last2_avg > prev_med * 1.75:
             out.append({
                 'kind': 'sustained_increase',
                 'severity': 'medium',
                 'message': f"Gaming has averaged {last2_avg:.1f}h over the last 2 days vs. "
-                           f"{prev_avg:.1f}h baseline — a sustained jump.",
-                'z_score': round((last2_avg - prev_avg) / std, 2),
+                           f"a typical {prev_med:.1f}h day — a sustained jump.",
+                'z_score': round(_mad_z(last2_avg, baseline), 2),
             })
 
     # Persist new anomalies (de-dup by message + same day)
@@ -4654,9 +4872,14 @@ def _detect_anomalies(user_id: int, force: bool = False):
         ).fetchone()
         if existing:
             continue
+        # Explicit local detected_at: the column DEFAULT is UTC on SQLite (tz-suffixed on
+        # Postgres), so the same-day de-dup above — SUBSTR(detected_at,1,10) vs the LOCAL
+        # date — missed around midnight and duplicated anomalies.
         conn.execute(
-            'INSERT INTO anomalies (user_id, kind, severity, message, z_score) VALUES (?, ?, ?, ?, ?)',
-            (user_id, a['kind'], a['severity'], a['message'], a['z_score'])
+            'INSERT INTO anomalies (user_id, kind, severity, message, z_score, detected_at) '
+            'VALUES (?, ?, ?, ?, ?, ?)',
+            (user_id, a['kind'], a['severity'], a['message'], a['z_score'],
+             datetime.now().isoformat())
         )
     conn.commit()
     conn.close()
@@ -4801,11 +5024,14 @@ def _build_counselor_context(user_id: int) -> dict:
 @app.route('/api/counselor/chat', methods=['POST'])
 def counselor_chat():
     data = request.get_json() or {}
-    user_id = data.get('user_id')
+    try:
+        user_id = int(data.get('user_id'))
+    except (TypeError, ValueError):
+        return jsonify({'success': False, 'error': 'user_id and message required'}), 400
     deny = guard(user_id)
     if deny: return deny
-    message = (data.get('message') or '').strip()
-    if not user_id or not message:
+    message = str(data.get('message') or '').strip()[:1000]
+    if not message:
         return jsonify({'success': False, 'error': 'user_id and message required'}), 400
 
     intent = _classify_intent(message)
@@ -4822,10 +5048,11 @@ def counselor_chat():
     reply = base + tail
 
     conn = get_db()
-    conn.execute('INSERT INTO counselor_messages (user_id, role, content) VALUES (?, ?, ?)',
-                 (user_id, 'user', message))
-    conn.execute('INSERT INTO counselor_messages (user_id, role, content) VALUES (?, ?, ?)',
-                 (user_id, 'assistant', reply))
+    now  = datetime.now().isoformat()   # explicit local time (engine defaults skew — see _insert_alert)
+    conn.execute('INSERT INTO counselor_messages (user_id, role, content, created_at) VALUES (?, ?, ?, ?)',
+                 (user_id, 'user', message, now))
+    conn.execute('INSERT INTO counselor_messages (user_id, role, content, created_at) VALUES (?, ?, ?, ?)',
+                 (user_id, 'assistant', reply, now))
     conn.commit()
     conn.close()
 
@@ -4855,23 +5082,36 @@ def counselor_history():
 # DAILY REFLECTION / MOOD CHECK-IN
 # ═════════════════════════════════════════════════════════════════
 
+def _rating_1_10(v):
+    """Coerce a check-in rating to an int in 1..10, else None (stored as missing)."""
+    try:
+        n = int(v)
+        return n if 1 <= n <= 10 else None
+    except (TypeError, ValueError):
+        return None
+
+
 @app.route('/api/child/reflection', methods=['POST'])
 def post_reflection():
     data = request.get_json() or {}
-    user_id = data.get('user_id')
+    try:
+        user_id = int(data.get('user_id'))
+    except (TypeError, ValueError):
+        return jsonify({'success': False, 'error': 'user_id required'}), 400
     deny = guard(user_id)
     if deny: return deny
-    if not user_id:
-        return jsonify({'success': False, 'error': 'user_id required'}), 400
-    mood = data.get('mood_rating')
-    sleep = data.get('sleep_quality')
-    energy = data.get('energy_level')
-    note = (data.get('note') or '')[:500]
+    mood   = _rating_1_10(data.get('mood_rating'))
+    sleep  = _rating_1_10(data.get('sleep_quality'))
+    energy = _rating_1_10(data.get('energy_level'))
+    note   = str(data.get('note') or '')[:500]
     conn = get_db()
+    # Explicit local created_at: the column DEFAULT is UTC on SQLite, but the reader
+    # filters created_at >= a LOCAL cutoff — defaults shifted every reflection by the
+    # server's UTC offset (and moved late-evening check-ins to the wrong day).
     conn.execute('''
-        INSERT INTO reflections (user_id, mood_rating, sleep_quality, energy_level, note)
-        VALUES (?, ?, ?, ?, ?)
-    ''', (user_id, mood, sleep, energy, note))
+        INSERT INTO reflections (user_id, mood_rating, sleep_quality, energy_level, note, created_at)
+        VALUES (?, ?, ?, ?, ?, ?)
+    ''', (user_id, mood, sleep, energy, note, datetime.now().isoformat()))
     conn.commit()
     return jsonify({'success': True})
 

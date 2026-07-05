@@ -6,6 +6,10 @@ pandas==2.2.2
 scikit-learn==1.8.0
 librosa==0.10.2
 soundfile==0.12.1
+# Voice-activity detection: rejects game audio / music / background noise before the
+# voice-emotion model sees it (an energy floor alone can't). Optional at runtime —
+# the backend degrades gracefully if this isn't installed.
+webrtcvad-wheels==2.0.14
 fpdf2==2.7.9
 gunicorn==22.0.0
 shap==0.51.0

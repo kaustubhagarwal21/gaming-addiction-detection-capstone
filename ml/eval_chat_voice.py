@@ -8,9 +8,10 @@ Key honesty points:
 - Chat is reported on TWO sets: (a) the balanced held-out split it was tested on
   (optimistic), and (b) a REALISTIC, naturally-imbalanced held-out set the model never
   trained on (the truthful view — this is where toxic precision is low). Both at the
-  default 0.5 cut and at the live alert threshold (0.75).
-- Voice is reported on a held-out split of SYNTHETIC features — clearly labelled as such,
-  because the model is not trained on real audio.
+  default 0.5 cut and at the live alert threshold (CHAT_ALERT_T, default 0.90).
+- Voice: only evaluated here if the deployed model is the old synthetic-features one.
+  When ml/train_voice_real.py has produced the real-audio model, that trainer owns
+  voice_metrics and this script leaves them untouched (see main()).
 
 Splits are reproduced with the SAME seeds as ml/retrain_models.py, so the test rows are
 genuinely held out from the deployed models (no train leakage).
@@ -20,7 +21,8 @@ import numpy as np
 import pandas as pd
 from sklearn.model_selection import train_test_split
 from sklearn.metrics import (precision_score, recall_score, f1_score,
-                             accuracy_score, confusion_matrix)
+                             accuracy_score, confusion_matrix,
+                             average_precision_score, brier_score_loss)
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 DATA_DIR   = os.path.join(ROOT, 'data')
@@ -28,7 +30,7 @@ MODELS_DIR = os.path.join(ROOT, 'backend', 'models')
 sys.path.insert(0, os.path.join(ROOT, 'backend'))
 from text_utils import clean_text   # the exact serving preprocessing
 
-ALERT_T = 0.75   # must match CHAT_ALERT_T in backend/app.py
+ALERT_T = float(os.environ.get('CHAT_ALERT_T', '0.90'))   # must match backend/app.py's default
 
 
 def _load(name):
@@ -53,17 +55,32 @@ def eval_chat():
 
     clf = _load('chat_model.pkl')
     vec = _load('tfidf_vectorizer.pkl')
+    # Optional isotonic layer (mirrors the behaviour model's calibration): serve-time
+    # probabilities come from this when present, so evaluate what is actually served.
+    cal_path = os.path.join(MODELS_DIR, 'chat_calibrated.pkl')
+    cal = _load('chat_calibrated.pkl') if os.path.exists(cal_path) else None
+    served = cal if cal is not None else clf
 
     def metrics(texts, y_true, thr):
-        proba = clf.predict_proba(vec.transform(texts))[:, 1]
+        X = vec.transform(texts)
+        proba = served.predict_proba(X)[:, 1]
         y_hat = (proba >= thr).astype(int)
-        return {
+        out = {
             'precision_toxic': round(float(precision_score(y_true, y_hat, zero_division=0)), 4),
             'recall_toxic':    round(float(recall_score(y_true, y_hat, zero_division=0)), 4),
             'f1_toxic':        round(float(f1_score(y_true, y_hat, zero_division=0)), 4),
             'accuracy':        round(float(accuracy_score(y_true, y_hat)), 4),
             'confusion':       confusion_matrix(y_true, y_hat).tolist(),  # [[TN,FP],[FN,TP]]
+            # Threshold-free views: PR-AUC summarises the whole precision/recall
+            # trade-off (a single-threshold row hides it); Brier measures how honest
+            # the served probabilities are (lower = better calibrated).
+            'pr_auc':          round(float(average_precision_score(y_true, proba)), 4),
+            'brier':           round(float(brier_score_loss(y_true, proba)), 4),
         }
+        if cal is not None:   # how much the isotonic layer helped vs the raw model
+            out['brier_uncalibrated'] = round(float(
+                brier_score_loss(y_true, clf.predict_proba(X)[:, 1])), 4)
+        return out
 
     # (a) balanced held-out split (optimistic, what it was tested on)
     bal = metrics(X_test, y_test, 0.5)
@@ -75,16 +92,18 @@ def eval_chat():
     real_75 = metrics(realistic['text'], realistic['toxic'], ALERT_T)
 
     out = {
-        'model': 'LogisticRegression + TF-IDF (1-2gram)',
+        'model': ('LogisticRegression + TF-IDF (word 1-2gram + char_wb 3-5gram union)'
+                  + (' + isotonic calibration' if cal is not None else '')),
         'balanced_holdout': bal,
         'realistic_holdout': {
             'toxic_base_rate': rate,
-            'at_threshold_0.5':       real_05,
-            'at_alert_threshold_0.75': real_75,
+            'alert_threshold': ALERT_T,
+            'at_threshold_0.5':   real_05,
+            'at_alert_threshold': real_75,
         },
         'note': ('Balanced split flatters the model; the realistic set reflects the true '
                  '~imbalanced stream. Toxic precision is low at 0.5 (the model over-flags '
-                 'gaming language), which is exactly why the live alert threshold is 0.75 '
+                 f'gaming language), which is exactly why the live alert threshold is {ALERT_T} '
                  '(higher precision, lower recall). The real fix is real gaming-chat data.'),
         'confusion_labels': ['clean', 'toxic'],
         'eval': 'Held-out rows the deployed model never trained on (seeds match retrain).',
@@ -126,10 +145,15 @@ def eval_voice():
     clf = _load('voice_model.pkl')
     y_hat = clf.predict(X_test)
     labels = ['neutral', 'excited', 'frustrated', 'angry']
+    # Multiclass Brier: mean over samples of sum_k (p_k - 1[y=k])^2 (lower = better).
+    proba  = clf.predict_proba(X_test)
+    onehot = (np.asarray(y_test)[:, None] == np.asarray(list(clf.classes_))[None, :]).astype(float)
+    brier  = float(np.mean(np.sum((proba - onehot) ** 2, axis=1)))
     out = {
         'model': 'GradientBoosting on 17 acoustic features (synthetic)',
         'accuracy':  round(float(accuracy_score(y_test, y_hat)), 4),
         'macro_f1':  round(float(f1_score(y_test, y_hat, average='macro')), 4),
+        'brier_multiclass': round(brier, 4),
         'per_class_precision': {l: round(float(precision_score(y_test, y_hat, labels=[l], average='micro', zero_division=0)), 4) for l in labels},
         'per_class_recall':    {l: round(float(recall_score(y_test, y_hat, labels=[l], average='micro', zero_division=0)), 4) for l in labels},
         'confusion': confusion_matrix(y_test, y_hat, labels=labels).tolist(),
@@ -145,15 +169,23 @@ def eval_voice():
 
 def main():
     chat = eval_chat()
-    voice = eval_voice()
     meta_path = os.path.join(MODELS_DIR, 'model_metadata.json')
     with open(meta_path) as f:
         meta = json.load(f)
     meta['chat_metrics'] = chat
-    meta['voice_metrics'] = voice
+    # Evaluate voice against synthetic features ONLY when the deployed model was itself
+    # trained on synthetic features. Once ml/train_voice_real.py has produced a
+    # REAL-audio model, scoring it on the synthetic generator is meaningless — and
+    # overwriting the real-audio metrics with that nonsense would silently corrupt the
+    # model card. The real trainer writes its own voice_metrics.
+    if 'REAL audio' in str(meta.get('voice_metrics', {}).get('model', '')):
+        print("\n[SKIP] voice_metrics untouched — deployed voice model is trained on real "
+              "audio (ml/train_voice_real.py owns its metrics).")
+    else:
+        meta['voice_metrics'] = eval_voice()
     with open(meta_path, 'w') as f:
         json.dump(meta, f, indent=2)
-    print("\n[OK] Wrote chat_metrics + voice_metrics into model_metadata.json")
+    print("\n[OK] Wrote metrics into model_metadata.json")
 
 
 if __name__ == '__main__':
