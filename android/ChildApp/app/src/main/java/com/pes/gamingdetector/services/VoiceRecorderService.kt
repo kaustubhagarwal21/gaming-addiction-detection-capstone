@@ -23,7 +23,6 @@ import okhttp3.RequestBody.Companion.asRequestBody
 import org.json.JSONObject
 import org.vosk.Model
 import org.vosk.Recognizer
-import java.io.DataOutputStream
 import java.io.File
 import java.io.FileOutputStream
 import java.util.zip.ZipInputStream

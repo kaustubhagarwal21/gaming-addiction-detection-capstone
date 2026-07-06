@@ -15,7 +15,6 @@ Run AFTER ml/ablation_studies.py (it caches the per-example chat scores):
 """
 import json
 import os
-import sys
 
 import numpy as np
 

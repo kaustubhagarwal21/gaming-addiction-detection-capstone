@@ -6,13 +6,13 @@ import os, sys, pickle, warnings, json
 from datetime import datetime
 import numpy as np
 import pandas as pd
-from sklearn.ensemble import RandomForestClassifier, RandomForestRegressor, GradientBoostingClassifier
+from sklearn.ensemble import RandomForestClassifier, GradientBoostingClassifier
 from sklearn.linear_model import LogisticRegression
-from sklearn.preprocessing import StandardScaler, LabelEncoder
+from sklearn.preprocessing import StandardScaler
 from sklearn.model_selection import train_test_split, cross_val_score
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.pipeline import FeatureUnion
-from sklearn.metrics import classification_report, confusion_matrix, mean_absolute_error, brier_score_loss
+from sklearn.metrics import classification_report, confusion_matrix, brier_score_loss
 from sklearn.calibration import CalibratedClassifierCV
 from sklearn.frozen import FrozenEstimator
 
@@ -154,7 +154,7 @@ def train_behavior_model():
     # learned (the old committed CSV was a stale, imbalanced artifact).
     os.makedirs(DATA_DIR, exist_ok=True)
     df.to_csv(os.path.join(DATA_DIR, 'behavior_dataset.csv'), index=False)
-    print(f"Saved balanced training data -> data/behavior_dataset.csv")
+    print("Saved balanced training data -> data/behavior_dataset.csv")
 
     # Train on the 10 OBJECTIVE features only. The 10 psychometric proxies are
     # deterministic functions of these (behavior_features.derive_psychometrics) plus

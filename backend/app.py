@@ -8,7 +8,7 @@ from flask import Flask, request, jsonify, g, has_request_context
 from flask_cors import CORS
 import sqlite3
 from datetime import datetime, timedelta
-from functools import wraps, lru_cache
+from functools import lru_cache
 import json
 import os
 import threading
@@ -19,7 +19,6 @@ import time
 import hashlib
 import hmac
 import secrets
-from math import ceil, floor
 
 from itsdangerous import URLSafeTimedSerializer, BadSignature, SignatureExpired
 
@@ -1054,8 +1053,7 @@ init_db()
 # ──────────────────────── TEXT HELPERS ───────────────────────────
 # Preprocessing + lexicons live in text_utils so the backend and the model trainer
 # share ONE definition (no train/serve skew). See backend/text_utils.py.
-from text_utils import (SLANG_MAP, TOXIC_HIGH, TOXIC_MEDIUM, STOP_WORDS,
-                        normalize_slang, clean_text, keyword_toxicity)
+from text_utils import clean_text, keyword_toxicity
 from behavior_features import derive_psychometrics
 
 # ─────────────── GENRE RISK WEIGHTS ─────────────────────────────
@@ -1897,7 +1895,6 @@ def _sleep_impact_analysis(user_id: int, conn) -> dict:
         total_days = c.fetchone()['total'] or 1
 
         late_nights   = len(late_rows)
-        total_wakes   = sum(r['wakes'] for r in late_rows)
         late_pct      = round(late_nights / total_days * 100, 1)
         disruption    = sum(1 for r in late_rows if r['wakes'] >= 3)
         source        = 'screen_events'
@@ -1924,7 +1921,6 @@ def _sleep_impact_analysis(user_id: int, conn) -> dict:
         late_pct        = round(late_nights / total_days * 100, 1)
         disruption      = sum(1 for i in range(len(rows)-1)
                               if rows[i]['last_hour'] >= 22 and rows[i+1]['first_hour'] < 10)
-        total_wakes     = late_nights
         source          = 'sessions'
 
     return {
@@ -3539,11 +3535,6 @@ def parent_dashboard():
         if brow:
             risk_explanation = _shap_explain_behavior({f: float(brow[f] or 0) for f in BEHAVIORAL_FEATURES})
 
-    # Latest prediction's game genre
-    c.execute('''SELECT p.final_risk_score FROM predictions p JOIN sessions s ON s.session_id=p.session_id
-                 WHERE s.user_id=? ORDER BY p.timestamp DESC LIMIT 1''', (user_id,))
-    lp = c.fetchone()
-
     # Which signals fed the latest prediction, so the UI can say "Chat: not captured
     # for this game" rather than showing a misleading 0%. NULL flags (legacy rows)
     # are reported as None → the app simply omits the breakdown for those.
@@ -4520,7 +4511,7 @@ def _latin1(text):
 def weekly_report_pdf():
     """Generate and serve a PDF weekly report for the child."""
     import io
-    from flask import send_file, make_response
+    from flask import make_response
 
     user_id = request.args.get('user_id', 1, type=int)
     deny = guard(user_id)

@@ -42,7 +42,7 @@ import numpy as np
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.join(ROOT, 'backend'))
-from audio_features import extract_features_from_array, SAMPLE_RATE, LIBROSA_AVAILABLE  # noqa: E402
+from audio_features import SAMPLE_RATE, LIBROSA_AVAILABLE  # noqa: E402
 
 MODELS_DIR = os.path.join(ROOT, 'backend', 'models')
 DATA_DIR   = os.path.join(ROOT, 'data')
@@ -257,7 +257,6 @@ def main():
 
     from sklearn.ensemble import (GradientBoostingClassifier, HistGradientBoostingClassifier,
                                   RandomForestClassifier, ExtraTreesClassifier)
-    from sklearn.model_selection import train_test_split
     from sklearn.metrics import classification_report, accuracy_score, f1_score, confusion_matrix
     from sklearn.neural_network import MLPClassifier
     from sklearn.pipeline import make_pipeline

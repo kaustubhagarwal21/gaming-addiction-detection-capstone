@@ -23,7 +23,7 @@ if not os.environ.get('DATABASE_URL'):
     print("Set DATABASE_URL to a Postgres instance first (see this file's docstring).")
     sys.exit(2)
 
-import app as appmod          # importing runs init_db() against Postgres
+# importing app runs init_db() against Postgres
 from app import app, USE_POSTGRES, get_db, hash_pin
 
 assert USE_POSTGRES, "DATABASE_URL is set but USE_POSTGRES is False — check the scheme"
