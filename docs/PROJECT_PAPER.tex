@@ -1285,7 +1285,7 @@ assumptions --- drive the next revision.
 \begin{itemize}[leftmargin=1.4em]
   \item Production-deployed cloud backend (HTTPS, token auth, consent, durable
         managed Postgres); both apps build as signed release APKs.
-  \item A layered test program, all passing: a 55-test API suite (isolated database;
+  \item A layered test program, all passing: a 56-test API suite (isolated database;
         includes ML-unit tests for the shared audio extractor, noisy-OR fusion,
         threshold-tuner math and the session-streak alert; run automatically in CI
         against \textbf{both} SQLite and PostgreSQL~16 --- the production dialect ---
@@ -1295,9 +1295,9 @@ assumptions --- drive the next revision.
         silence floor and late re-score, the watchdog's quiet hours, end-session
         idempotency, feedback re-rating, parent-controlled deletion), and a
         \textbf{25-check end-to-end probe of the live cloud deployment}. Both apps pass
-        Android Lint with zero errors, and 22 JVM unit tests (run in CI) pin the
-        offline chat queue's delivery semantics, the WAV container encoding, and the
-        parent-alert triage rules.
+        Android Lint with zero errors, and 29 JVM unit tests (run in CI) pin the
+        offline chat queue's delivery semantics, the WAV container encoding, IME
+        keystroke-to-sentence reconstruction, and the parent-alert triage rules.
   \item Robustness under load on free-tier hosting: pooled, probe-validated connections
         to the serverless Postgres (replacing per-request TLS handshakes; connections
         killed by scale-to-zero are detected and replaced transparently), per-client
@@ -1374,7 +1374,7 @@ Parent value & Per-day weighted risk + ``why'' (SHAP), live ``playing now'' + mo
 Child wellbeing & Mira check-in (typing indicator, double-send guard), gamified daily check-in + streak, reflections, breathing, break/limit nudges, today-vs-goal progress \\
 Reliability/anti-tamper & Heartbeat watchdog (uninstall/kill/offline alert, child-local quiet hours), optional Device Admin (uninstall block + instant disable alert), battery-optimisation exemption, double-start-safe services, consent-gated boot resume, parent-PIN lock on logout/settings (server-verified, constant-time), logout \emph{and} login alerts with honest monitoring status, idempotent session-end, self-scoring stale-session guard, per-child risk notifications, multi-guardian FCM push (lazy-init) \\
 Privacy/Security & Token auth + \emph{role} checks on every parent-only endpoint, deleted-account tokens locked out despite the stateless 30-day TTL (TTL-cached existence probe), peppered PIN hashes (validated, family-wide PIN change), HTTPS-only, encrypted token store, consent (versioned), raw-audio deletion, retention purge, parent-controlled data export mirroring the deletion scope (credentials excluded), 16\,MB body cap, opt-in Sentry crash monitoring (stack traces only, no PII), family code always recoverable in PIN-gated Settings \\
-Engineering & Dual-dialect DB with pooled validated Postgres connections + composite indexes on the hot query paths, per-client rate limiting, hot-path caching/throttling + audio-concurrency cap + bounded throttle caches, thread-safe device-side shared state (concurrent cache, crash-safe confirm-then-delete offline queue, WorkManager network-aware retry), signed APKs, layered tests (55 API + 22 Android JVM + 81 production-mode + 25 live-cloud) + concurrency smoke + CI (pytest on SQLite \emph{and} PostgreSQL, Android lint + unit tests per push, weekly drift monitor against the production DB), real-device validated, lint-clean, deployed + durable DB \\
+Engineering & Dual-dialect DB with pooled validated Postgres connections + composite indexes on the hot query paths, per-client rate limiting, hot-path caching/throttling + audio-concurrency cap + bounded throttle caches, thread-safe device-side shared state (concurrent cache, crash-safe confirm-then-delete offline queue, WorkManager network-aware retry), signed APKs, layered tests (56 API + 29 Android JVM + 81 production-mode + 25 live-cloud) + concurrency smoke + CI (pytest on SQLite \emph{and} PostgreSQL, Android lint + unit tests per push, weekly drift monitor against the production DB), real-device validated, lint-clean, deployed + durable DB \\
 \bottomrule
 \end{tabularx}
 \end{center}
