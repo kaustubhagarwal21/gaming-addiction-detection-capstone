@@ -82,8 +82,10 @@ heavyweight deep models, prioritising on-device privacy, deployability and hones
 of evaluation --- and every model choice is backed by a measured bake-off, every
 design choice by an ablation with bootstrap confidence intervals. The pipeline is
 grounded in \emph{six real, open datasets}: the chat model is trained on real
-in-game and offensive-language corpora and reaches $0.95$ precision at its alert
-threshold on held-out real gaming chat; the voice model is trained on $9{,}817$ real
+in-game and offensive-language corpora, reaches $0.95$ precision at its alert
+threshold on held-out real gaming chat, and is built for the Indian context ---
+code-mixed Hinglish/Devanagari abuse is detected whether typed or \emph{spoken}
+(transcribed on-device, so raw audio never leaves the phone); the voice model is trained on $9{,}817$ real
 speech clips across $163$ speakers in three languages and evaluated
 speaker-independently; the behaviour generator's play-time distributions and the
 dashboard's peer percentiles follow a real survey of $13{,}464$ gamers; and an
@@ -137,6 +139,12 @@ rather than to maximise a headline accuracy number.
         engineering (pooled, validated connections to the serverless database,
         per-client rate limiting behind the reverse proxy, and caching/throttling on
         the polling hot paths) so the deployment survives real concurrent use.
+        Privacy rights are engineered symmetrically: data \emph{export} and data
+        \emph{deletion} share one table inventory in code, so ``show me everything you
+        hold'' and ``erase everything you hold'' can never silently drift apart; and a
+        scheduled drift monitor compares each week's served score distributions against
+        a reference window (PSI/KS) directly on the production database, so the
+        deployed models are \emph{watched}, not just shipped.
   \item A parent-feedback loop that records real ``accurate / false-alarm''
         verdicts --- the only source of genuine labels in an otherwise
         synthetically-trained system --- enabling future retraining.
@@ -147,6 +155,14 @@ rather than to maximise a headline accuracy number.
         the child's typed in-game text even in canvas/engine games (e.g.\ Roblox) the
         accessibility API cannot read --- without resorting to screen OCR --- while
         capturing only the child's own typing.
+  \item An \textbf{India-ready abuse channel} for code-mixed gaming chat: a curated
+        Hinglish lexicon (romanised Hindi \emph{and} Devanagari script) fused with the
+        calibrated English toxicity model via noisy-OR --- ablation-measured to raise
+        recall at the alert threshold from 0.434 to 0.491 at equal precision --- and an
+        \emph{on-device} Indian-English speech-to-text path (Vosk) that routes what the
+        child \emph{says} through the same toxicity model, so spoken abuse is caught
+        without raw audio ever being retained. English-centric keyword monitors cover
+        neither.
   \item Tamper resistance and resilient delivery: a self-restarting foreground service,
         a battery-optimisation exemption step (OEM power managers silently killing the
         monitor are the most common real-world failure), a parent-PIN lock on
@@ -212,10 +228,13 @@ shipped as a live, privacy-engineered system. Our contribution is the \emph{comb
 actually deployed}: (i)~a custom-keyboard (IME) path that captures the child's typed
 in-game chat even in canvas games such as Roblox that the accessibility API cannot read,
 without screen OCR; (ii)~an availability-weighted fusion of behaviour, chat and voice
-into a single \emph{calibrated, SHAP-explainable} risk band; (iii)~a production-engineered,
-privacy-conscious two-app + cloud system with tamper- and capture-permission health
-monitoring and two-way nudges (guidance, not just alerts); and (iv)~an honest,
-realistic-stream evaluation. The novelty lies in the deployed system and the canvas-game
+into a single \emph{calibrated, SHAP-explainable} risk band; (iii)~abuse detection built
+for the \emph{Indian} gaming context --- code-mixed Hinglish and Devanagari text fused
+with the calibrated English model, and spoken abuse transcribed \emph{on-device}
+(Indian-English STT) into the same channel --- where keyword monitors are
+English-centric; (iv)~a production-engineered, privacy-conscious two-app + cloud system
+with tamper- and capture-permission health monitoring and two-way nudges (guidance, not
+just alerts); and (v)~an honest, realistic-stream evaluation. The novelty lies in the deployed system and the canvas-game
 capture technique --- \emph{not} in the individual classical models, which we
 deliberately keep lightweight and explainable. Table~\ref{tab:compare} summarises the
 comparison.
@@ -234,6 +253,8 @@ comparison.
 Behavioural play-pattern signals (beyond duration)      & \capN & \capN & \capY & \capY \\
 In-game chat capture                                    & \capN & \capY & \capP & \capY \\
 Chat capture in canvas/engine games (Roblox), no OCR    & \capN & \capN & \capN & \capY \\
+Code-mixed (Hinglish + Devanagari) abuse detection      & \capN & \capN & \capN & \capY \\
+Spoken abuse caught via \emph{on-device} STT            & \capN & \capN & \capN & \capY \\
 Voice-emotion signal                                    & \capN & \capN & \capP & \capY \\
 Multimodal fusion into one risk band                    & \capN & \capN & \capP & \capY \\
 Calibrated, SHAP-explainable output                     & \capN & \capN & \capP & \capY \\
