@@ -64,7 +64,10 @@ class VoiceRecorderService : Service() {
         // it and degrade gracefully (skip voice for this session) instead of crashing
         // the whole app with an unhandled SecurityException.
         try {
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            // FOREGROUND_SERVICE_TYPE_MICROPHONE exists only from API 30 (R). Passing it
+            // on Android 10 (Q) throws at startForeground — the catch below then silently
+            // dropped voice for the whole session on those devices.
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
                 startForeground(Constants.NOTIF_MONITORING + 10, notif,
                     ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE)
             } else {

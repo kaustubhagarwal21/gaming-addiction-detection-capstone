@@ -1,14 +1,11 @@
 package com.pes.parentmonitor.service
 
-import android.Manifest
 import android.app.PendingIntent
 import android.app.Service
 import android.content.Intent
-import android.content.pm.PackageManager
 import android.os.IBinder
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
-import androidx.core.content.ContextCompat
 import com.pes.parentmonitor.R
 import com.pes.parentmonitor.activities.AlertsActivity
 import com.pes.parentmonitor.api.ApiClient
@@ -115,11 +112,14 @@ class AlertPollingService : Service() {
         } catch (_: Exception) {}
     }
 
-    /** Returns true only if the notification was actually posted (POST_NOTIFICATIONS
-     *  granted), so the caller knows whether to advance its "already notified" marker. */
+    /** Can a notification actually be posted right now? areNotificationsEnabled() is
+     *  correct on EVERY Android version: on 13+ it reflects the POST_NOTIFICATIONS
+     *  runtime permission, and on 8–12 it reflects the app's notification toggle.
+     *  (A raw checkSelfPermission(POST_NOTIFICATIONS) is always DENIED below 13 —
+     *  the permission doesn't exist there — which silently suppressed all polling
+     *  notifications on older devices.) */
     private fun canNotify(): Boolean =
-        ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) ==
-            PackageManager.PERMISSION_GRANTED
+        NotificationManagerCompat.from(this).areNotificationsEnabled()
 
     private fun sendAlertNotification(message: String, severity: String): Boolean {
         if (!canNotify()) return false

@@ -393,6 +393,16 @@ def test_tamper_missing_user_id_is_400(client):
     assert r.status_code == 400
 
 
+def test_verify_parent_pin_missing_user_id_is_400(client):
+    """Regression: a malformed request (no user_id) used to reach int(None) and 500."""
+    r = client.post('/api/verify_parent_pin', json={'pin': '0000'})
+    assert r.status_code == 400
+    r = client.post('/api/verify_parent_pin', json={'user_id': 'abc', 'pin': '0000'})
+    assert r.status_code == 400
+    r = client.post('/api/verify_parent_pin', json={'user_id': 1, 'pin': '0000'})
+    assert r.status_code == 200 and r.get_json()['valid'] is True
+
+
 def test_session_chat_score_is_max_of_messages(client, monkeypatch):
     """The session chat score must be the MAX of per-message scores (chosen by a
     707-conversation experiment) — one toxic line among clean ones must NOT be

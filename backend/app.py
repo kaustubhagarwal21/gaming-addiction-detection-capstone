@@ -3871,9 +3871,13 @@ def verify_parent_pin():
     pin  = str(data.get('pin', '')).strip()
     deny = guard(uid)
     if deny: return deny
+    try:
+        uid = int(uid)
+    except (TypeError, ValueError):
+        return jsonify({'success': False, 'message': 'user_id required'}), 400
     conn = get_db()
     c    = conn.cursor()
-    c.execute("SELECT parent_pin_hash FROM users WHERE user_id=?", (int(uid),))
+    c.execute("SELECT parent_pin_hash FROM users WHERE user_id=?", (uid,))
     row = c.fetchone()
     conn.close()
     valid = bool(row and verify_pin(pin, row['parent_pin_hash']))   # constant-time compare
