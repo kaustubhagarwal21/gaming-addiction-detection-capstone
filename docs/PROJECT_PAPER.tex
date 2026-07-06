@@ -891,7 +891,80 @@ fires before removal completes). It is strictly opt-in and requests \emph{no} lo
 policies --- only the uninstall block and the disable hook --- keeping it appropriate for
 a consent-based model rather than a punitive lockdown.
 
-\subsection{Security and accounts}
+\subsection{Offline behaviour: what is captured, deferred, or lost}
+The Child app tolerates intermittent connectivity, but the guarantee differs by data
+stream --- a deliberate design choice driven by the stakes and volume of each. The
+policy is store-and-forward for the highest-value, lowest-volume evidence, and
+best-effort for high-volume telemetry, with the parent always \emph{told} when
+monitoring goes dark rather than being shown a silent gap.
+\begin{itemize}[leftmargin=1.4em]
+  \item \textbf{Typed chat --- fully durable.} A captured line that fails to upload is
+        written to a disk-backed, encrypted queue and retried both by the monitor's
+        poll loop and by a \texttt{WorkManager} job that fires the moment connectivity
+        returns, surviving process death. A line is removed from disk only after the
+        server confirms it (a crash mid-upload re-sends on the next flush and the server
+        de-dupes), so no typed message is lost offline. The queue is bounded (50 lines;
+        entries older than 24\,h are dropped) so it cannot grow without limit.
+  \item \textbf{Spoken words --- durable.} Speech-to-text runs entirely on-device
+        (Vosk), so transcripts are produced without a network and enter the same durable
+        chat queue --- what the child \emph{says} is also captured offline and delivered
+        later.
+  \item \textbf{Session end --- approximated, not lost.} If an end-event does not reach
+        the server, the stale-session watchdog closes the session server-side at its last
+        recorded activity, so the duration is estimated rather than dropped.
+  \item \textbf{Session start --- lost while offline.} Starting a session requires the
+        server to allocate a session id; a game begun with no connectivity is not tracked
+        until the network returns, at which point tracking begins from that moment (the
+        offline portion is not recovered).
+  \item \textbf{Screen events, notification events --- best-effort.} These are
+        fire-and-forget and are dropped if offline; they are high-volume, low-stakes
+        telemetry where an occasional gap is acceptable.
+  \item \textbf{Voice-emotion audio segments --- not buffered.} The short audio clips
+        for acoustic emotion are deliberately \emph{not} queued offline: raw audio is
+        large, and we do not want it accumulating on the device (consistent with the
+        raw-audio-deletion policy).
+  \item \textbf{Heartbeats --- intentionally lost, and that is the signal.} Liveness
+        pings are not queued; when the device is offline the pings simply stop, and the
+        server's watchdog surfaces this to the parent as a ``monitoring has gone silent''
+        alert (subject to quiet hours). An offline gap is therefore never invisible to
+        the parent.
+\end{itemize}
+On the \textbf{Parent app} side, the dashboard, alerts and reports are read-only views
+of the cloud database and require connectivity: with no network the parent sees the last
+successfully fetched data (alert and dashboard polling simply retry on the next tick)
+rather than stale-but-live-looking numbers, and any child data captured offline appears
+as soon as the Child app's deferred uploads reach the server. Because delivery is
+server-mediated, the parent view is always eventually consistent with what the Child app
+managed to persist and upload. A natural extension identified for future work is an
+on-device session buffer that records start/end times locally and back-fills them when
+connectivity returns, closing the ``session started while offline'' gap above.
+
+\subsection{Offline behaviour and data durability}
+Connectivity loss is a normal condition on a child's phone, so each capture channel has
+a \emph{deliberate}, per-channel offline policy rather than a blanket promise. The design
+rule: full store-and-forward durability for the highest-stakes, lowest-volume evidence;
+best-effort with server-side healing for bulk telemetry; and an explicit, parent-visible
+signal whenever a gap occurs.
+
+\textbf{Durable offline (store-and-forward).} Typed chat is the evidence that triggers
+toxicity alerts, so a captured line whose upload fails is persisted to a disk-backed
+queue in the encrypted preference store and retried on two independent paths: the
+monitoring service's poll loop ($\sim$12\,s cadence) and a WorkManager job constrained on
+network availability, which survives process death and fires the moment connectivity
+returns. A line is removed from disk only \emph{after} the server confirms receipt
+(confirm-then-delete), so a crash mid-flush loses nothing; the queue is bounded (50
+lines; entries older than 24\,h are dropped) and each entry carries a unique id so the
+server's de-duplication absorbs any re-send. Because speech-to-text runs \emph{on
+device} (Vosk), spoken words are transcribed without any network at all, and the
+transcripts enter this same durable queue --- what the child says while offline is still
+captured and delivered later.
+
+\textbf{Best-effort with server-side healing.} A session \emph{start} requires a server
+round trip, so a gaming session that begins fully offline is not recorded; if
+connectivity returns mid-game, tracking begins from that moment (the offline head of the
+session is lost, and detection retries every 5\,s until it succeeds). A session
+\emph{end} that fails to send is healed server-side: the stale-session watchdog closes
+the open
 A family registers once and receives a unique family code; each child has a private
 PIN, and the parent signs in with the family code + a shared PIN. All protected
 endpoints enforce token authentication and per-user authorisation. The family code
