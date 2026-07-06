@@ -212,9 +212,12 @@ fusion of behaviour, chat and voice.
 personalisation while keeping sensitive data on the phone~\cite{chakraborty2025}, and
 prior work on parental-monitoring design stresses awareness and trust over
 surveillance~\cite{iftikhar2021}; commercial tools such as Bark~\cite{bark2025} show
-demand but are largely screen-time/keyword based. We position our system as
-\emph{screening and guidance, not punishment}, with privacy-conscious handling and
-explainable output.
+demand but are largely screen-time/keyword based. Such tools are also \emph{closed}:
+their detection logic, thresholds and error rates are not published, so a parent
+receives a flag with no stated basis and no way to judge its reliability. We position
+our system as \emph{screening and guidance, not punishment}, with privacy-conscious
+handling, per-prediction explanations, and a fully reproducible pipeline whose every
+reported number traces to a runnable script.
 
 \textbf{How our system differs.} Existing solutions fall into three groups, each with a
 structural gap our platform closes. \emph{Screen-time / parental-control tools} (e.g.\
@@ -234,10 +237,16 @@ with the calibrated English model, and spoken abuse transcribed \emph{on-device}
 (Indian-English STT) into the same channel --- where keyword monitors are
 English-centric; (iv)~a production-engineered, privacy-conscious two-app + cloud system
 with tamper- and capture-permission health monitoring and two-way nudges (guidance, not
-just alerts); and (v)~an honest, realistic-stream evaluation. The novelty lies in the deployed system and the canvas-game
-capture technique --- \emph{not} in the individual classical models, which we
-deliberately keep lightweight and explainable. Table~\ref{tab:compare} summarises the
-comparison.
+just alerts); and (v)~an honest, realistic-stream evaluation with a live drift monitor,
+so the deployed models are \emph{watched}, not merely shipped. Two cross-cutting
+properties further separate the system from commercial tools: every risk band is
+accompanied by a per-prediction, SHAP-based explanation --- the parent sees \emph{why},
+not just a flag --- and the entire pipeline is reproducible, each reported metric
+recomputable from an included script, where commercial detection logic is closed. The
+novelty lies in this deployed, India-aware, explainable-and-audited combination and in
+the canvas-game capture technique --- \emph{not} in the individual classical models,
+which we deliberately keep lightweight and explainable. Table~\ref{tab:compare}
+summarises the comparison.
 
 \begin{table}[ht]
 \centering
@@ -261,6 +270,8 @@ Calibrated, SHAP-explainable output                     & \capN & \capN & \capP 
 Deployed end-to-end (apps + cloud)                      & \capY & \capY & \capN & \capY \\
 Two-way guidance (nudges), not just alerts              & \capP & \capP & \capN & \capY \\
 Tamper / capture-permission health awareness            & \capP & \capP & \capN & \capY \\
+Deployed models monitored for drift (PSI/KS)            & \capN & \capN & \capN & \capY \\
+Reproducible pipeline (open method, scripted metrics)   & \capN & \capN & \capP & \capY \\
 Honest realistic-stream evaluation                      & \capN & \capN & \capP & \capY \\
 \bottomrule
 \end{tabularx}
