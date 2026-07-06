@@ -71,20 +71,18 @@ class KeystrokeBuffer(
     }
 
     // ── label classifiers ────────────────────────────────────────────────
+    // WORD-BOUNDARY matching, not contains(): suggestion-bar taps also flow through
+    // these checks first, and a raw contains() misread the tapped words "center" /
+    // "sending" / "deleted" as the Enter/Delete KEY — flushing the sentence early and
+    // dropping the word. \b keeps the intended matches ("Send", "Enter key") and
+    // rejects words that merely embed the token.
 
-    private fun isEnter(s: String): Boolean {
-        val l = s.lowercase()
-        return l == "enter" || l == "return" || l == "send" || l == "done" ||
-                l == "go" || l == "search" ||
-                l.contains("send", ignoreCase = false) ||
-                l.contains("enter", ignoreCase = false)
-    }
+    private val enterRe     = Regex("""\b(enter|return|send|done|go|search)\b""")
+    private val backspaceRe = Regex("""\b(delete|backspace|del)\b""")
 
-    private fun isBackspace(s: String): Boolean {
-        val l = s.lowercase()
-        return l == "delete" || l == "backspace" || l == "del" ||
-                l.contains("delete") || l.contains("backspace")
-    }
+    private fun isEnter(s: String): Boolean = enterRe.containsMatchIn(s.lowercase())
+
+    private fun isBackspace(s: String): Boolean = backspaceRe.containsMatchIn(s.lowercase())
 
     private fun isSpace(s: String): Boolean {
         val l = s.lowercase()
