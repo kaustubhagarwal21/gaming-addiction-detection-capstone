@@ -48,8 +48,10 @@ class RegisterActivity : AppCompatActivity() {
         when {
             name.isEmpty() -> { binding.etName.error = "Enter the child's name"; return }
             age == null || age !in 1..100 -> { binding.etAge.error = "Enter a valid age"; return }
-            childPin.length !in 4..6 -> { binding.etChildPin.error = "4–6 digits"; return }
-            familyPin.length !in 4..6 -> { binding.etFamilyPin.error = "4–6 digits"; return }
+            !childPin.all { it.isDigit() } || childPin.length !in 4..6 ->
+                { binding.etChildPin.error = "4–6 digits"; return }
+            !familyPin.all { it.isDigit() } || familyPin.length !in 4..6 ->
+                { binding.etFamilyPin.error = "4–6 digits"; return }
             childPin == familyPin -> { binding.etFamilyPin.error = "Must differ from the child PIN"; return }
         }
 

@@ -234,9 +234,14 @@ class VoiceRecorderService : Service() {
         scope.launch {
             try {
                 val api = ApiClient.getInstance(serverUrl)
-                api.uploadChat(sessionId, mapOf("message" to text, "source" to "voice_stt"))
+                val resp = api.uploadChat(sessionId, mapOf("message" to text, "source" to "voice_stt"))
+                // Retrofit doesn't throw on HTTP errors; queue the transient codes flush()
+                // would retry so a 5xx/429 doesn't silently drop the transcript line.
+                if (com.pes.gamingdetector.util.ChatQueueLogic.isTransientFailure(resp.code()))
+                    com.pes.gamingdetector.util.ChatUploadQueue
+                        .enqueue(this@VoiceRecorderService, sessionId, text, "voice_stt")
             } catch (_: Exception) {
-                // Offline — queue the transcript line for retry.
+                // Network failure — queue the transcript line for retry.
                 com.pes.gamingdetector.util.ChatUploadQueue
                     .enqueue(this@VoiceRecorderService, sessionId, text, "voice_stt")
             }

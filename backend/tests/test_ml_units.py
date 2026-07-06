@@ -174,3 +174,31 @@ def test_recommend_guards_and_direction():
     sparse = [{'label': 'false_alarm'}] * 3                  # under MIN_LABELS
     new, why = _recommend(0.67, _analyse_group(sparse), 'RISK_T2')
     assert new == 0.67 and 'unchanged' in why
+
+
+# ─── Keyword channel vs punctuation (regression) ─────────────────────
+
+def test_keyword_toxicity_survives_punctuation():
+    """Typed chat ends words with punctuation; a whitespace-only split silently
+    zeroed the keyword channel — the ONLY detector for Hinglish/Devanagari abuse."""
+    from text_utils import keyword_toxicity
+    assert keyword_toxicity('you are trash!') == keyword_toxicity('you are trash') > 0
+    assert keyword_toxicity('bsdk!!') > 0                     # slang → bhosdike (HIGH)
+    assert keyword_toxicity('kys!') >= 0.3                    # slang → phrase 'kill yourself'
+    assert keyword_toxicity('चूतिया!') > 0                    # Devanagari + punctuation
+    assert keyword_toxicity('fuck!!!') > 0                    # repeat-collapse + strip
+    assert keyword_toxicity('nice shot, well played') == 0.0  # clean stays clean
+
+
+def test_tuner_defaults_match_serving():
+    """A stale DEFAULTS entry anchors tuner recommendations at the wrong operating
+    point (0.75 vs the served 0.90 went unnoticed once already)."""
+    import re
+    from pathlib import Path
+    root = Path(__file__).resolve().parents[2]
+    app_src   = (root / 'backend' / 'app.py').read_text(encoding='utf-8')
+    tuner_src = (root / 'ml' / 'tune_from_feedback.py').read_text(encoding='utf-8')
+    served = {k: float(re.search(rf"environ\.get\('{k}',\s*'([\d.]+)'\)", app_src).group(1))
+              for k in ('RISK_T1', 'RISK_T2', 'CHAT_ALERT_T')}
+    tuner = eval(re.search(r'DEFAULTS\s*=\s*(\{[^}]+\})', tuner_src).group(1))
+    assert tuner == served, f'tuner DEFAULTS {tuner} != serving defaults {served}'

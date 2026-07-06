@@ -122,7 +122,11 @@ class PassiveMonitorService : Service() {
     override fun onTaskRemoved(rootIntent: Intent?) {
         try {
             val restart = Intent(applicationContext, PassiveMonitorService::class.java)
-            val pi = PendingIntent.getService(
+            // getForegroundService, not getService: on minSdk 26+ starting a plain
+            // background service is restricted and the alarm restart would silently
+            // no-op. The service calls startForeground() on every start, so a
+            // foreground-service PendingIntent is the correct (and permitted) restart.
+            val pi = PendingIntent.getForegroundService(
                 this, 1, restart,
                 PendingIntent.FLAG_ONE_SHOT or PendingIntent.FLAG_IMMUTABLE
             )

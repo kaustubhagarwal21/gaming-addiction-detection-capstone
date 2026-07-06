@@ -74,6 +74,16 @@ class KeystrokeBufferTest {
     }
 
     @Test
+    fun `common suggestion words go and done are typed, not treated as the enter key`() {
+        val out = mutableListOf<String>()
+        val kb = buffer(out)
+        // "lets go" used to flush at "go" (an enter-key label), dropping the word.
+        kb.handleKey("lets"); kb.handleKey("go"); kb.handleKey("now")
+        kb.flush()
+        assertEquals(listOf("lets go now"), out)
+    }
+
+    @Test
     fun `multi-word key labels still count as keys`() {
         val out = mutableListOf<String>()
         val kb = buffer(out)

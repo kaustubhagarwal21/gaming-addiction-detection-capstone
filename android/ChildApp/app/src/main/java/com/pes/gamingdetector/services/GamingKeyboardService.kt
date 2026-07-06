@@ -7,6 +7,7 @@ import android.view.View
 import android.view.inputmethod.EditorInfo
 import com.pes.gamingdetector.R
 import com.pes.gamingdetector.api.ApiClient
+import com.pes.gamingdetector.util.ChatQueueLogic
 import com.pes.gamingdetector.util.ChatUploadQueue
 import com.pes.gamingdetector.util.ForegroundResolver
 import com.pes.gamingdetector.util.GameDetector
@@ -130,10 +131,14 @@ class GamingKeyboardService : InputMethodService(), KeyboardView.OnKeyboardActio
         if (!GameDetector.isGame(this, ForegroundResolver.current(this))) return
         scope.launch {
             try {
-                ApiClient.getInstance(prefs.serverUrl)
+                val resp = ApiClient.getInstance(prefs.serverUrl)
                     .uploadChat(sid, mapOf("message" to text, "source" to "keyboard"))
+                // Retrofit doesn't throw on HTTP errors; queue the transient codes
+                // (5xx/408/429) flush() would retry, drop 2xx/permanent-4xx.
+                if (ChatQueueLogic.isTransientFailure(resp.code()))
+                    ChatUploadQueue.enqueue(this@GamingKeyboardService, sid, text, "keyboard")
             } catch (_: Exception) {
-                // Offline — queue for retry instead of losing the line.
+                // Network failure — queue for retry instead of losing the line.
                 ChatUploadQueue.enqueue(this@GamingKeyboardService, sid, text, "keyboard")
             }
         }

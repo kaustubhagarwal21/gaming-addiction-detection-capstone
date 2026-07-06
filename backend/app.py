@@ -642,8 +642,13 @@ def risk_category(score: float) -> str:
 # helpers translate stored times into the CHILD's wall clock before judging "late night".
 
 def _parse_ts(ts):
-    """Parse a stored timestamp string defensively (isoformat or 'YYYY-MM-DD HH:MM:SS')."""
-    return datetime.fromisoformat(str(ts).replace(' ', 'T').split('+')[0].split('Z')[0])
+    """Parse a stored timestamp string defensively (isoformat or 'YYYY-MM-DD HH:MM:SS').
+    Strips ANY trailing UTC-offset suffix — including negative ones, which a bare
+    split('+') missed, yielding a tz-aware datetime that raises when compared to
+    naive now()."""
+    s = str(ts).replace(' ', 'T')
+    s = re.sub(r'(Z|[+-]\d{2}:?\d{2})$', '', s)
+    return datetime.fromisoformat(s)
 
 
 def _tz_shift_min(c, user_id) -> int:
@@ -1085,6 +1090,9 @@ GAME_GENRES = {
     'COD Mobile':     'FPS',
     'Warzone Mobile': 'FPS',
     'Valorant Mobile':'FPS',
+    'Valorant':       'FPS',       # names served by /api/games must resolve a genre
+    'CS2':            'FPS',
+    'Sudoku':         'Casual',
     'Mobile Legends': 'MOBA',
     'Honor of Kings': 'MOBA',
     'Wild Rift':      'MOBA',
@@ -1342,9 +1350,11 @@ def _lexical_valence(text):
        Confidence rises with how many sentiment words matched (saturates ~3)."""
     if not text:
         return 0.0, 0.0
-    # t is padded with spaces on both ends, so " w " matches a word at the start, middle
-    # or end. (A bare " w" prefix test would wrongly match "win" inside "winter".)
-    t   = " " + text.lower().strip() + " "
+    # Punctuation → spaces first ("nice!" must count), then pad with spaces so " w "
+    # matches a word at start/middle/end without matching "win" inside "winter".
+    # Substring matching (not a token set) is kept deliberately: the word lists
+    # contain PHRASES ("come on", "well played") that a token set would break.
+    t   = " " + " ".join(re.sub(r"[^\w\s]", " ", text.lower()).split()) + " "
     pos = sum(1 for w in _POS_WORDS if (" " + w + " ") in t)
     neg = sum(1 for w in _NEG_WORDS if (" " + w + " ") in t)
     total = pos + neg
@@ -5031,7 +5041,9 @@ def counselor_chat():
 
     intent = _classify_intent(message)
     ctx = _build_counselor_context(user_id)
-    base = _COUNSELOR_REPLIES.get(intent, _COUNSELOR_REPLIES['default'])[0]
+    # secrets.choice (already imported), not [0]: index 0 made every unmatched
+    # message reply with the same canned line and left the variants dead.
+    base = secrets.choice(_COUNSELOR_REPLIES.get(intent, _COUNSELOR_REPLIES['default']))
 
     # Personalize tail based on context
     tail = ''

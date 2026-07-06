@@ -6,6 +6,7 @@ import android.os.Handler
 import android.os.Looper
 import android.view.accessibility.AccessibilityEvent
 import com.pes.gamingdetector.api.ApiClient
+import com.pes.gamingdetector.util.ChatQueueLogic
 import com.pes.gamingdetector.util.ChatUploadQueue
 import com.pes.gamingdetector.util.Constants
 import com.pes.gamingdetector.util.ForegroundResolver
@@ -164,9 +165,15 @@ class ChatAccessibilityService : AccessibilityService() {
         scope.launch {
             try {
                 val api = ApiClient.getInstance(prefs.serverUrl)
-                api.uploadChat(sessionId, mapOf("message" to message, "source" to source))
+                val resp = api.uploadChat(sessionId, mapOf("message" to message, "source" to source))
+                // Retrofit does NOT throw on HTTP errors — a 5xx (Render cold start) or a
+                // 429 returns normally, so without this check the line would be lost. Queue
+                // exactly the transient codes flush() would retry; a 2xx (saved) or a
+                // permanent 4xx (e.g. closed session) is correctly dropped.
+                if (ChatQueueLogic.isTransientFailure(resp.code()))
+                    ChatUploadQueue.enqueue(this@ChatAccessibilityService, sessionId, message, source)
             } catch (_: Exception) {
-                // Offline — queue it; PassiveMonitorService flushes when back online.
+                // Network failure — queue it; PassiveMonitorService flushes when back online.
                 ChatUploadQueue.enqueue(this@ChatAccessibilityService, sessionId, message, source)
             }
         }

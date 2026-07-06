@@ -76,8 +76,13 @@ class KeystrokeBuffer(
     // "sending" / "deleted" as the Enter/Delete KEY — flushing the sentence early and
     // dropping the word. \b keeps the intended matches ("Send", "Enter key") and
     // rejects words that merely embed the token.
-
-    private val enterRe     = Regex("""\b(enter|return|send|done|go|search)\b""")
+    // Deliberately NOT in the enter set: "go" / "done" / "search". These are common
+    // suggestion-bar WORDS ("lets go", "well done"), and their IME actions belong to
+    // URL/search/form fields, not game-chat fields (which use SEND or newline), so an
+    // exact "go" tap is far more likely a typed word than the chat send key. Dropping
+    // them from the set stops "lets go" → "lets"; a genuine action-button press is
+    // still caught by the idle flush.
+    private val enterRe     = Regex("""\b(enter|return|send)\b""")
     private val backspaceRe = Regex("""\b(delete|backspace|del)\b""")
 
     private fun isEnter(s: String): Boolean = enterRe.containsMatchIn(s.lowercase())

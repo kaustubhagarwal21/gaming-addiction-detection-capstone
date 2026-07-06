@@ -34,8 +34,10 @@ ROOT       = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 DATA_DIR   = os.path.join(ROOT, 'data')
 MODELS_DIR = os.path.join(ROOT, 'backend', 'models')
 
-# Current serving defaults (must match app.py's fallbacks).
-DEFAULTS = {'RISK_T1': 0.33, 'RISK_T2': 0.67, 'CHAT_ALERT_T': 0.75}
+# Current serving defaults (must match app.py's fallbacks — a stale value here
+# anchors the recommendation at the wrong operating point; kept in sync by
+# tests/test_ml_units.py::test_tuner_defaults_match_serving).
+DEFAULTS = {'RISK_T1': 0.33, 'RISK_T2': 0.67, 'CHAT_ALERT_T': 0.90}
 
 # Tuning policy — deliberately conservative.
 MIN_LABELS   = 5      # don't touch a threshold on fewer verdicts than this

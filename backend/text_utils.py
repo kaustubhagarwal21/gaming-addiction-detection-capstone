@@ -83,10 +83,26 @@ def clean_text(text):
     return ' '.join(w for w in text.split() if w not in STOP_WORDS)
 
 
+# Edge punctuation stripped off chat tokens before lexicon matching. Deliberately a
+# fixed set (ASCII + common Unicode/Hindi marks) rather than a \W-class strip: \W
+# also matches Devanagari vowel signs (matras), so \W-stripping would corrupt Hindi
+# words like 'चूतिया' (which ends in a matra). This set touches only real punctuation.
+_EDGE_PUNCT = '!"#$%&\'()*+,-./:;<=>?@[\\]^_`{|}~।॥…“”‘’—–'
+
+
 def keyword_toxicity(text):
-    norm   = normalize_slang(text)            # 'kys' -> 'kill yourself'
-    words  = set(norm.split())
-    high   = len(words & TOXIC_HIGH)
-    medium = len(words & TOXIC_MEDIUM)
-    phrase = sum(1 for p in TOXIC_PHRASES if p in norm)
+    # Typed chat routinely ends words with punctuation ('trash!', 'bsdk!!', 'kys!').
+    # A plain whitespace split left the punctuation glued on, so neither slang
+    # expansion nor the lexicon sets ever matched — silently zeroing the keyword
+    # channel, which is the ONLY detector for the Hinglish/Devanagari vocabulary.
+    # Strip EDGE punctuation per token (preserving Devanagari matras), then expand
+    # slang, so 'kys!' → 'kys' → 'kill yourself' and 'चूतिया!' → 'चूतिया'.
+    text     = str(text).lower()
+    text     = re.sub(r'(.)\1{2,}', r'\1', text)     # nooo → no (as in normalize_slang)
+    stripped = (w.strip(_EDGE_PUNCT) for w in text.split())
+    norm     = ' '.join(SLANG_MAP.get(w, w) for w in stripped if w)
+    words    = set(norm.split())
+    high     = len(words & TOXIC_HIGH)
+    medium   = len(words & TOXIC_MEDIUM)
+    phrase   = sum(1 for p in TOXIC_PHRASES if p in norm)
     return min(high * 0.2 + medium * 0.1 + phrase * 0.3, 0.9)
