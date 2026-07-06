@@ -344,7 +344,9 @@ alert as accurate or a false alarm. It also offers a \textbf{``Send a nudge''} c
   \item \textbf{Raw data:} microphone audio is deleted immediately after feature
         extraction (\texttt{KEEP\_AUDIO=0}); a retention job purges old raw events.
   \item \textbf{Consent:} the Child app gates monitoring behind an explicit consent
-        screen; data deletion is parent-controlled.
+        screen; data export and deletion are parent-controlled, with identical scope
+        --- \texttt{/api/user/export} returns everything held about a child
+        (credentials excluded), and deletion erases exactly that.
 \end{itemize}
 We note honestly that, unlike a fully on-device design, chat text and voice features
 \emph{are} sent to the cloud for inference; the mitigations above (TLS, token auth,
@@ -1283,17 +1285,19 @@ assumptions --- drive the next revision.
 \begin{itemize}[leftmargin=1.4em]
   \item Production-deployed cloud backend (HTTPS, token auth, consent, durable
         managed Postgres); both apps build as signed release APKs.
-  \item A layered test program, all passing: a 54-test API suite (isolated database;
+  \item A layered test program, all passing: a 55-test API suite (isolated database;
         includes ML-unit tests for the shared audio extractor, noisy-OR fusion,
         threshold-tuner math and the session-streak alert; run automatically in CI
-        together with Android Lint on
-        every push), a \textbf{81-check functional sweep run in production auth mode} with real
+        against \textbf{both} SQLite and PostgreSQL~16 --- the production dialect ---
+        on every push), a \textbf{81-check functional sweep run in production auth mode} with real
         parent/child tokens (registration and family joins, role guards on every
         parent-only endpoint, the full nudge lifecycle, a real WAV upload through the
         silence floor and late re-score, the watchdog's quiet hours, end-session
         idempotency, feedback re-rating, parent-controlled deletion), and a
         \textbf{25-check end-to-end probe of the live cloud deployment}. Both apps pass
-        Android Lint with zero errors.
+        Android Lint with zero errors, and 22 JVM unit tests (run in CI) pin the
+        offline chat queue's delivery semantics, the WAV container encoding, and the
+        parent-alert triage rules.
   \item Robustness under load on free-tier hosting: pooled, probe-validated connections
         to the serverless Postgres (replacing per-request TLS handshakes; connections
         killed by scale-to-zero are detected and replaced transparently), per-client
@@ -1302,7 +1306,9 @@ assumptions --- drive the next revision.
         explanations and a throttled anomaly scan on the 30-second polling path, a
         16\,MB request-body cap, and threaded single-worker serving sized to the
         512\,MB instance. Verified with a concurrent smoke test (288 mixed requests
-        across 24 threads, zero errors). On the device side, state shared across the
+        across 24 threads, zero errors; re-verified after the heavier chat vectorizer
+        landed --- p50 91\,ms, p95 686\,ms --- via the permanent
+        \texttt{scripts/concurrency\_smoke.py}). On the device side, state shared across the
         monitor, accessibility, keyboard and notification threads is made thread-safe
         (concurrent game-detection cache; a crash-safe offline chat queue that removes a
         line from disk only after the server confirms it, so a process death mid-flush
@@ -1367,8 +1373,8 @@ Credibility & Probability calibration, anomaly detection (robust median/MAD base
 Parent value & Per-day weighted risk + ``why'' (SHAP), live ``playing now'' + monitoring-health strip, 14-day trend, recently/most-played games, real-time alerts with friendly ages + feedback agreement rate, weekly report (true weekly numbers) + PDF, limits, send-nudge-to-child, switch child without re-login \\
 Child wellbeing & Mira check-in (typing indicator, double-send guard), gamified daily check-in + streak, reflections, breathing, break/limit nudges, today-vs-goal progress \\
 Reliability/anti-tamper & Heartbeat watchdog (uninstall/kill/offline alert, child-local quiet hours), optional Device Admin (uninstall block + instant disable alert), battery-optimisation exemption, double-start-safe services, consent-gated boot resume, parent-PIN lock on logout/settings (server-verified, constant-time), logout \emph{and} login alerts with honest monitoring status, idempotent session-end, self-scoring stale-session guard, per-child risk notifications, multi-guardian FCM push (lazy-init) \\
-Privacy/Security & Token auth + \emph{role} checks on every parent-only endpoint, deleted-account tokens locked out despite the stateless 30-day TTL (TTL-cached existence probe), peppered PIN hashes (validated, family-wide PIN change), HTTPS-only, encrypted token store, consent (versioned), raw-audio deletion, retention purge, 16\,MB body cap, opt-in Sentry crash monitoring (stack traces only, no PII), family code always recoverable in PIN-gated Settings \\
-Engineering & Dual-dialect DB with pooled validated Postgres connections + composite indexes on the hot query paths, per-client rate limiting, hot-path caching/throttling + audio-concurrency cap + bounded throttle caches, thread-safe device-side shared state (concurrent cache, crash-safe confirm-then-delete offline queue, WorkManager network-aware retry), signed APKs, layered tests (54 API + 81 production-mode + 25 live-cloud) + concurrency smoke + CI (pytest + Android Lint per push), real-device validated, lint-clean, deployed + durable DB \\
+Privacy/Security & Token auth + \emph{role} checks on every parent-only endpoint, deleted-account tokens locked out despite the stateless 30-day TTL (TTL-cached existence probe), peppered PIN hashes (validated, family-wide PIN change), HTTPS-only, encrypted token store, consent (versioned), raw-audio deletion, retention purge, parent-controlled data export mirroring the deletion scope (credentials excluded), 16\,MB body cap, opt-in Sentry crash monitoring (stack traces only, no PII), family code always recoverable in PIN-gated Settings \\
+Engineering & Dual-dialect DB with pooled validated Postgres connections + composite indexes on the hot query paths, per-client rate limiting, hot-path caching/throttling + audio-concurrency cap + bounded throttle caches, thread-safe device-side shared state (concurrent cache, crash-safe confirm-then-delete offline queue, WorkManager network-aware retry), signed APKs, layered tests (55 API + 22 Android JVM + 81 production-mode + 25 live-cloud) + concurrency smoke + CI (pytest on SQLite \emph{and} PostgreSQL, Android lint + unit tests per push, weekly drift monitor against the production DB), real-device validated, lint-clean, deployed + durable DB \\
 \bottomrule
 \end{tabularx}
 \end{center}

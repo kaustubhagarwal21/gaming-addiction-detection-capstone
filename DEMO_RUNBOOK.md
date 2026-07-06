@@ -17,7 +17,8 @@ Nothing to start. The backend runs 24/7 at **https://gaming-addiction-api.onrend
   shows `"models_loaded": true`. Then it's fast.
 
 ### Option B — Local (laptop backend over USB) — offline fallback
-- Phone connected via **USB**, USB debugging ON; both apps installed.
+- Phone connected via **USB**, USB debugging ON; both apps installed (signed APKs:
+  [GitHub release](https://github.com/kaustubhagarwal21/gaming-addiction-detection-capstone/releases/latest)).
 - In **each app → Settings → Server URL = `http://127.0.0.1:5000/`** → Save.
 - Quit Docker Desktop (frees port 5000), then from `backend/`:
   ```powershell

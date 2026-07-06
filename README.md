@@ -108,9 +108,11 @@ for an emulator, or your LAN IP for a real device).
 ### Tests
 ```bash
 cd backend
-pytest tests/ -v           # 54 tests, isolated DB — no real data needed
+pytest tests/ -v           # 55 tests, isolated DB — no real data needed
 ```
-CI runs this suite + Android Lint on every push (`.github/workflows/ci.yml`).
+CI runs this suite on both SQLite and Postgres 16, plus Android Lint and 22 JVM
+unit tests for the two apps, on every push (`.github/workflows/ci.yml`); a weekly
+workflow (`drift.yml`) monitors production score drift.
 ML training/eval scripts (retrain, real-audio voice, in-domain chat eval, feedback
 threshold tuner, reflections analysis) are documented in `TESTING.md`.
 
@@ -131,7 +133,9 @@ need these for specific tasks — **ask Kaustubh** and never commit them:
 
 ## Just want to *run* the apps (no coding)?
 
-Install the prebuilt signed APKs on an Android phone (enable "Install unknown apps"):
+Install the prebuilt signed APKs on an Android phone (enable "Install unknown apps") —
+easiest from the [GitHub release](https://github.com/kaustubhagarwal21/gaming-addiction-detection-capstone/releases/latest),
+or after a local `gradlew assembleRelease`:
 - `android/ChildApp/app/build/outputs/apk/release/app-release.apk`
 - `android/ParentApp/app/build/outputs/apk/release/app-release.apk`
 
