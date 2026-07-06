@@ -37,13 +37,6 @@
         <item name="contentPadding">20dp</item>
     </style>
 
-    <style name="Widget.App.Card.Elevated" parent="Widget.MaterialComponents.CardView">
-        <item name="cardCornerRadius">24dp</item>
-        <item name="cardElevation">6dp</item>
-        <item name="cardBackgroundColor">@color/colorSurface</item>
-        <item name="strokeWidth">0dp</item>
-        <item name="contentPadding">24dp</item>
-    </style>
 
     <style name="Widget.App.Button" parent="Widget.MaterialComponents.Button">
         <item name="cornerRadius">28dp</item>
@@ -95,12 +88,6 @@
         <item name="hintTextColor">@color/colorPrimary</item>
     </style>
 
-    <style name="TextAppearance.App.Display" parent="TextAppearance.MaterialComponents.Headline4">
-        <item name="android:textColor">@color/text_primary</item>
-        <item name="android:textSize">32sp</item>
-        <item name="android:fontFamily">sans-serif-medium</item>
-        <item name="android:letterSpacing">-0.02</item>
-    </style>
 
     <style name="TextAppearance.App.Headline" parent="TextAppearance.MaterialComponents.Headline5">
         <item name="android:textColor">@color/text_primary</item>
