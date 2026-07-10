@@ -84,6 +84,16 @@ toxic messages rather than train parents to ignore alerts. The threshold is
 env-tunable (`CHAT_ALERT_T`) and `ml/tune_from_feedback.py` adjusts it from real
 parent feedback using a Beta posterior.
 
+**Reproducibility nuance (know this before anyone re-runs the scripts):** the recorded
+chat metrics were measured before the keyword-channel punctuation fix (2026-07-06). A
+re-run today shifts three display cells by exactly 0.001 — P@0.90 0.950→0.949, R@0.90
+0.491→0.492, best-F1 recall 0.660→0.661 — with PR-AUC (0.834), every ablation delta,
+and every conclusion unchanged. We verified this by re-running both `eval_chat_conda`
+and the chat ablation post-fix, and kept the recorded pre-fix values so all committed
+artifacts stay mutually consistent. If asked: "the fix changed served scores by at most
+a tenth of a percent; we re-measured to confirm, and the operating-point argument is
+identical either way."
+
 **Q: Why fuse a keyword lexicon with an ML model? Isn't that admitting the model is weak?**
 It's a noisy-OR of two imperfect detectors: `1-(1-kw)(1-ml)`. The lexicon catches
 Hinglish and Devanagari abuse (bsdk, chutya, मादरचोद) that no English-trained corpus
