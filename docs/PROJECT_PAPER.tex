@@ -81,7 +81,7 @@ favour calibrated, explainable classical models with SHAP attributions over
 heavyweight deep models, prioritising on-device privacy, deployability and honesty
 of evaluation --- and every model choice is backed by a measured bake-off, every
 design choice by an ablation with bootstrap confidence intervals. The pipeline is
-grounded in \emph{six real, open datasets}: the chat model is trained on real
+grounded in \emph{nine real, open datasets}: the chat model is trained on real
 in-game and offensive-language corpora, reaches $0.95$ precision at its alert
 threshold on held-out real gaming chat, and is built for the Indian context ---
 code-mixed Hinglish/Devanagari abuse is detected whether typed or \emph{spoken}
@@ -181,7 +181,8 @@ rather than to maximise a headline accuracy number.
         $\sim$9-point leakage inflation and \emph{reversed} a model-selection
         verdict), thresholds re-derived from held-out curves on every model change,
         and negative results reported alongside positive ones.
-  \item Grounding in six real, open datasets --- each screened against explicit
+  \item Grounding in nine real, open datasets (two behaviour-grounding surveys, three
+        chat corpora, four speech corpora) --- each screened against explicit
         criteria, each adoption justified by a measured effect, and each rejection
         documented with its reason (\S4.2).
 \end{enumerate}
@@ -455,7 +456,7 @@ EMO-DB~\cite{emodb2005} (German) and URDU~\cite{urdu2018} ---
 $9{,}817$ clips across $163$ speakers in three languages, all ingested through the
 identical serving extractor (\S\ref{sec:voiceresults}); the Urdu corpus is
 deliberately included for its phonetic proximity to the target users' Hindi.
-A sixth open dataset provides \emph{label-side} grounding: the cross-cultural
+A further open dataset provides \emph{label-side} grounding: the cross-cultural
 IGDS9-SF study of $11{,}191$ Latin-American MOBA players~\cite{igdslatam2024} (OSF,
 open access; recomputable by \texttt{ml/analyze\_igds.py}). It contributes two things no other
 source could. First, the real severity base rate --- $6.4\%$ of active gamers score
@@ -928,54 +929,6 @@ fires before removal completes). It is strictly opt-in and requests \emph{no} lo
 policies --- only the uninstall block and the disable hook --- keeping it appropriate for
 a consent-based model rather than a punitive lockdown.
 
-\subsection{Offline behaviour: what is captured, deferred, or lost}
-The Child app tolerates intermittent connectivity, but the guarantee differs by data
-stream --- a deliberate design choice driven by the stakes and volume of each. The
-policy is store-and-forward for the highest-value, lowest-volume evidence, and
-best-effort for high-volume telemetry, with the parent always \emph{told} when
-monitoring goes dark rather than being shown a silent gap.
-\begin{itemize}[leftmargin=1.4em]
-  \item \textbf{Typed chat --- fully durable.} A captured line that fails to upload is
-        written to a disk-backed, encrypted queue and retried both by the monitor's
-        poll loop and by a \texttt{WorkManager} job that fires the moment connectivity
-        returns, surviving process death. A line is removed from disk only after the
-        server confirms it (a crash mid-upload re-sends on the next flush and the server
-        de-dupes), so no typed message is lost offline. The queue is bounded (50 lines;
-        entries older than 24\,h are dropped) so it cannot grow without limit.
-  \item \textbf{Spoken words --- durable.} Speech-to-text runs entirely on-device
-        (Vosk), so transcripts are produced without a network and enter the same durable
-        chat queue --- what the child \emph{says} is also captured offline and delivered
-        later.
-  \item \textbf{Session end --- approximated, not lost.} If an end-event does not reach
-        the server, the stale-session watchdog closes the session server-side at its last
-        recorded activity, so the duration is estimated rather than dropped.
-  \item \textbf{Session start --- lost while offline.} Starting a session requires the
-        server to allocate a session id; a game begun with no connectivity is not tracked
-        until the network returns, at which point tracking begins from that moment (the
-        offline portion is not recovered).
-  \item \textbf{Screen events, notification events --- best-effort.} These are
-        fire-and-forget and are dropped if offline; they are high-volume, low-stakes
-        telemetry where an occasional gap is acceptable.
-  \item \textbf{Voice-emotion audio segments --- not buffered.} The short audio clips
-        for acoustic emotion are deliberately \emph{not} queued offline: raw audio is
-        large, and we do not want it accumulating on the device (consistent with the
-        raw-audio-deletion policy).
-  \item \textbf{Heartbeats --- intentionally lost, and that is the signal.} Liveness
-        pings are not queued; when the device is offline the pings simply stop, and the
-        server's watchdog surfaces this to the parent as a ``monitoring has gone silent''
-        alert (subject to quiet hours). An offline gap is therefore never invisible to
-        the parent.
-\end{itemize}
-On the \textbf{Parent app} side, the dashboard, alerts and reports are read-only views
-of the cloud database and require connectivity: with no network the parent sees the last
-successfully fetched data (alert and dashboard polling simply retry on the next tick)
-rather than stale-but-live-looking numbers, and any child data captured offline appears
-as soon as the Child app's deferred uploads reach the server. Because delivery is
-server-mediated, the parent view is always eventually consistent with what the Child app
-managed to persist and upload. A natural extension identified for future work is an
-on-device session buffer that records start/end times locally and back-fills them when
-connectivity returns, closing the ``session started while offline'' gap above.
-
 \subsection{Offline behaviour and data durability}
 Connectivity loss is a normal condition on a child's phone, so each capture channel has
 a \emph{deliberate}, per-channel offline policy rather than a blanket promise. The design
@@ -1001,7 +954,24 @@ round trip, so a gaming session that begins fully offline is not recorded; if
 connectivity returns mid-game, tracking begins from that moment (the offline head of the
 session is lost, and detection retries every 5\,s until it succeeds). A session
 \emph{end} that fails to send is healed server-side: the stale-session watchdog closes
-the open
+the open session at its last recorded activity, so its duration stays realistic. Screen
+and notification events are fire-and-forget and dropped while offline --- high-volume,
+low-stakes telemetry where an occasional gap is acceptable --- and the short
+voice-emotion audio segments are deliberately \emph{not} buffered (raw audio is large and
+is deleted after feature extraction regardless).
+
+\textbf{An offline gap is never invisible.} Heartbeats are intentionally not queued:
+when the device goes offline the liveness pings simply stop, and the server's watchdog
+surfaces the silence to the parent as a ``monitoring has gone silent'' alert (subject to
+the child's quiet hours). On the Parent app side, dashboards, alerts and reports are
+read-only cloud views that require connectivity; offline, the parent sees the last
+successfully fetched data rather than stale-but-live-looking numbers, and any child data
+captured offline appears as soon as the deferred uploads reach the server. A natural
+extension identified for future work is an on-device session buffer that records
+start/end times locally and back-fills them when connectivity returns, closing the
+``session started while offline'' gap.
+
+\subsection{Security and accounts}
 A family registers once and receives a unique family code; each child has a private
 PIN, and the parent signs in with the family code + a shared PIN. All protected
 endpoints enforce token authentication and per-user authorisation. The family code
@@ -1174,7 +1144,8 @@ number: under random clip splits this same configuration reads $0.657$, and the
 $\approx 9$-point gap \emph{is the quantified speaker leakage} --- the model partly
 recognising people rather than emotions (\S\ref{sec:evalmethod}). $0.57$ on unseen
 speakers across three languages is the honest generalisation number, and it is why
-voice keeps the lowest, corroborating-only ensemble weight. The earlier measured
+voice keeps its low, corroborating-only ensemble weight ($0.30$, tied with chat and
+below behaviour's $0.40$). The earlier measured
 gains survive the protocol correction in kind (variance features and corpus
 diversity still help; the ablation table in \S\ref{sec:ablations} quantifies each
 under the corrected protocol); the confusion structure
@@ -1327,8 +1298,9 @@ speech (RAVDESS+CREMA-D, 115 speakers): $0.572$ accuracy replaces the $0.9925$
 synthetic figure (\S\ref{sec:voiceresults}); risk-vs-next-day-mood correlation
 computable from data already collected \\
 \addlinespace
-Chat model retrained on gaming-domain data; alert threshold re-chosen ($0.95$/$0.97$);
-session-level streak alert &
+Chat model retrained on gaming-domain data; alert threshold re-chosen (then
+$0.95$/$0.97$, later recalibrated to the deployed $0.90$/$0.95$ alert/high-severity
+pair --- see the rows below); session-level streak alert &
 General-corpus training was the measured root cause of weak in-domain performance;
 per-message precision-first alerting caps recall, but toxic players repeat &
 Held-out gaming PR-AUC $0.549 \rightarrow 0.739$; repeated moderately-flagged messages now
@@ -1341,7 +1313,9 @@ what its data can support &
 Behaviour: five families within $0.7$\,pp (even the linear baseline) $\rightarrow$
 RandomForest retained for SHAP/calibration, now by evidence; chat: held-out gaming
 PR-AUC $0.739 \rightarrow 0.805$, alert precision $0.924$; voice: six families
-compared, RBF-SVM adopted, real-speech accuracy $0.572 \rightarrow 0.645$ \\
+compared, \texttt{HistGradientBoosting} adopted on speaker-independent evaluation
+(RBF-SVM led on random splits but the edge was speaker leakage; see
+\S\ref{sec:modelselection}), honest speaker-independent accuracy $0.574$ \\
 \addlinespace
 Behaviour play-time distributions + peer-percentile table grounded in a real survey
 of $13{,}464$ gamers (Sauter \& Draschkow 2017, CC-BY) &
@@ -1472,6 +1446,7 @@ than not looking --- is part of the production-readiness this paper claims.
 
 \subsection{Summary of features delivered}
 \begin{center}
+\footnotesize
 \begin{tabularx}{\linewidth}{lX}
 \toprule
 \textbf{Area} & \textbf{Delivered} \\
