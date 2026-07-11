@@ -31,7 +31,17 @@ os.environ.setdefault('AUTH_ENFORCE', '0')
 os.environ.setdefault('SEED_DEFAULT_USER', '1')
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
-from app import app as flask_app, get_db, insert_returning_id  # noqa: E402
+from app import app as flask_app, get_db, insert_returning_id, limiter  # noqa: E402
+
+# Disable rate limiting for the suite (the documented Flask-Limiter testing recipe).
+# The limits are per-minute and the whole suite runs in seconds from one client IP, so
+# with the REAL limiter installed (CI; optional locally) the 6th /api/session/start in
+# a minute 429s and its test dies on a missing session_id — a limiter artifact, not a
+# code defect. Locally the no-op shim just absorbs the attribute.
+try:
+    limiter.enabled = False
+except Exception:
+    pass
 
 FAMILY_CODE = 'TEST01'   # child PIN 1234 / parent PIN 0000 are seeded by init_db's default user
 
