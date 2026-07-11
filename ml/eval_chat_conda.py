@@ -114,7 +114,11 @@ def load_dataset(args):
 
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument('--csv', default=os.path.join(DATA_DIR, 'conda', 'conda_train.csv'))
+    # Default to the held-out CONDA VALIDATION split (correct-case filename — the old
+    # lowercase 'conda_train.csv' both failed on case-sensitive filesystems AND pointed at
+    # the TRAIN split the model learned from, so the reported in-domain metrics were on
+    # trained rows). CONDA_valid.csv was never in training.
+    ap.add_argument('--csv', default=os.path.join(DATA_DIR, 'conda', 'CONDA_valid.csv'))
     ap.add_argument('--text-col', default='utterance')
     ap.add_argument('--label-col', default='intentClass')
     ap.add_argument('--toxic-values', default='E,I',

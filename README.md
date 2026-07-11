@@ -108,7 +108,7 @@ for an emulator, or your LAN IP for a real device).
 ### Tests
 ```bash
 cd backend
-pytest tests/ -v           # 58 tests, isolated DB — no real data needed
+pytest tests/ -v           # 63 tests, isolated DB — no real data needed
 ```
 CI runs this suite on both SQLite and Postgres 16, plus Android Lint and 30 JVM
 unit tests for the two apps, on every push (`.github/workflows/ci.yml`); a weekly

@@ -75,24 +75,28 @@ scoring every chat message in real time. The char_wb n-grams are the cheap trick
 buys robustness to gamer spelling ("noooob", "f4ggot") — removing them drops PR-AUC to
 0.811 (ablation row "- char_wb n-grams").
 
-**Q: The balanced-holdout F1 is 0.92 but realistic precision at 0.5 is 0.053. Which is real?**
+**Q: The balanced-holdout F1 is 0.92 but realistic precision at 0.5 is 0.205. Which is real?**
 Both — and the gap is the most important number in the chat section. At the realistic
-~0.7% toxic base rate, a 0.5 threshold floods parents with false alarms (precision
-0.053). That is *why* the alert threshold is 0.90, where in-domain precision is 0.950
-at recall 0.491 (`chat_metrics_gaming.at_alert_threshold`). We chose to miss half of
-toxic messages rather than train parents to ignore alerts. The threshold is
-env-tunable (`CHAT_ALERT_T`) and `ml/tune_from_feedback.py` adjusts it from real
-parent feedback using a Beta posterior.
+~3.5% toxic base rate, a 0.5 threshold floods parents with false alarms (precision
+0.205 — roughly four false alarms per real one). That is *why* the alert threshold is
+0.90, where in-domain precision is 0.950 at recall 0.491
+(`chat_metrics_gaming.at_alert_threshold`). We chose to miss half of toxic messages
+rather than train parents to ignore alerts. The threshold is env-tunable
+(`CHAT_ALERT_T`) and `ml/tune_from_feedback.py` adjusts it from real parent feedback
+using a Beta posterior.
 
-**Reproducibility nuance (know this before anyone re-runs the scripts):** the recorded
-chat metrics were measured before the keyword-channel punctuation fix (2026-07-06). A
-re-run today shifts three display cells by exactly 0.001 — P@0.90 0.950→0.949, R@0.90
-0.491→0.492, best-F1 recall 0.660→0.661 — with PR-AUC (0.834), every ablation delta,
-and every conclusion unchanged. We verified this by re-running both `eval_chat_conda`
-and the chat ablation post-fix, and kept the recorded pre-fix values so all committed
-artifacts stay mutually consistent. If asked: "the fix changed served scores by at most
-a tenth of a percent; we re-measured to confirm, and the operating-point argument is
-identical either way."
+**Eval-leakage fix (2026-07-11, know this if anyone compares to older drafts):** the
+general-corpus evaluation (`chat_metrics`) previously rebuilt its "held-out" set from
+the general corpus alone while training also included CONDA + chat_extra — so trained
+rows leaked into the holdout (~55% of the balanced set). The eval now imports the
+trainer's exact corpus assembly, making the holdout genuine. Post-fix: balanced F1
+barely moved (0.924→0.917 — the model was never overfit), while realistic precision
+@0.5 ROSE from 0.053 to 0.205 and the base rate from 0.7% to 3.5% (the old "realistic"
+set was general-corpus-only and unrepresentatively easy). The IN-DOMAIN CONDA_valid
+numbers (P 0.950 / R 0.491 at 0.90, PR-AUC 0.834, all ablation deltas) are untouched —
+CONDA_valid was never in training, so that eval had no leakage. Older-draft nuance: the
+2026-07-06 keyword-punctuation fix shifts three in-domain display cells by 0.001
+(P@0.90 0.950→0.949, R 0.491→0.492, best-F1 recall 0.660→0.661); recorded values kept.
 
 **Q: Why fuse a keyword lexicon with an ML model? Isn't that admitting the model is weak?**
 It's a noisy-OR of two imperfect detectors: `1-(1-kw)(1-ml)`. The lexicon catches
@@ -214,7 +218,7 @@ Signed HMAC bearer tokens (itsdangerous), role-separated: parent-only routes cal
 `deny_non_parent()`, per-user access calls `guard(user_id)`. `AUTH_ENFORCE` supports
 a shadow mode (log violations without breaking clients) → enforce rollout. Rate
 limiting via Flask-Limiter; tokens of deleted accounts are rejected by an existence
-check. 58 backend tests — run in CI against both SQLite and Postgres 16, the
+check. 63 backend tests — run in CI against both SQLite and Postgres 16, the
 production dialect — cover the authz matrix, including regression tests for the
 alert-ownership gap we found and fixed; 30 Android JVM unit tests guard the
 offline-queue, WAV, keystroke-reconstruction, and alert-triage logic.

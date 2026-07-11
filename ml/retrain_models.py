@@ -284,16 +284,14 @@ def train_behavior_model():
 # ──────────────────────────────────────────────────────────────────────────────
 # 2. CHAT MODEL  (binary classifier: toxic vs. clean)
 # ──────────────────────────────────────────────────────────────────────────────
-def train_chat_model():
-    print("\n" + "=" * 60)
-    print("TRAINING CHAT MODEL")
-    print("=" * 60)
-
-    # NOTE: We evaluated ChatGPT's cleaned/curated chat data (ml/improve_datasets.py):
-    # it removed duplicate/conflicting labels + added gaming hard-negatives, but realistic
-    # toxic precision stayed ~0.20 (flat) — the issue is the general-hate-speech vs
-    # gaming-chat domain mismatch + 30:1 imbalance, not label noise. So we did NOT adopt
-    # it; the real chat lever is real gaming-chat data / threshold tuning, not cleanup.
+def assemble_chat_dataset(verbose: bool = True):
+    """The FULL chat corpus the model trains on: general corpus + CONDA train split +
+    every data/chat_extra/*.csv, cleaned with the serving clean_text. Deterministic
+    (fixed read order, ignore_index concats), so ml/eval_chat_voice.py can import this
+    and reproduce the EXACT rows — its "held-out" set then genuinely excludes what the
+    model trained on. Previously eval rebuilt the split from the general corpus ALONE,
+    so CONDA/chat_extra rows the model HAD trained on leaked into the "held-out" metrics.
+    """
     df = pd.read_csv(os.path.join(DATA_DIR, 'chat_dataset.csv'))
     df = df[['text', 'toxicity_score']].dropna()
     df['toxic'] = (df['toxicity_score'] >= 0.5).astype(int)
@@ -308,22 +306,40 @@ def train_chat_model():
                           'toxic': g['intentClass'].astype(str).str.strip().str.upper()
                                     .isin({'E', 'I'}).astype(int)})
         df = pd.concat([df, g], ignore_index=True)
-        print(f"Included gaming-domain chat: {len(g)} rows (CONDA train split)")
-    else:
+        if verbose:
+            print(f"Included gaming-domain chat: {len(g)} rows (CONDA train split)")
+    elif verbose:
         print("WARNING: data/conda/CONDA_train.csv not found — training on the general "
               "corpus only will UNDERPERFORM the deployed gaming-domain model in-domain.")
     # Additional REAL corpora normalised to (text,toxic) live in data/chat_extra/
     # (e.g. Davidson et al. hate/offensive tweets — informal, slang-heavy language
-    # close to gaming chat's register). Included whenever present.
+    # close to gaming chat's register). Included whenever present. sorted() fixes the
+    # order so the assembly (and thus the seeded split) is reproducible.
     import glob as _glob
     for extra in sorted(_glob.glob(os.path.join(DATA_DIR, 'chat_extra', '*.csv'))):
         e = pd.read_csv(extra)
         if {'text', 'toxic'} <= set(e.columns):
             df = pd.concat([df, e[['text', 'toxic']]], ignore_index=True)
-            print(f"Included extra corpus: {len(e)} rows ({os.path.basename(extra)})")
+            if verbose:
+                print(f"Included extra corpus: {len(e)} rows ({os.path.basename(extra)})")
     # Apply the SAME clean_text the backend uses at serving (no train/serve skew).
     df['text'] = df['text'].astype(str).map(clean_text)
     df = df[df['text'].str.len() > 2]
+    return df
+
+
+def train_chat_model():
+    print("\n" + "=" * 60)
+    print("TRAINING CHAT MODEL")
+    print("=" * 60)
+
+    # NOTE: We evaluated ChatGPT's cleaned/curated chat data (ml/improve_datasets.py):
+    # it removed duplicate/conflicting labels + added gaming hard-negatives, but realistic
+    # toxic precision stayed ~0.20 (flat) — the issue is the general-hate-speech vs
+    # gaming-chat domain mismatch + 30:1 imbalance, not label noise. So we did NOT adopt
+    # it; the real chat lever is real gaming-chat data / threshold tuning, not cleanup.
+    # Shared assembly (also used by eval_chat_voice.py, so eval excludes exactly these rows).
+    df = assemble_chat_dataset(verbose=True)
     print(f"Dataset: {df.shape}")
     print(f"Toxic: {df['toxic'].sum():,} ({df['toxic'].mean()*100:.1f}%)  Non-toxic: {(df['toxic']==0).sum():,}")
 

@@ -45,6 +45,11 @@ interface ApiService {
     @POST("api/user/fcm_token")
     suspend fun updateFcmToken(@Body body: @JvmSuppressWildcards Map<String, Any>): Response<GenericResponse>
 
+    // Deregister this device's push token on logout so it stops receiving the family's
+    // alerts (otherwise a logged-out phone keeps getting them until the token is reused).
+    @POST("api/user/fcm_token/unregister")
+    suspend fun unregisterFcmToken(@Body body: @JvmSuppressWildcards Map<String, Any>): Response<GenericResponse>
+
     @POST("api/parent/set_limit")
     suspend fun setTimeLimit(@Body body: @JvmSuppressWildcards Map<String, Any>): Response<GenericResponse>
 

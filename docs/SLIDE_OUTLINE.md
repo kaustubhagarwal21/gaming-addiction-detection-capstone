@@ -98,7 +98,7 @@ them makes SHAP circular. Ablation: 0.9191 vs 0.9160, CIs overlap — free hones
 **Figure:** pr_chat.pdf (PR curve)
 
 **Notes:** The threshold story is the strongest 60 s of the talk: at the realistic
-~0.7% toxic base rate, threshold 0.5 gives precision 0.053 — a parent gets ~19
+~3.5% toxic base rate, threshold 0.5 gives precision 0.205 — a parent gets ~4
 false alarms per real one and stops reading alerts. At 0.90, precision is 0.950 at
 recall 0.491: we consciously miss half of toxic messages to keep alerts credible.
 Threshold is env-tunable and a Beta-posterior tuner adjusts it from parent
@@ -175,7 +175,7 @@ with-reasons more than adopted-without-reasons. (DEFENSE_NOTES §7)
 
 ## Slide 11 — Engineering Quality
 **On slide:**
-- **88 automated tests in CI**: 58 backend (run on BOTH SQLite & Postgres 16) + 30 Android JVM
+- **93 automated tests in CI**: 63 backend (run on BOTH SQLite & Postgres 16) + 30 Android JVM
 - Load-verified: 288 concurrent requests, **0 errors**, p50 91 ms
 - Weekly drift monitor vs production DB (PSI/KS) — live, verified against Neon
 - Signed-token auth, rate limiting, authz regression tests

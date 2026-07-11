@@ -67,64 +67,64 @@
   "chat_metrics": {
     "model": "LogisticRegression + TF-IDF (word 1-2gram + char_wb 3-5gram union) + isotonic calibration",
     "balanced_holdout": {
-      "precision_toxic": 0.8962,
-      "recall_toxic": 0.9534,
-      "f1_toxic": 0.9239,
-      "accuracy": 0.9215,
+      "precision_toxic": 0.8821,
+      "recall_toxic": 0.9542,
+      "f1_toxic": 0.9168,
+      "accuracy": 0.9134,
       "confusion": [
         [
-          1088,
-          135
+          5508,
+          805
         ],
         [
-          57,
-          1165
+          289,
+          6024
         ]
       ],
-      "pr_auc": 0.9379,
-      "brier": 0.0636,
-      "brier_uncalibrated": 0.0657
+      "pr_auc": 0.9262,
+      "brier": 0.0696,
+      "brier_uncalibrated": 0.0736
     },
     "realistic_holdout": {
-      "toxic_base_rate": 0.007,
+      "toxic_base_rate": 0.0347,
       "alert_threshold": 0.9,
       "at_threshold_0.5": {
-        "precision_toxic": 0.053,
-        "recall_toxic": 0.9534,
-        "f1_toxic": 0.1005,
-        "accuracy": 0.8811,
+        "precision_toxic": 0.2049,
+        "recall_toxic": 0.9542,
+        "f1_toxic": 0.3374,
+        "accuracy": 0.8697,
         "confusion": [
           [
-            153469,
-            20806
+            151992,
+            23375
           ],
           [
-            57,
-            1165
+            289,
+            6024
           ]
         ],
-        "pr_auc": 0.0929,
-        "brier": 0.0912,
-        "brier_uncalibrated": 0.0867
+        "pr_auc": 0.3102,
+        "brier": 0.0982,
+        "brier_uncalibrated": 0.0928
       },
       "at_alert_threshold": {
-        "precision_toxic": 0.0889,
-        "recall_toxic": 0.4959,
-        "f1_toxic": 0.1507,
-        "accuracy": 0.9611,
+        "precision_toxic": 0.3312,
+        "recall_toxic": 0.4712,
+        "f1_toxic": 0.389,
+        "accuracy": 0.9486,
         "confusion": [
           [
-            168062,
-            6213
+            169359,
+            6008
           ],
           [
-            616,
-            606
+            3338,
+            2975
           ]
         ],
-        "pr_auc": 0.0929,
-        "brier": 0.0912,
-        "brier_uncalibrated": 0.0867
+        "pr_auc": 0.3102,
+        "brier": 0.0982,
+        "brier_uncalibrated": 0.0928
       }
     },
     "note": "Balanced split flatters the model; the realistic set reflects the true ~imbalanced stream. Toxic precision is low at 0.5 (the model over-flags gaming language), which is exactly why the live alert threshold is 0.9 (higher precision, lower recall). The real fix is real gaming-chat data.",

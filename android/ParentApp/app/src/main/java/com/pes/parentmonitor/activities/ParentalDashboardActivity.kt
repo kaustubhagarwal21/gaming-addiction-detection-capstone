@@ -176,10 +176,15 @@ class ParentalDashboardActivity : AppCompatActivity() {
 
     private fun loadDashboard(silent: Boolean = false) {
         if (!silent) binding.progressBar.visibility = View.VISIBLE
+        // Bind this request to the child selected NOW. A slow response for child A must not
+        // overwrite the screen after the parent has switched to child B (the fetch is async
+        // and childUserId is mutable), which showed one child's data under another's name.
+        val reqChild = prefs.childUserId
         lifecycleScope.launch {
             try {
                 val api  = ApiClient.getInstance(prefs.serverUrl)
-                val resp = api.getParentalDashboard(prefs.childUserId)
+                val resp = api.getParentalDashboard(reqChild)
+                if (reqChild != prefs.childUserId) return@launch   // selection changed mid-flight — drop
                 if (resp.isSuccessful && resp.body()?.success == true) {
                     val body = resp.body()!!
                     // On a silent background tick, if nothing changed, leave the UI entirely
@@ -205,6 +210,15 @@ class ParentalDashboardActivity : AppCompatActivity() {
 
     private fun renderDashboard(dash: ParentalDashboard, animate: Boolean = true) {
         binding.tvChildName.text = dash.childName ?: "Your Child"
+
+        // Optional cards default to hidden every render. The per-card blocks below only ever
+        // switched them ON, so after switching to a child who lacks a given signal (no peer
+        // data, no sleep data, …) the PREVIOUS child's card stayed on screen.
+        binding.cardTimeLimitSuggestion.visibility = View.GONE
+        binding.cardPeerComparison.visibility = View.GONE
+        binding.cardSleepImpact.visibility = View.GONE
+        binding.cardRiskExplanation.visibility = View.GONE
+        binding.cardStreak.visibility = View.GONE
 
         if (dash.observationMode == true) {
             val done = dash.sessionsAnalyzed ?: 0
@@ -350,7 +364,9 @@ class ParentalDashboardActivity : AppCompatActivity() {
         // ── Peer comparison ────────────────────────────────────
         dash.peerComparison?.let { pc ->
             binding.cardPeerComparison.visibility = View.VISIBLE
-            binding.tvPeerPercentile.text = "Top ${pc.percentile}%"
+            // percentile = "plays more than X% of peers", so X=90 is the TOP 10%. Label it
+            // as the Nth percentile, not "Top 90%" (which read as the opposite).
+            binding.tvPeerPercentile.text = "${pc.percentile}th %ile"
             binding.tvPeerMessage.text    = pc.message
             val pcColor = when (pc.level) {
                 "very_high" -> getColor(R.color.risk_high)
@@ -584,12 +600,33 @@ class ParentalDashboardActivity : AppCompatActivity() {
             true
         }
         R.id.action_logout -> {
-            prefs.logout()
-            startActivity(Intent(this, LoginActivity::class.java))
-            finishAffinity()
+            doLogout()
             true
         }
         else -> super.onOptionsItemSelected(item)
+    }
+
+    /** Sign out cleanly: stop the sticky poller (it would otherwise keep "Guardian Active"
+     *  running and notifying about the last child indefinitely) and deregister this
+     *  device's push token (so a logged-out phone stops receiving the family's alerts),
+     *  THEN clear the session. */
+    private fun doLogout() {
+        stopService(Intent(this, AlertPollingService::class.java))
+        val token     = prefs.fcmToken
+        val serverUrl = prefs.serverUrl
+        if (token.isNotBlank()) {
+            // Fire-and-forget on a process-independent scope: prefs.logout() clears the
+            // token immediately, so capture it first and don't tie the call to this Activity.
+            kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.IO).launch {
+                try {
+                    ApiClient.getInstance(serverUrl)
+                        .unregisterFcmToken(mapOf("fcm_token" to token))
+                } catch (_: Exception) {}
+            }
+        }
+        prefs.logout()
+        startActivity(Intent(this, LoginActivity::class.java))
+        finishAffinity()
     }
 
     /** Switch to another child in the same family WITHOUT re-entering the family code —
@@ -619,6 +656,10 @@ class ParentalDashboardActivity : AppCompatActivity() {
                                 prefs.childUserId = chosen.userId
                                 prefs.childName   = chosen.name
                                 binding.tvChildName.text = chosen.name
+                                // Drop the cached payload so the new child always re-renders
+                                // (the silent-tick equality check would otherwise skip it if
+                                // the two children happened to match), and so stale cards clear.
+                                lastDash = null
                                 // Re-target the background poller too — otherwise it
                                 // keeps notifying about the PREVIOUS child until the
                                 // app is killed and restarted.

@@ -118,11 +118,29 @@ class GamingKeyboardService : InputMethodService(), KeyboardView.OnKeyboardActio
         super.onFinishInput()
     }
 
+    /** True when the field being typed into is a password / sensitive input, so its
+     *  contents must never be captured (game account logins, recovery codes, etc.). */
+    private fun isSensitiveField(): Boolean {
+        val t = currentInputEditorInfo?.inputType ?: return false
+        val cls = t and android.text.InputType.TYPE_MASK_CLASS
+        val variation = t and android.text.InputType.TYPE_MASK_VARIATION
+        val textPw = cls == android.text.InputType.TYPE_CLASS_TEXT && (
+            variation == android.text.InputType.TYPE_TEXT_VARIATION_PASSWORD ||
+            variation == android.text.InputType.TYPE_TEXT_VARIATION_VISIBLE_PASSWORD ||
+            variation == android.text.InputType.TYPE_TEXT_VARIATION_WEB_PASSWORD)
+        val numPw = cls == android.text.InputType.TYPE_CLASS_NUMBER &&
+            variation == android.text.InputType.TYPE_NUMBER_VARIATION_PASSWORD
+        return textPw || numPw
+    }
+
     /**
      * Upload the buffered sentence — but ONLY if the child is genuinely in a monitored
      * game with an active session. Otherwise discard it (never leaves the device).
      */
     private fun flushCapture() {
+        // Never capture from a password / sensitive field, even inside a game (account
+        // logins, recovery codes). Clear the buffer so nothing carries into the next field.
+        if (isSensitiveField()) { buffer.setLength(0); return }
         val text = buffer.toString().trim()
         buffer.setLength(0)
         if (text.length < 3) return

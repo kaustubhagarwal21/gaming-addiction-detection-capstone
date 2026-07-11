@@ -73,6 +73,13 @@ object ChatUploadQueue {
         flushing = true
         try {
             val prefs = SecurePrefs.get(context, Constants.PREFS_NAME)
+            // Load the bearer token into ApiClient BEFORE any upload. In the WorkManager
+            // path (process was killed, then woken purely to flush) no PrefsManager was
+            // constructed, so ApiClient.authToken is null → the server 401s every line and,
+            // treated as a permanent 4xx, they were dropped. This is exactly the
+            // process-death case this durable queue exists to cover, so it must send the
+            // token itself rather than assume some Activity/Service already did.
+            ApiClient.authToken = prefs.getString(Constants.KEY_AUTH_TOKEN, null)
             // Read-only snapshot — the queue stays on disk; entries are removed one by one
             // only after the server confirms them (below), so a kill mid-flush loses nothing.
             val snapshot = synchronized(lock) {

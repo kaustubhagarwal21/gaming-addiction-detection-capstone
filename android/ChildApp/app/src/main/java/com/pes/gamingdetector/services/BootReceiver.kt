@@ -5,16 +5,19 @@ import android.content.Context
 import android.content.Intent
 import androidx.core.content.ContextCompat
 import com.pes.gamingdetector.util.PrefsManager
+import com.pes.gamingdetector.util.PrivacyText
 
 class BootReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
         if (intent.action != Intent.ACTION_BOOT_COMPLETED) return
         val prefs = PrefsManager(context)
         if (!prefs.isLoggedIn()) return
-        // Don't resume monitoring on boot unless consent was given — otherwise a reboot
-        // silently restarts capture even when the parent declined (or never completed)
-        // the consent step. HomeActivity re-requests consent on next open before starting.
-        if (!prefs.consentDone) return
+        // Don't resume monitoring on boot unless consent was given FOR THE CURRENT policy
+        // version — otherwise a reboot silently restarts capture even when the parent
+        // declined, never completed, or hasn't re-agreed to a changed policy. HomeActivity
+        // re-requests consent on next open before starting. (Checking only consentDone let
+        // a stale-consent device resume capture under a policy nobody agreed to.)
+        if (!prefs.consentDone || prefs.consentVersion != PrivacyText.CONSENT_VERSION) return
 
         // Always restart passive monitor (screen events + auto-session detection)
         ContextCompat.startForegroundService(

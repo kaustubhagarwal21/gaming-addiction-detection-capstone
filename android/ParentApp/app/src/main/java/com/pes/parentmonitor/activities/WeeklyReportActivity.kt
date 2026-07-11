@@ -57,8 +57,10 @@ class WeeklyReportActivity : AppCompatActivity() {
 
     private fun render(dash: ParentalDashboard) {
         val weekHours    = dash.totalHoursWeek ?: 0.0
-        // Average only over days that actually have data (avoids underestimating
-        // for a new account with fewer than 7 days of history).
+        // Average PER PLAY DAY (days that actually have gaming), not per calendar day —
+        // avoids underestimating for a new account with <7 days of history. Other screens
+        // (and the server's avg_daily) divide by 7; the layout caption says "hrs per play
+        // day" so the two figures can coexist without looking contradictory.
         val daysWithData = dash.dailyHoursWeek?.count { it.hours > 0 }?.takeIf { it > 0 } ?: 7
         val avgDaily     = weekHours / daysWithData
         val lateNight    = dash.lateNightCount ?: 0

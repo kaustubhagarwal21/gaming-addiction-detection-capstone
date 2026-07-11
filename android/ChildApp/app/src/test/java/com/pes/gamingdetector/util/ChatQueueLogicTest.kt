@@ -24,14 +24,17 @@ class ChatQueueLogicTest {
 
     @Test
     fun `5xx and transient 4xx keep the line for retry`() {
-        for (code in listOf(500, 502, 503, 599, 408, 429)) {
+        // 401 is transient: in the WorkManager path the token may not be loaded yet, so a
+        // 401 must re-queue (not drop) — the line survives until the token is present or
+        // the 24h stale-drop fires.
+        for (code in listOf(500, 502, 503, 599, 408, 429, 401)) {
             assertTrue("expected retry for $code", ChatQueueLogic.isTransientFailure(code))
         }
     }
 
     @Test
     fun `2xx and permanent 4xx drop the line`() {
-        for (code in listOf(200, 201, 204, 400, 401, 403, 404, 410, 422)) {
+        for (code in listOf(200, 201, 204, 400, 403, 404, 410, 422)) {
             assertFalse("expected drop for $code", ChatQueueLogic.isTransientFailure(code))
         }
     }

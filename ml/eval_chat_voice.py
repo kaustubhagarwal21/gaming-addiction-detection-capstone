@@ -40,11 +40,15 @@ def _load(name):
 
 def eval_chat():
     print("=" * 60, "\nCHAT MODEL EVAL\n", "=" * 60)
-    df = pd.read_csv(os.path.join(DATA_DIR, 'chat_dataset.csv'))
-    df = df[['text', 'toxicity_score']].dropna()
-    df['text'] = df['text'].astype(str).map(clean_text)
-    df = df[df['text'].str.len() > 2]
-    df['toxic'] = (df['toxicity_score'] >= 0.5).astype(int)
+    # Use the SAME assembled corpus the trainer used (general + CONDA train + chat_extra),
+    # not the general corpus alone. Rebuilding from the general corpus here meant the
+    # "held-out" set still contained CONDA/chat_extra rows the model HAD trained on —
+    # inflating the metrics (measured ~55% of the balanced "held-out" rows were trained
+    # on). Importing the shared assembly makes df.drop(index=X_train.index) a true holdout.
+    # No reset_index: the trainer balances/splits on this same (filter-gapped) index, so
+    # reproducing it here — index and all — is what makes X_train.index line up exactly.
+    from retrain_models import assemble_chat_dataset
+    df = assemble_chat_dataset(verbose=False)
 
     # Reproduce the balanced training subset + split EXACTLY (retrain_models.py seeds).
     toxic_df    = df[df['toxic'] == 1]

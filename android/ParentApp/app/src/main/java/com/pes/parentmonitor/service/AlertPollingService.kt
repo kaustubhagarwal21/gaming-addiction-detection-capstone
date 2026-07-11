@@ -65,17 +65,24 @@ class AlertPollingService : Service() {
     }
 
     private suspend fun checkForAlerts() {
-        if (childUserId == -1) return
+        // Snapshot the target child ONCE. childUserId is @Volatile and can change mid-poll
+        // ("switch child" re-invokes onStartCommand); reading it again after each await let
+        // one child's alert id be saved as another child's high-water mark, suppressing the
+        // second child's alerts. Everything in this pass is keyed off `child`, and a fetch
+        // that finishes after a switch is discarded.
+        val child = childUserId
+        if (child == -1) return
         try {
             val api = ApiClient.getInstance(serverUrl)
-            val resp = api.getAlerts(childUserId)
+            val resp = api.getAlerts(child)
+            if (child != childUserId) return   // switched mid-flight — drop this result
             if (resp.isSuccessful && resp.body()?.success == true) {
                 val body = resp.body()!!
                 // Only notify for alerts newer than the last one we already showed FOR
                 // THIS CHILD. Alert ids are globally unique, so a single shared high-water
                 // mark suppressed a sibling's older-id alerts after viewing another child
                 // — the mark is now kept per child.
-                val lastId  = prefs.lastNotifiedAlertId(childUserId)
+                val lastId  = prefs.lastNotifiedAlertId(child)
                 val newAlerts = AlertTriage.newAlertsSince(body.alerts, lastId)
                 if (newAlerts.isNotEmpty()) {
                     val worst = AlertTriage.worstOf(newAlerts)!!
@@ -83,28 +90,29 @@ class AlertPollingService : Service() {
                     // shown. If POST_NOTIFICATIONS is denied, leave it so the backlog
                     // surfaces once the parent grants permission (instead of being lost).
                     if (sendAlertNotification(worst.message, worst.severity)) {
-                        prefs.setLastNotifiedAlertId(childUserId, newAlerts.last().id)
+                        prefs.setLastNotifiedAlertId(child, newAlerts.last().id)
                     }
                 }
 
-                val statusResp = api.getChildStatus(childUserId)
+                val statusResp = api.getChildStatus(child)
+                if (child != childUserId) return   // switched mid-flight — drop this result
                 if (statusResp.isSuccessful && statusResp.body()?.success == true) {
                     val status = statusResp.body()!!
                     val newRisk = status.currentRisk ?: ""
-                    if (newRisk.isNotEmpty() && newRisk != prefs.lastRiskLevel(childUserId)) {
+                    if (newRisk.isNotEmpty() && newRisk != prefs.lastRiskLevel(child)) {
                         val worthy = AlertTriage.isNotifyWorthyRisk(newRisk)
                         val now = System.currentTimeMillis()
                         // Cooldown is per child+level: keyed by child so siblings don't share it.
-                        val key = "$childUserId:$newRisk"
+                        val key = "$child:$newRisk"
                         if (worthy && AlertTriage.riskCooldownPassed(riskNotifiedAt[key] ?: 0L, now)) {
                             if (sendRiskChangeNotification(newRisk, status.currentGame)) {
                                 riskNotifiedAt[key] = now
-                                prefs.setLastRiskLevel(childUserId, newRisk)
+                                prefs.setLastRiskLevel(child, newRisk)
                             }
                             // not shown (permission denied) → don't advance; retry next poll
                         } else {
                             // not notify-worthy, or within cooldown → consider it handled
-                            prefs.setLastRiskLevel(childUserId, newRisk)
+                            prefs.setLastRiskLevel(child, newRisk)
                         }
                     }
                 }

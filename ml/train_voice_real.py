@@ -228,8 +228,13 @@ def main():
         sys.exit("librosa is required (pip install -r backend/requirements.txt)")
 
     if args.smoke:
+        import atexit
+        import shutil
         import tempfile
         tmp = tempfile.mkdtemp(prefix='voice_smoke_')
+        # Remove the synthetic-WAV scratch dir on exit (any path — early return, error, or
+        # normal finish) so repeated smoke runs don't leave temp dirs behind.
+        atexit.register(shutil.rmtree, tmp, ignore_errors=True)
         labelled = [(f, label_for(f)) for f in smoke_files(tmp)]
         labelled = [(f, l) for f, l in labelled if l]
         corpora = 'smoke'

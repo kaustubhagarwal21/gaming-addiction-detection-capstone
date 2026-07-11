@@ -78,8 +78,11 @@
                                 <TextView android:id="@+id/tvAvgDaily"
                                     android:layout_width="wrap_content" android:layout_height="wrap_content"
                                     android:text="—" android:textSize="24sp" android:textStyle="bold" />
+                                <!-- "per play day", not "per day": the value divides by days
+                                     actually played (see WeeklyReportActivity), while other
+                                     screens divide by 7 — the label says which this is. -->
                                 <TextView android:layout_width="wrap_content" android:layout_height="wrap_content"
-                                    android:text="hrs/day avg" android:textSize="11sp"
+                                    android:text="hrs per play day" android:textSize="11sp"
                                     android:textColor="@color/text_secondary" />
                             </LinearLayout>
                             <LinearLayout android:layout_width="0dp" android:layout_height="wrap_content"

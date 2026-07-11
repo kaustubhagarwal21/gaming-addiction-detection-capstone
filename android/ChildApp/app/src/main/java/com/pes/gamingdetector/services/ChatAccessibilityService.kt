@@ -116,6 +116,15 @@ class ChatAccessibilityService : AccessibilityService() {
             return
         }
 
+        // Never capture text from a password / sensitive field, even inside a game
+        // (account logins, recovery codes). event.isPassword is set on the field that
+        // fired the event; drop any accumulated text and skip.
+        if (event.isPassword) {
+            keystrokeBuffer.clear()
+            lastText = ""
+            return
+        }
+
         when (event.eventType) {
             AccessibilityEvent.TYPE_VIEW_TEXT_CHANGED -> {
                 // A real EditText is handling this input, so it's authoritative — drop

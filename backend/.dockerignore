@@ -17,3 +17,8 @@ tests
 .env.local
 *.log
 backend_test.log
+# Firebase service-account private key — provided at runtime via FIREBASE_KEY_JSON
+# (see _ensure_firebase). NEVER bake it into an image layer: `COPY . /app` in the
+# Dockerfile would otherwise embed the live private key in every built image.
+firebase_key.json
+*firebase*.json

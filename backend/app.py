@@ -10,6 +10,7 @@ import sqlite3
 from datetime import datetime, timedelta
 from functools import lru_cache
 import json
+import math
 import os
 import threading
 import logging
@@ -352,6 +353,15 @@ DATABASE_URL = os.environ.get('DATABASE_URL', '').strip()
 if DATABASE_URL.startswith('postgres://'):          # Render gives postgres://; psycopg2 prefers postgresql://
     DATABASE_URL = 'postgresql://' + DATABASE_URL[len('postgres://'):]
 USE_POSTGRES = DATABASE_URL.startswith('postgresql')
+# A real (Postgres) deployment that isn't enforcing auth, or is still on the insecure dev
+# secret, is wide open — every endpoint accepts unauthenticated/forged tokens. render.yaml
+# sets these correctly, but a hand-rolled deploy might not, so fail LOUD in the logs.
+if USE_POSTGRES and not AUTH_ENFORCE:
+    logger.warning("SECURITY: Postgres deployment with AUTH_ENFORCE!=1 — auth is in shadow "
+                   "mode and endpoints accept unauthenticated requests. Set AUTH_ENFORCE=1.")
+if USE_POSTGRES and AUTH_SECRET == 'dev-insecure-secret-DO-NOT-USE-IN-PRODUCTION':
+    logger.warning("SECURITY: Postgres deployment using the insecure dev AUTH_SECRET — "
+                   "tokens are forgeable. Set a strong AUTH_SECRET.")
 if USE_POSTGRES:
     import psycopg2
     import psycopg2.extras
@@ -1008,6 +1018,10 @@ def init_db():
     add_column(c, 'predictions', 'chat_present',     'INTEGER DEFAULT NULL')
     add_column(c, 'predictions', 'voice_present',    'INTEGER DEFAULT NULL')
 
+    # Last day an unhealthy session spoiled the healthy-day streak, so a later healthy
+    # session the same day can't re-credit an already-broken day (see _update_streak).
+    add_column(c, 'streaks', 'spoiled_date', 'TEXT DEFAULT NULL')
+
     # Indexes on the hot query paths (filtering by user/session/time). Keeps the
     # dashboard + feature computation fast as session history grows. IF NOT EXISTS
     # works on both SQLite and Postgres.
@@ -1032,12 +1046,18 @@ def init_db():
         CREATE INDEX IF NOT EXISTS idx_nudges_user          ON child_nudges(user_id);
     ''')
 
-    # Seed default user if none exists. Include a family_code: parent login now requires
-    # one, so a code-less default user would be impossible to sign into from the Parent app.
+    # Seed default user if none exists — DEV/TEST ONLY. This account has well-known
+    # credentials (child PIN 1234 / parent PIN 0000 / family FAM001); auto-creating it in
+    # a real (Postgres) deployment hands anyone a working login, so it's gated to SQLite.
+    # The env override SEED_DEFAULT_USER=1 forces it if ever needed (e.g. a demo build).
+    _seed_default = (not USE_POSTGRES) or os.environ.get('SEED_DEFAULT_USER') == '1'
     c.execute("SELECT COUNT(*) AS n FROM users")
-    if c.fetchone()['n'] == 0:
+    if c.fetchone()['n'] == 0 and _seed_default:
         c.execute("INSERT INTO users (name, pin, parent_pin, age, family_code) "
                   "VALUES ('Player','1234','0000',15,'FAM001')")
+    elif not _seed_default:
+        logger.info("Production DB: skipping the dev default account (register real users, "
+                    "or set SEED_DEFAULT_USER=1 to force).")
 
     # Backfill credential hashes for any row that still has plaintext but no hash,
     # then clear the plaintext (the columns are NOT NULL, so blank them) so the DB
@@ -1820,20 +1840,25 @@ def _build_recommendations(risk_level: str) -> list:
 def _suggest_time_limit(weekly_hours: float, risk_level: str, age: int = 15) -> dict:
     """Suggest a personalised daily time limit based on child's baseline and risk level."""
     avg_daily = weekly_hours / 7.0
+    # Round/clamp to the nearest 0.5h (min 0.5) FIRST, then build the explanation from the
+    # final value — otherwise the at-risk reason quoted the pre-clamp number and could
+    # contradict the returned limit (e.g. "reduce to 0.4h" while returning 0.5h).
+    def _round_half(v):
+        return max(0.5, round(v * 2) / 2)
     if risk_level == 'addicted':
         suggested  = 1.0
         reason     = "High addiction risk — strict 1-hour daily limit recommended"
         urgency    = 'high'
     elif risk_level == 'at_risk':
-        suggested  = min(avg_daily * 0.70, 2.0)
+        suggested  = _round_half(min(avg_daily * 0.70, 2.0))
         reason     = f"At-risk pattern — reduce from {avg_daily:.1f}h to {suggested:.1f}h daily"
         urgency    = 'medium'
     else:
         cap        = 2.5 if age < 13 else 3.0
-        suggested  = min(avg_daily, cap)
+        suggested  = _round_half(min(avg_daily, cap))
         reason     = "Healthy pattern — current balance looks good"
         urgency    = 'low'
-    suggested = max(0.5, round(suggested * 2) / 2)   # round to nearest 0.5h
+    suggested = _round_half(suggested)
     return {
         'suggested_daily_hours':  suggested,
         'current_avg_daily_hours': round(avg_daily, 1),
@@ -1886,19 +1911,36 @@ def _sleep_impact_analysis(user_id: int, conn) -> dict:
     has_screen_events = c.fetchone()['n'] > 0
 
     if has_screen_events:
-        c.execute('''SELECT timestamp FROM screen_events
-                     WHERE user_id=? AND event_type='screen_on' AND timestamp>=?''',
+        # Evidence quality: prefer 'unlocked' (USER_PRESENT — the child actually unlocked
+        # the phone) when the device reports it. A bare screen_on also fires when an
+        # arriving notification lights the lock screen, which is not the child using the
+        # phone — counting those marked essentially EVERY day a "late night" (100% for
+        # any normal phone), flatly contradicting "0 late-night gaming sessions" above it.
+        # Devices with no lockscreen never fire 'unlocked'; fall back to screen_on there,
+        # but require >=2 wakes in the window before a day counts (filters the single
+        # passive blip while keeping genuine repeated night use).
+        c.execute("SELECT COUNT(*) AS n FROM screen_events "
+                  "WHERE user_id=? AND event_type='unlocked' AND timestamp>=?",
                   (user_id, since))
+        use_unlocks = c.fetchone()['n'] > 0
+        ev_type   = 'unlocked' if use_unlocks else 'screen_on'
+        min_wakes = 1 if use_unlocks else 2
+        c.execute('''SELECT timestamp FROM screen_events
+                     WHERE user_id=? AND event_type=? AND timestamp>=?''',
+                  (user_id, ev_type, since))
         wakes_by_day = {}
         for r in c.fetchall():
             try:
                 dt = _parse_ts(r['timestamp']) + timedelta(minutes=tz_shift)
             except Exception:
                 continue
-            if dt.hour >= 22 or dt.hour < 6:
+            # 22:00–05:00 for phone wakes (not –06:00 like gaming sessions): dismissing a
+            # 05:30 morning alarm lit the screen daily and counted as a "late night".
+            if dt.hour >= 22 or dt.hour < 5:
                 d = dt.date().isoformat()
                 wakes_by_day[d] = wakes_by_day.get(d, 0) + 1
-        late_rows = [{'day': d, 'wakes': n} for d, n in sorted(wakes_by_day.items())]
+        late_rows = [{'day': d, 'wakes': n}
+                     for d, n in sorted(wakes_by_day.items()) if n >= min_wakes]
 
         c.execute('''SELECT COUNT(DISTINCT SUBSTR(timestamp,1,10)) AS total
                      FROM screen_events WHERE user_id=? AND timestamp>=?''', (user_id, since))
@@ -1933,6 +1975,12 @@ def _sleep_impact_analysis(user_id: int, conn) -> dict:
                               if rows[i]['last_hour'] >= 22 and rows[i+1]['first_hour'] < 10)
         source          = 'sessions'
 
+    # Say WHAT was measured. The screen-events figure is phone-wide (any app), so without
+    # this wording a parent reads it as gaming and it appears to contradict the dashboard's
+    # "0 late-night gaming sessions" (a real pilot report — the header counts gaming
+    # session starts, this card counts night-time phone USE as a sleep-disruption proxy).
+    what = ("late-night phone use (any app — not just gaming; 10 PM–5 AM)"
+            if source == 'screen_events' else "late-night gaming (after 10 PM)")
     return {
         'available':             True,
         'late_night_sessions':   late_nights,
@@ -1941,7 +1989,7 @@ def _sleep_impact_analysis(user_id: int, conn) -> dict:
         'sleep_disruption_days': disruption,
         'data_source':           source,
         'message': (
-            f"{late_nights} of {total_days} days had late-night activity (after 10 PM). "
+            f"{what.capitalize()} on {late_nights} of {total_days} days. "
             + (f"Sleep disruption pattern detected on {disruption} days." if disruption > 0
                else "No clear sleep disruption detected.")
         )
@@ -1969,7 +2017,17 @@ def _update_streak(user_id: int, weekly_hours: float, risk_level: str) -> dict:
         total     = row['total_healthy_days']
         last_date = row['last_healthy_date']
 
-    if is_healthy:
+    # A day counts as healthy only if NO unhealthy session happened that day. spoiled_date
+    # records the last day an unhealthy session broke the streak, so a healthy session
+    # LATER the same day can't re-credit an already-spoiled day — making the outcome
+    # independent of the order sessions arrive within a day (previously healthy-then-risky
+    # kept the streak, risky-then-healthy reset it: same day, different result).
+    spoiled = (row.get('spoiled_date') if isinstance(row, dict) else None)
+
+    if is_healthy and spoiled == today:
+        # Earlier today was unhealthy → the day is spoiled. Leave the broken streak as-is.
+        pass
+    elif is_healthy:
         if last_date == yesterday:
             current += 1
         elif last_date != today:
@@ -1979,9 +2037,17 @@ def _update_streak(user_id: int, weekly_hours: float, risk_level: str) -> dict:
         c.execute('''UPDATE streaks SET current_streak=?, longest_streak=?,
                      last_healthy_date=?, total_healthy_days=? WHERE user_id=?''',
                   (current, longest, today, total, user_id))
-    elif last_date != today:
+    else:
+        # Unhealthy session → break the streak and spoil today. If an earlier healthy
+        # session today had already credited the day, roll that credit back so one bad
+        # session spoils the whole day regardless of within-day order.
+        if last_date == today:
+            total     = max(0, total - 1)
+            last_date = yesterday          # un-mark today as the last healthy day
         current = 0
-        c.execute('UPDATE streaks SET current_streak=0 WHERE user_id=?', (user_id,))
+        c.execute('''UPDATE streaks SET current_streak=0, total_healthy_days=?,
+                     last_healthy_date=?, spoiled_date=? WHERE user_id=?''',
+                  (total, last_date, today, user_id))
     conn.commit()
     conn.close()
     return {'current_streak': current, 'longest_streak': longest,
@@ -2300,6 +2366,12 @@ def update_fcm_token():
     if deny: return deny
     conn = get_db()
     c    = conn.cursor()
+    # A physical device can move between families/accounts (a shared or re-used phone).
+    # This token now belongs to THIS user only: strip it off every OTHER user's legacy
+    # fcm_token first, or _push_to_family's legacy union would keep pushing this device
+    # for the old family (a cross-family leak of one child's alerts to another family).
+    c.execute('UPDATE users SET fcm_token=NULL WHERE fcm_token=? AND user_id<>?',
+              (token, int(uid)))
     c.execute('UPDATE users SET fcm_token=? WHERE user_id=?', (token, int(uid)))   # legacy/compat
     # Register this DEVICE under its family so every guardian's phone gets pushes — not just
     # whoever logged in last. Keyed by the unique token (re-register just refreshes the row).
@@ -2312,6 +2384,25 @@ def update_fcm_token():
                      ON CONFLICT(fcm_token) DO UPDATE SET family_code=excluded.family_code,
                      updated_at=excluded.updated_at''',
                   (fam, token, datetime.now().isoformat()))
+    conn.commit()
+    conn.close()
+    return jsonify({'success': True})
+
+
+@app.route('/api/user/fcm_token/unregister', methods=['POST'])
+def unregister_fcm_token():
+    """Deregister a device's FCM token on logout so it stops receiving this family's
+    pushes. Without this, a logged-out (or re-used) parent phone kept getting the
+    child's alerts until the token was reassigned. Idempotent; token-only (no user
+    ownership needed — a device can always retire its OWN token)."""
+    data  = request.get_json() or {}
+    token = str(data.get('fcm_token', '')).strip()
+    if not token:
+        return jsonify({'error': 'fcm_token required'}), 400
+    conn = get_db()
+    c    = conn.cursor()
+    c.execute('DELETE FROM guardian_devices WHERE fcm_token=?', (token,))
+    c.execute('UPDATE users SET fcm_token=NULL WHERE fcm_token=?', (token,))
     conn.commit()
     conn.close()
     return jsonify({'success': True})
@@ -2849,10 +2940,41 @@ def end_session(sid):
     if end_time < start:
         end_time = start
     duration = max(0, int((end_time - start).total_seconds()))
-    c.execute('UPDATE sessions SET end_time=?, duration_seconds=? WHERE session_id=?',
+    # Claim the finalization ATOMICALLY: only the request that flips end_time from NULL
+    # proceeds to predict/alert/streak. The `AND end_time IS NULL` + rowcount check makes
+    # the manual "End" racing the passive auto-end (or a client retry) safe across workers
+    # — the SELECT-then-UPDATE above had a window where both saw NULL and both ran the
+    # full prediction/alert/streak twice.
+    c.execute('UPDATE sessions SET end_time=?, duration_seconds=? '
+              'WHERE session_id=? AND end_time IS NULL',
               (end_time.isoformat(), duration, sid))
+    claimed = c.rowcount
     conn.commit()
     conn.close()
+
+    if not claimed:
+        # Lost the race — another end already finalized this session. Return its stored
+        # result rather than re-running (and duplicating) the whole prediction pipeline.
+        conn = get_db()
+        c    = conn.cursor()
+        c.execute('SELECT duration_seconds FROM sessions WHERE session_id=?', (sid,))
+        drow = c.fetchone()
+        dur  = int((drow['duration_seconds'] if drow else 0) or 0)
+        c.execute('SELECT risk_category, final_risk_score, behavior_score, chat_score, '
+                  'voice_score FROM predictions WHERE session_id=? ORDER BY id DESC LIMIT 1', (sid,))
+        prow = c.fetchone()
+        conn.close()
+        return jsonify({
+            'success': True, 'session_id': sid, 'duration_seconds': dur,
+            'short_session': dur < 60, 'already_ended': True,
+            'prediction': {
+                'risk_label':     (prow['risk_category'] if prow else 'casual'),
+                'risk_score':     (prow['final_risk_score'] if prow else 0.0),
+                'behavior_score': (prow['behavior_score'] if prow else 0.0),
+                'chat_score':     (prow['chat_score'] if prow else 0.0),
+                'voice_score':    (prow['voice_score'] if prow else 0.0),
+            } if prow else None,
+        })
 
     # Save final behavioural snapshot before predicting
     _save_behavioral_snapshot(sid)
@@ -3697,6 +3819,20 @@ def chat_analysis_dashboard():
                  WHERE s.user_id=? AND cm.timestamp>=?''', (user_id, since))
     stats = dict(c.fetchone() or {})
 
+    # Toxicity label distribution over the SAME 30-day window as the stats above — same
+    # bands the rest of the system uses ('toxic' at the alert threshold, 'borderline' at
+    # 0.4; see analyse_chat). Computed in SQL over the whole window, not from the 20-row
+    # sample below: deriving it from "latest 20 all-time" mislabelled the distribution as
+    # a 30-day figure and ignored every older message in the period.
+    c.execute('''SELECT
+                   SUM(CASE WHEN cm.confidence>=?                         THEN 1 ELSE 0 END) AS high,
+                   SUM(CASE WHEN cm.confidence>=0.4 AND cm.confidence<?    THEN 1 ELSE 0 END) AS medium,
+                   SUM(CASE WHEN cm.confidence<0.4 OR cm.confidence IS NULL THEN 1 ELSE 0 END) AS safe
+                 FROM chat_messages cm JOIN sessions s ON s.session_id=cm.session_id
+                 WHERE s.user_id=? AND cm.timestamp>=?''',
+              (CHAT_ALERT_T, CHAT_ALERT_T, user_id, since))
+    drow = dict(c.fetchone() or {})
+
     # Recent chat samples. cm.source tells the parent whether a line was typed in-game
     # ('keyboard'/'ocr') or transcribed from speech ('voice_stt').
     c.execute('''SELECT cm.message, cm.confidence, cm.source, cm.timestamp, s.game_name
@@ -3706,17 +3842,12 @@ def chat_analysis_dashboard():
 
     conn.close()
 
-    # Toxicity label distribution — same bands the rest of the system uses ('toxic'
-    # at the alert threshold, 'borderline' at 0.4; see analyse_chat), so this screen
-    # can't call a message concerning that would never have raised an alert.
-    high_tox  = sum(1 for m in messages if float(m.get('confidence') or 0) >= CHAT_ALERT_T)
-    mid_tox   = sum(1 for m in messages if 0.4 <= float(m.get('confidence') or 0) < CHAT_ALERT_T)
-    safe_msg  = len(messages) - high_tox - mid_tox
-
     return jsonify({
         'success':     True,
         'stats':       stats,
-        'toxicity_distribution': {'high': high_tox, 'medium': mid_tox, 'safe': safe_msg},
+        'toxicity_distribution': {'high':   int(drow.get('high') or 0),
+                                  'medium': int(drow.get('medium') or 0),
+                                  'safe':   int(drow.get('safe') or 0)},
         'recent_messages': messages,
     })
 
@@ -4354,11 +4485,15 @@ def set_time_limit():
         return jsonify({'success': False, 'message': 'user_id and daily_limit_hours required'}), 400
     try:
         hours = float(hours)
+        # Reject NaN/inf explicitly: every comparison with NaN is False, so a "NaN"
+        # payload slips past the range check below, is stored, comes back as NULL, and
+        # then 500s the child dashboard's float(...) on every fetch. isfinite() closes
+        # that. (Kotlin's "NaN".toDoubleOrNull() likewise survives the client check.)
         # Minimum 0.5h: a 0h "limit" is both philosophically wrong for a guidance (not
         # lockdown) tool AND was silently ignored downstream — the child app treats a
         # 0.0 limit as "no parent limit set" (bool(0.0) is false), so it fell back to the
         # default goal. Disallowing it removes that contradiction at the source.
-        if hours < 0.5 or hours > 24:
+        if not math.isfinite(hours) or hours < 0.5 or hours > 24:
             raise ValueError()
     except (TypeError, ValueError):
         return jsonify({'success': False, 'message': 'daily_limit_hours must be between 0.5 and 24'}), 400
@@ -4624,7 +4759,9 @@ def weekly_report_pdf():
     pdf.set_font('Helvetica', 'B', 24)
     pdf.cell(0, 16, risk_level.upper().replace('_',' '), align='C', fill=True, ln=True)
     pdf.set_font('Helvetica', '', 11)
-    pdf.cell(0, 8, f"Risk Score: {risk_score*100:.0f}%   |   Peer Percentile: Top {peer_comp['percentile']}%", align='C', fill=True, ln=True)
+    # 'percentile' is "plays more than X% of peers", so X=90 means the TOP 10%. Label it
+    # as the Nth percentile rather than "Top 90%" (which read as the opposite).
+    pdf.cell(0, 8, f"Risk Score: {risk_score*100:.0f}%   |   Peer rank: {peer_comp['percentile']}th percentile", align='C', fill=True, ln=True)
     pdf.ln(6)
 
     # Stats table
@@ -5074,14 +5211,17 @@ def counselor_history():
     if not user_id:
         return jsonify({'success': False, 'error': 'user_id required'}), 400
     conn = get_db()
+    # Newest 200, then flipped back to chronological order for display. `ORDER BY id ASC
+    # LIMIT 200` returned the OLDEST 200 — permanently hiding every message after the
+    # 200th once a chat grew past that.
     rows = conn.execute('''
         SELECT role, content, created_at FROM counselor_messages
-        WHERE user_id = ? ORDER BY id ASC LIMIT 200
+        WHERE user_id = ? ORDER BY id DESC LIMIT 200
     ''', (user_id,)).fetchall()
     conn.close()
     return jsonify({
         'success': True,
-        'messages': [dict(r) for r in rows]
+        'messages': [dict(r) for r in reversed(rows)]
     })
 
 
@@ -5111,6 +5251,12 @@ def post_reflection():
     sleep  = _rating_1_10(data.get('sleep_quality'))
     energy = _rating_1_10(data.get('energy_level'))
     note   = str(data.get('note') or '')[:500]
+    # Reject an entirely empty check-in: all three ratings invalid/missing AND no note
+    # was silently stored as an all-NULL row that carries no signal but pollutes the
+    # history and averages.
+    if mood is None and sleep is None and energy is None and not note.strip():
+        return jsonify({'success': False,
+                        'error': 'Provide at least one rating (1–10) or a note'}), 400
     conn = get_db()
     # Explicit local created_at: the column DEFAULT is UTC on SQLite, but the reader
     # filters created_at >= a LOCAL cutoff — defaults shifted every reflection by the

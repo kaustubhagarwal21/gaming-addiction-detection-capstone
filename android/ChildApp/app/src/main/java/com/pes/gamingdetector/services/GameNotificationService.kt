@@ -5,6 +5,7 @@ import android.service.notification.StatusBarNotification
 import com.pes.gamingdetector.api.ApiClient
 import com.pes.gamingdetector.util.GameDetector
 import com.pes.gamingdetector.util.PrefsManager
+import com.pes.gamingdetector.util.PrivacyText
 import kotlinx.coroutines.*
 
 class GameNotificationService : NotificationListenerService() {
@@ -17,6 +18,11 @@ class GameNotificationService : NotificationListenerService() {
 
         val prefs = PrefsManager(this)
         if (!prefs.isLoggedIn()) return
+        // Don't collect notification events until consent for the CURRENT policy is in
+        // place — this listener is enabled at the OS level and would otherwise upload
+        // game-notification titles before/without a valid consent (e.g. right after the
+        // permission is granted but before the parent agrees, or under a changed policy).
+        if (!prefs.consentDone || prefs.consentVersion != PrivacyText.CONSENT_VERSION) return
 
         // getCharSequence, not getString: many apps post the title as a SpannableString,
         // for which getString() returns null — silently dropping every title.

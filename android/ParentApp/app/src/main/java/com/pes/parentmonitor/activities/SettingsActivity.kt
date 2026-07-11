@@ -194,6 +194,10 @@ class SettingsActivity : AppCompatActivity() {
                 val resp = api.deleteData(mapOf("user_id" to childId.toString(), "scope" to "account"))
                 if (resp.isSuccessful && resp.body()?.success == true) {
                     Toast.makeText(this@SettingsActivity, "Child removed from family", Toast.LENGTH_LONG).show()
+                    // Stop the sticky poller before signing out, or it keeps "Guardian Active"
+                    // running and polling the just-removed child until the app is killed.
+                    stopService(Intent(this@SettingsActivity,
+                        com.pes.parentmonitor.service.AlertPollingService::class.java))
                     prefs.logout()   // roster changed → re-login refreshes it (keeps server URL)
                     startActivity(Intent(this@SettingsActivity, LoginActivity::class.java)
                         .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK))

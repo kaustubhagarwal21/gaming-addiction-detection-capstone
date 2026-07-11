@@ -481,25 +481,39 @@ class PassiveMonitorService : Service() {
         val sessionId = prefs.activeSessionId
         val gameName  = prefs.activeSessionGame
         if (sessionId == -1) return
+        stopService(Intent(this, GameMonitorService::class.java))
         try {
-            stopService(Intent(this, GameMonitorService::class.java))
             val resp = ApiClient.getInstance(prefs.serverUrl).endSession(sessionId, endedSecondsAgo)
-            prefs.clearSession()
-            if (resp.isSuccessful) {
-                val pred = resp.body()?.prediction
-                val category = pred?.riskLabel ?: "unknown"
-                val score    = pred?.riskScore
-                val scoreStr = if (score != null) " (${(score * 100).toInt()}%)" else ""
-                val emoji = when (category.lowercase()) {
-                    "casual"   -> "✅"
-                    "at_risk"  -> "⚠️"
-                    "addicted" -> "🔴"
-                    else       -> "🎮"
+            when {
+                resp.isSuccessful -> {
+                    // Only clear the local session once the server has actually recorded the
+                    // end. Clearing on failure (the old behaviour) orphaned the server
+                    // session — it stayed "playing" until the 6h stale fallback and then
+                    // recorded a zero-duration session.
+                    prefs.clearSession()
+                    val pred = resp.body()?.prediction
+                    val category = pred?.riskLabel ?: "unknown"
+                    val score    = pred?.riskScore
+                    val scoreStr = if (score != null) " (${(score * 100).toInt()}%)" else ""
+                    val emoji = when (category.lowercase()) {
+                        "casual"   -> "✅"
+                        "at_risk"  -> "⚠️"
+                        "addicted" -> "🔴"
+                        else       -> "🎮"
+                    }
+                    showSessionEndNotification(gameName, "$emoji ${category.replace('_', ' ').replaceFirstChar { it.uppercase() }}$scoreStr")
                 }
-                showSessionEndNotification(gameName, "$emoji ${category.replace('_', ' ').replaceFirstChar { it.uppercase() }}$scoreStr")
+                resp.code() in 400..499 && resp.code() != 408 && resp.code() != 429 ->
+                    // Permanent reject (e.g. 404 — the session no longer exists server-side).
+                    // Nothing to retry; clear locally so detection can resume.
+                    prefs.clearSession()
+                // else: 5xx / 408 / 429 — the end did NOT persist. Keep the local session so
+                // a later tick retries (re-adoption restarts the grace), instead of leaving
+                // the server session open. No clearSession() here.
             }
         } catch (_: Exception) {
-            prefs.clearSession()
+            // Network failure — the request never landed. Keep the session and retry on a
+            // later tick rather than clearing locally while the server still shows it open.
         }
     }
 

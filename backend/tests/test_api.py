@@ -449,3 +449,117 @@ def test_auth_enforced_blocks_untokened_request(client, monkeypatch):
     monkeypatch.setattr(appmod, 'AUTH_ENFORCE', True)
     r = client.get('/api/alerts?user_id=1')
     assert r.status_code == 401
+
+
+# ─── Regression tests for the external-audit round of fixes ───────────
+
+def test_set_limit_rejects_nan(client):
+    """A NaN daily limit must be rejected (every comparison with NaN is False, so it
+    slipped past the range check, stored as NULL, and 500'd the child dashboard)."""
+    r = client.post('/api/parent/set_limit', json={'user_id': 1, 'daily_limit_hours': float('nan')})
+    assert r.status_code == 400
+    # And a valid value still works.
+    assert client.post('/api/parent/set_limit',
+                       json={'user_id': 1, 'daily_limit_hours': 2.0}).status_code == 200
+    # The child dashboard must load cleanly afterwards (no NULL-limit 500).
+    assert client.get('/api/dashboard/child_enriched?user_id=1').status_code == 200
+
+
+def test_reflection_rejects_all_empty(client):
+    """An all-invalid, note-less reflection is rejected rather than stored as an
+    all-NULL row that pollutes the history/averages."""
+    r = client.post('/api/child/reflection', json={'user_id': 1, 'mood_rating': 'x'})
+    assert r.status_code == 400
+    assert client.post('/api/child/reflection',
+                       json={'user_id': 1, 'mood_rating': 5}).status_code == 200
+
+
+def test_end_session_idempotent_single_prediction(client):
+    """Ending a session twice must not create a second prediction (atomic end-claim)."""
+    sid = client.post('/api/session/start',
+                      json={'user_id': 1, 'game_name': 'BGMI'}).get_json()['session_id']
+    first  = client.post(f'/api/session/{sid}/end')
+    second = client.post(f'/api/session/{sid}/end')
+    assert first.status_code == 200 and second.status_code == 200
+    assert second.get_json().get('already_ended') is True
+    import app as appmod
+    c = appmod.get_db()
+    n = c.execute('SELECT COUNT(*) AS n FROM predictions WHERE session_id=?', (sid,)).fetchone()['n']
+    c.close()
+    assert n == 1
+
+
+def test_sleep_impact_ignores_notification_blips_and_alarm_wakes(client):
+    """Sleep-impact day counting must not be triggered by (a) a single passive screen_on
+    (notification lighting the lock screen) or (b) early-morning alarm wakes (5–6 am);
+    genuine repeated night wakes still count, unlocks count as real use, and the
+    message names phone use — not gaming (the pilot-reported 100%-vs-0 contradiction)."""
+    import app as appmod
+    from datetime import datetime, timedelta
+    conn = appmod.get_db()
+    c = conn.cursor()
+    c.execute('DELETE FROM screen_events WHERE user_id=1')
+    now = datetime.now()
+
+    def ev(days_ago, hour, minute=0, etype='screen_on'):
+        d = (now - timedelta(days=days_ago)).replace(hour=hour, minute=minute,
+                                                     second=0, microsecond=0)
+        c.execute('INSERT INTO screen_events (user_id, event_type, timestamp) VALUES (1,?,?)',
+                  (etype, d.isoformat()))
+
+    # Day 1: one lone 23:00 screen_on (notification blip)  → must NOT count.
+    ev(1, 23)
+    # Day 2: 05:30 screen_on daily-alarm wake              → must NOT count (outside 22–05).
+    ev(2, 5, 30)
+    # Day 3: three separate 23:xx screen_ons (real usage)  → counts, and is a disruption.
+    ev(3, 23, 0); ev(3, 23, 20); ev(3, 23, 40)
+    # Day 4: daytime only                                  → must NOT count.
+    ev(4, 15)
+    conn.commit()
+
+    res = appmod._sleep_impact_analysis(1, conn)
+    conn.close()
+    assert res['available'] is True
+    assert res['data_source'] == 'screen_events'
+    assert res['late_night_sessions'] == 1          # only day 3
+    assert res['total_days_analyzed'] == 4
+    assert res['sleep_disruption_days'] == 1
+    assert 'not just gaming' in res['message']       # can't be read as gaming-at-night
+
+    # With unlock events present, a single genuine unlock at night counts as real use.
+    conn = appmod.get_db()
+    c = conn.cursor()
+    c.execute('DELETE FROM screen_events WHERE user_id=1')
+    conn.commit()
+    d = (now - timedelta(days=1)).replace(hour=23, minute=15, second=0, microsecond=0)
+    c.execute("INSERT INTO screen_events (user_id, event_type, timestamp) VALUES (1,'unlocked',?)",
+              (d.isoformat(),))
+    conn.commit()
+    res2 = appmod._sleep_impact_analysis(1, conn)
+    conn.close()
+    assert res2['late_night_sessions'] == 1
+
+    # Clean up so other tests see the original (empty) screen_events state.
+    conn = appmod.get_db()
+    conn.cursor().execute('DELETE FROM screen_events WHERE user_id=1')
+    conn.commit()
+    conn.close()
+
+
+def test_streak_spoiled_by_same_day_unhealthy(client):
+    """A healthy session then a high-risk session the SAME day must break the streak
+    (the day is spoiled regardless of within-day order)."""
+    import app as appmod
+    # Start from a clean streak row — other tests (end_session) mutate user 1's streak.
+    _c = appmod.get_db()
+    _c.execute('DELETE FROM streaks WHERE user_id=1')
+    _c.commit()
+    _c.close()
+    appmod._update_streak(1, weekly_hours=7.0, risk_level='casual')      # healthy → credits today
+    after_healthy = appmod._update_streak(1, weekly_hours=7.0, risk_level='casual')
+    assert after_healthy['current_streak'] >= 1
+    spoiled = appmod._update_streak(1, weekly_hours=70.0, risk_level='addicted')  # unhealthy same day
+    assert spoiled['current_streak'] == 0
+    # A later healthy session the same (spoiled) day must NOT re-credit it.
+    again = appmod._update_streak(1, weekly_hours=7.0, risk_level='casual')
+    assert again['current_streak'] == 0

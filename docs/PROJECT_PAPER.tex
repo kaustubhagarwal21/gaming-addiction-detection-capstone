@@ -518,7 +518,7 @@ lineage above.
         CONDA gaming-chat train split, and the Davidson offensive-language tweets
         (balanced), with its \emph{own} isotonic calibration layer (fitted on a
         slice carved from the training data, so held-out evaluation stays untouched;
-        held-out Brier $0.066 \rightarrow 0.064$). The character channel was \emph{originally rejected} --- trained on
+        held-out Brier $0.074 \rightarrow 0.070$). The character channel was \emph{originally rejected} --- trained on
         the general corpus alone, raw char n-grams over-fired on clean gaming
         phrases --- but re-tested with gaming-domain training data and word-bounded
         analysis it wins decisively on held-out real gaming chat
@@ -1044,15 +1044,19 @@ adjacent bands: both Casual$\leftrightarrow$Addicted corners are zero.}
 Metrics are for the pipeline \emph{as served}: the isotonic-calibrated probability of
 the word~$\cup$~char\_wb model trained on three real corpora (general toxicity +
 CONDA train split + Davidson offensive-language tweets; held-out Brier
-$0.066 \rightarrow 0.064$), fused with the keyword lexicon.
+$0.074 \rightarrow 0.070$), fused with the keyword lexicon. The held-out set is
+reconstructed from the \emph{same} corpus assembly the trainer uses (shared code
+path), so no training row can leak into it --- an earlier draft rebuilt this split
+from the general corpus alone, which admitted trained CONDA/Davidson rows and
+understated the realistic base rate.
 \begin{center}
 \begin{tabular}{lccc}
 \toprule
 \textbf{Evaluation set} & \textbf{Precision (toxic)} & \textbf{Recall (toxic)} & \textbf{Note} \\
 \midrule
-Balanced held-out & 0.896 & 0.953 & optimistic view; PR-AUC 0.938 \\
-General realistic stream @0.50 & 0.053 & 0.953 & 0.7\% toxic base rate \\
-General realistic stream @0.90 (alert) & 0.089 & 0.496 & out-of-domain view \\
+Balanced held-out & 0.882 & 0.954 & optimistic view; PR-AUC 0.926 \\
+General realistic stream @0.50 & 0.205 & 0.954 & 3.5\% toxic base rate \\
+General realistic stream @0.90 (alert) & 0.331 & 0.471 & out-of-domain view \\
 \bottomrule
 \end{tabular}
 \end{center}
@@ -1369,7 +1373,7 @@ assumptions --- drive the next revision.
 \begin{itemize}[leftmargin=1.4em]
   \item Production-deployed cloud backend (HTTPS, token auth, consent, durable
         managed Postgres); both apps build as signed release APKs.
-  \item A layered test program, all passing: a 58-test API suite (isolated database;
+  \item A layered test program, all passing: a 63-test API suite (isolated database;
         includes ML-unit tests for the shared audio extractor, noisy-OR fusion,
         threshold-tuner math and the session-streak alert; run automatically in CI
         against \textbf{both} SQLite and PostgreSQL~16 --- the production dialect ---

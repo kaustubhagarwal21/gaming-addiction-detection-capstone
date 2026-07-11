@@ -14,10 +14,12 @@ object ChatQueueLogic {
     const val MAX_AGE_MS = 24 * 60 * 60 * 1000L   // a day-old line is stale — drop
 
     /** True when the server did NOT save the line and a retry makes sense: any 5xx,
-     *  or the transient client errors 408 (timeout) / 429 (rate-limited). A 2xx means
-     *  saved; any other 4xx is a permanent reject (e.g. closed session) — drop it. */
+     *  or the transient client errors 408 (timeout) / 429 (rate-limited) / 401
+     *  (unauthenticated — token not yet loaded / momentarily rotated; a genuinely dead
+     *  token just re-queues until the 24h stale-drop). A 2xx means saved; any other 4xx
+     *  is a permanent reject (e.g. closed session) — drop it. */
     fun isTransientFailure(code: Int): Boolean =
-        code in 500..599 || code == 408 || code == 429
+        code in 500..599 || code == 408 || code == 429 || code == 401
 
     /** A line older than [MAX_AGE_MS] is dropped without sending. */
     fun isStale(ts: Long, now: Long): Boolean = now - ts > MAX_AGE_MS
