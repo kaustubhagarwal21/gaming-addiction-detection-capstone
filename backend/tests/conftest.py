@@ -24,6 +24,11 @@ for _ext in ('', '-wal', '-shm'):
         pass
 os.environ['DATABASE_PATH'] = _TMP_DB
 os.environ.setdefault('AUTH_ENFORCE', '0')
+# The suite's fixtures build on init_db's default user (user_id=1, PIN 1234). That seed
+# is now gated OFF for real (Postgres) deployments — the well-known credentials must not
+# auto-appear in production — so the tests opt back in explicitly. Without this, the
+# Postgres CI leg fails at _seed() with a sessions_user_id_fkey violation (no user 1).
+os.environ.setdefault('SEED_DEFAULT_USER', '1')
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 from app import app as flask_app, get_db, insert_returning_id  # noqa: E402
