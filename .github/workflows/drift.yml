@@ -25,6 +25,10 @@ jobs:
       - name: Compare recent vs reference score distributions
         env:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          # Pilot start. Predictions before this are seeded demo data; comparing demo
+          # vs pilot reports the population handover as model drift (PSI ~6 on the
+          # first pilot Monday). Windows are clamped to start at/after this date.
+          DRIFT_EPOCH: '2026-07-06'
         run: |
           if [ -z "$DATABASE_URL" ]; then
             echo "::warning::DATABASE_URL secret not set — drift monitor is not configured; skipping."

@@ -97,11 +97,23 @@ def main():
     ap.add_argument('--fail-on-drift', action='store_true',
                     help='exit 2 when any score PSI exceeds 0.2 — lets a scheduled CI '
                          'run turn red instead of printing into the void')
+    ap.add_argument('--since', default=os.environ.get('DRIFT_EPOCH'),
+                    help='ignore predictions before this ISO date (env DRIFT_EPOCH). '
+                         'Set to the pilot start so windows never straddle a data-regime '
+                         'boundary: demo/seed rows vs real pilot rows differ hugely by '
+                         'construction, and comparing across that boundary reports '
+                         'population change as model drift (first pilot Monday: PSI 5.97).')
     args = ap.parse_args()
 
     now = datetime.now()
     recent_start = now - timedelta(days=args.recent_days)
     ref_start = recent_start - timedelta(days=args.reference_days)
+    if args.since:
+        epoch = datetime.fromisoformat(args.since)
+        if ref_start < epoch:
+            print(f"epoch: windows clamped to >= {epoch.date()} (DRIFT_EPOCH)")
+            ref_start = max(ref_start, epoch)
+            recent_start = max(recent_start, ref_start)
 
     conn = _connect()
     cur = conn.cursor()
