@@ -93,3 +93,7 @@ docs/*.out
 docs/*.toc
 docs/*.fls
 docs/*.fdb_latexmk
+
+# Generated from LIVE pilot data — never commit (feedback CSV holds real family verdicts)
+data/feedback_labels.csv
+backend/models/threshold_tuning.json
