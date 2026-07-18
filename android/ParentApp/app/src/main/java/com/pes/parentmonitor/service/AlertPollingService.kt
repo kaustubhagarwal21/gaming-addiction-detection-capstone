@@ -12,6 +12,7 @@ import com.pes.parentmonitor.api.ApiClient
 import com.pes.parentmonitor.util.AlertTriage
 import com.pes.parentmonitor.util.Constants
 import com.pes.parentmonitor.util.PrefsManager
+import com.pes.parentmonitor.util.RiskPresentation
 import kotlinx.coroutines.*
 
 class AlertPollingService : Service() {
@@ -159,9 +160,10 @@ class AlertPollingService : Service() {
     private fun sendRiskChangeNotification(risk: String, game: String?): Boolean {
         if (!canNotify()) return false
         val gameStr = if (game != null) " while playing $game" else ""
+        val label = RiskPresentation.displayLabel(risk, null)
         val notif = NotificationCompat.Builder(this, Constants.CHANNEL_ALERTS)
-            .setContentTitle("Risk Level Changed")
-            .setContentText("Child is now ${risk.uppercase()}$gameStr")
+            .setContentTitle("Session concern changed")
+            .setContentText("Latest session: $label$gameStr")
             .setSmallIcon(R.drawable.ic_alert)
             .setAutoCancel(true)
             .setPriority(NotificationCompat.PRIORITY_HIGH)

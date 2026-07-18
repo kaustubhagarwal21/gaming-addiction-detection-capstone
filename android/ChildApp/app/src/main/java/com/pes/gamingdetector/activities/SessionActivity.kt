@@ -11,6 +11,7 @@ import com.pes.gamingdetector.api.ApiClient
 import com.pes.gamingdetector.databinding.ActivitySessionBinding
 import com.pes.gamingdetector.services.GameMonitorService
 import com.pes.gamingdetector.util.PrefsManager
+import com.pes.gamingdetector.util.RiskPresentation
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
@@ -124,8 +125,9 @@ class SessionActivity : AppCompatActivity() {
         binding.layoutActiveSession.visibility = View.GONE
         binding.layoutResult.visibility = View.VISIBLE
 
-        binding.tvRiskLabel.text = pred.riskLabel.replace('_', ' ').uppercase()
-        binding.tvRiskScore.text = "Score: ${"%.0f".format(pred.riskScore * 100)}%"
+        binding.tvRiskLabel.text = RiskPresentation.displayLabel(pred.riskLabel)
+        binding.tvRiskScore.text =
+            "This session \u00B7 ${RiskPresentation.riskScoreText(pred.riskScore)}"
         binding.tvBehaviorScore.text = "Behavior: ${"%.0f".format(pred.behaviorScore * 100)}%"
         binding.tvChatScore.text = "Chat: ${"%.0f".format(pred.chatScore * 100)}%"
         binding.tvVoiceScore.text = "Voice: ${"%.0f".format(pred.voiceScore * 100)}%"
@@ -199,13 +201,11 @@ class SessionActivity : AppCompatActivity() {
                     val resp = api.livePrediction(prefs.activeSessionId)
                     if (resp.isSuccessful && resp.body()?.success == true) {
                         val body  = resp.body()!!
-                        // risk_label is the internal category key (e.g. "at_risk") —
-                        // prettify it for display.
-                        val label = body.riskLabel
-                            ?.replace('_', ' ')
-                            ?.replaceFirstChar { it.uppercase() } ?: "—"
-                        val score = body.riskScore?.let { "${"%.0f".format(it * 100)}%" } ?: ""
-                        binding.tvLiveRisk.text = "Live: $label $score"
+                        binding.tvLiveRisk.text = RiskPresentation.scopedRiskText(
+                            "Live session",
+                            body.riskLabel,
+                            body.riskScore
+                        )
                     }
                 } catch (_: Exception) {}
 

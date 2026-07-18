@@ -93,7 +93,10 @@ $11{,}191$-respondent IGDS9-SF dataset validates both the severity base rate and
 chat channel's core premise. The platform is production-deployed (HTTPS, token
 authentication, parental consent, a durable managed database), ships a
 parent-feedback loop that converts real verdicts into training labels plus a
-drift monitor for the pilot phase, and provides a parent-to-child nudge channel so
+drift monitor for the pilot phase --- and a consented live family pilot has since
+exercised every capture channel and alert type in production (55 auto-detected
+sessions and 1{,}660 served predictions in its first 12 days, including the full
+spoken-abuse chain firing unprompted) --- and provides a parent-to-child nudge channel so
 the parent can intervene --- not merely observe. Remaining limits are stated
 plainly --- behavioural \emph{labels} are synthetic screening priors pending pilot
 data --- and the output is framed explicitly as \emph{screening and awareness, not
@@ -1373,7 +1376,7 @@ assumptions --- drive the next revision.
 \begin{itemize}[leftmargin=1.4em]
   \item Production-deployed cloud backend (HTTPS, token auth, consent, durable
         managed Postgres); both apps build as signed release APKs.
-  \item A layered test program, all passing: a 63-test API suite (isolated database;
+  \item A layered test program, all passing: a 65-test API suite (isolated database;
         includes ML-unit tests for the shared audio extractor, noisy-OR fusion,
         threshold-tuner math and the session-streak alert; run automatically in CI
         against \textbf{both} SQLite and PostgreSQL~16 --- the production dialect ---
@@ -1383,7 +1386,7 @@ assumptions --- drive the next revision.
         silence floor and late re-score, the watchdog's quiet hours, end-session
         idempotency, feedback re-rating, parent-controlled deletion), and a
         \textbf{25-check end-to-end probe of the live cloud deployment}. Both apps pass
-        Android Lint with zero errors, and 30 JVM unit tests (run in CI) pin the
+        Android Lint with zero errors, and 38 JVM unit tests (run in CI) pin the
         offline chat queue's delivery semantics, the WAV container encoding, IME
         keystroke-to-sentence reconstruction, and the parent-alert triage rules.
   \item Robustness under load on free-tier hosting: pooled, probe-validated connections
@@ -1448,6 +1451,107 @@ We report these candidly: they are precisely the class of defect that only
 real-device, real-network operation reveals, and finding and fixing them --- rather
 than not looking --- is part of the production-readiness this paper claims.
 
+\subsection{Live family pilot: first real-world results}
+A consented family pilot began on 6~July~2026: release APKs sideloaded onto family
+devices, talking to the production cloud deployment. Over the first 12 days the system
+recorded, unattended, \textbf{55 auto-detected sessions} across 11 active days
+($\sim$7 hours of play, dominated by a casual title with no in-game chat),
+\textbf{1{,}660 served predictions}, 1{,}211 chat-channel rows, 1{,}759 voice events,
+1{,}675 screen events, and \textbf{60 alerts spanning all eight alert types}, of which
+the parent read 52 --- real engagement, not a dormant install. Table~\ref{tab:pilot}
+summarises the collected corpus.
+
+\begin{table}[ht]
+\centering
+\footnotesize
+\caption{Pilot data collected in the first 12 days (6--18 July 2026), by channel.}
+\label{tab:pilot}
+\begin{tabularx}{\linewidth}{@{}lrX@{}}
+\toprule
+\textbf{Stream} & \textbf{Rows} & \textbf{Composition / quality notes} \\
+\midrule
+Sessions & 55 & 11 active days, 2 children; all auto-detected; avg 7.5\,min;
+zero stuck-open, zero unscored \\
+Predictions & 1{,}660 & presence: voice 99.9\%, behaviour 3.7\%, chat 0.4\%;
+bands 51\% casual / 49\% at-risk \\
+Chat rows & 1{,}211 & 1{,}209 via on-device STT, 2 typed (keyboard IME was reset
+mid-pilot, see below); 2 crossed the 0.90 alert bar \\
+Voice events & 1{,}759 & durations 5--10\,s post-VAD; intensity spread 0.20--1.00;
+\textbf{0 rows retain audio}; label skew: 77\% frustrated (see below) \\
+Screen events & 1{,}675 & 652 on / 667 off / 356 unlock (balanced on/off = no
+receiver gaps); 208 late-night --- live sleep-signal data \\
+Alerts & 60 & all 8 types exercised (risk, toxicity, streak, offline, permission,
+tamper, login, session); 52 read by the parent \\
+Parent verdicts & 17 & first real labels; drive the threshold tuner (\S5.6) \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+The pilot's findings, positive and negative alike:
+\begin{itemize}[leftmargin=1.4em]
+  \item \textbf{Session lifecycle: zero defects.} No session was left stuck open and
+        none went unscored --- automatic detection, grace-period ending and
+        stale-session healing ran for 12 days without manual intervention.
+  \item \textbf{The full spoken-abuse chain fired in production.} Two on-device
+        transcripts crossed the $0.90$ alert threshold; the resulting toxicity and
+        toxicity-streak alerts were delivered to and read by the parent. The paper's
+        headline pipeline --- on-device STT $\rightarrow$ calibrated toxicity fusion
+        $\rightarrow$ precision-first alert --- has now operated end-to-end on real
+        speech, unprompted.
+  \item \textbf{Privacy guarantees held under load:} of 1{,}759 voice events, exactly
+        \textbf{zero} retained an audio file --- the raw-audio-deletion policy verified
+        in production, not just in tests.
+  \item \textbf{Availability-weighted fusion proved necessary, not hypothetical.}
+        Real modality presence was voice $99.9\%$, behaviour $3.7\%$, chat $0.4\%$ of
+        live re-scores: channels genuinely appear and vanish per game and moment,
+        which is exactly the condition the renormalising ensemble (\S3.2) was designed
+        for.
+  \item \textbf{Tamper/permission monitoring caught a real event:} the custom keyboard
+        was silently disabled on the pilot device mid-pilot (an OS default-IME reset);
+        the heartbeat's capture-permission flags flipped, the parent dashboard showed
+        ``monitoring degraded'', and a one-shot alert fired --- the designed failure
+        visibility, observed in the wild.
+  \item \textbf{The predicted voice-model limitation appeared on cue:} $77\%$ of pilot
+        voice events were labelled \emph{frustrated} at high intensity during casual
+        puzzle play --- the acted-adult emotion model over-predicting on child/ambient
+        audio, precisely the domain gap \S6.3 states. The channel's capture is sound;
+        its labels await child-speech adaptation (future work), and its low ensemble
+        weight already prices this in.
+  \item \textbf{Real parent feedback validated the alert threshold.} The Beta-posterior
+        tuner (\S5.6), run on the pilot's 17 verdicts, put the probability of an
+        excessive false-alarm rate at $0.001$ and recommended \emph{zero change} to the
+        deployed $0.90$ chat-alert threshold --- the first real-label corroboration of
+        an operating point previously chosen from held-out curves alone.
+  \item \textbf{The drift monitor's first scheduled run taught an operations lesson:}
+        it flagged PSI up to $5.97$ --- correctly detecting not model drift but the
+        \emph{population handover} from seeded demo data to real pilot traffic. The
+        monitor now clamps its windows to a data-regime epoch (the pilot start) so
+        cross-regime comparisons cannot masquerade as drift.
+  \item \textbf{A production restart cost nothing.} A free-tier health-check restart
+        occurred during an active session; the offline chat queue re-delivered on the
+        transient errors, the session was healed server-side, and the watchdog
+        correctly stayed quiet for the sub-threshold gap --- the resilience design of
+        \S5.9 exercised by a real incident.
+  \item \textbf{The pilot found a real UX defect, now fixed with a contract test.}
+        Different surfaces disagreed on the headline risk (the Parent home showed the
+        day roll-up while Tips, the weekly report and the PDF used the latest single
+        prediction --- e.g.\ ``Some concern 34\%'' vs.\ ``casual 25\%''). All
+        aggregate surfaces now share one canonical figure --- the duration-weighted
+        roll-up of the most recent active day, computed in the child's timezone ---
+        while per-session surfaces are explicitly scoped (``This session'', ``Live
+        session''); a regression test pins every surface, including the rendered PDF,
+        to the same number. Alongside this, all family-facing surfaces standardised on
+        non-clinical labels (casual/at\_risk/addicted $\rightarrow$ \emph{Low/Some/High
+        concern}): the internal class taxonomy is unchanged everywhere in the ML and
+        storage layers, but the UI never shows a child a clinical-sounding
+        ``addicted'' badge --- consistent with the screening-not-diagnosis stance.
+\end{itemize}
+Twelve days is evidence of \emph{operational} readiness, not of model validity ---
+the validation plan's larger cohort remains future work --- but every layer of the
+system has now run against reality, and the reality-only defects it surfaced (label
+inconsistency, IME reset, demo-to-pilot drift masquerade) were each converted into a
+fix plus a regression guard.
+
 \subsection{Summary of features delivered}
 \begin{center}
 \footnotesize
@@ -1463,7 +1567,7 @@ Parent value & Per-day weighted risk + ``why'' (SHAP), live ``playing now'' + mo
 Child wellbeing & Mira check-in (typing indicator, double-send guard), gamified daily check-in + streak, reflections, breathing, break/limit nudges, today-vs-goal progress \\
 Reliability/anti-tamper & Heartbeat watchdog (uninstall/kill/offline alert, child-local quiet hours), optional Device Admin (uninstall block + instant disable alert), battery-optimisation exemption, double-start-safe services, consent-gated boot resume, parent-PIN lock on logout/settings (server-verified, constant-time), logout \emph{and} login alerts with honest monitoring status, idempotent session-end, self-scoring stale-session guard, per-child risk notifications, multi-guardian FCM push (lazy-init) \\
 Privacy/Security & Token auth + \emph{role} checks on every parent-only endpoint, deleted-account tokens locked out despite the stateless 30-day TTL (TTL-cached existence probe), peppered PIN hashes (validated, family-wide PIN change), HTTPS-only, encrypted token store, consent (versioned), raw-audio deletion, retention purge, parent-controlled data export mirroring the deletion scope (credentials excluded), 16\,MB body cap, opt-in Sentry crash monitoring (stack traces only, no PII), family code always recoverable in PIN-gated Settings \\
-Engineering & Dual-dialect DB with pooled validated Postgres connections + composite indexes on the hot query paths, per-client rate limiting, hot-path caching/throttling + audio-concurrency cap + bounded throttle caches, thread-safe device-side shared state (concurrent cache, crash-safe confirm-then-delete offline queue, WorkManager network-aware retry), signed APKs, layered tests (58 API + 30 Android JVM + 81 production-mode + 25 live-cloud) + concurrency smoke + CI (pytest on SQLite \emph{and} PostgreSQL, Android lint + unit tests per push, weekly drift monitor against the production DB), real-device validated, lint-clean, deployed + durable DB \\
+Engineering & Dual-dialect DB with pooled validated Postgres connections + composite indexes on the hot query paths, per-client rate limiting, hot-path caching/throttling + audio-concurrency cap + bounded throttle caches, thread-safe device-side shared state (concurrent cache, crash-safe confirm-then-delete offline queue, WorkManager network-aware retry), signed APKs, layered tests (65 API + 38 Android JVM + 81 production-mode + 25 live-cloud) + concurrency smoke + CI (pytest on SQLite \emph{and} PostgreSQL, Android lint + unit tests per push, weekly drift monitor against the production DB), real-device validated, lint-clean, deployed + durable DB \\
 \bottomrule
 \end{tabularx}
 \end{center}

@@ -30,6 +30,7 @@ import com.pes.parentmonitor.api.TrendPoint
 import com.pes.parentmonitor.databinding.ActivityParentalDashboardBinding
 import com.pes.parentmonitor.service.AlertPollingService
 import com.pes.parentmonitor.util.PrefsManager
+import com.pes.parentmonitor.util.RiskPresentation
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -232,16 +233,15 @@ class ParentalDashboardActivity : AppCompatActivity() {
         val risk  = dash.currentRisk ?: "unknown"
         val score = dash.riskScore ?: 0.0
         // Screening label (e.g. "High concern") rather than the clinical category key.
-        binding.tvCurrentRisk.text  = (dash.riskLabel ?: risk.replace("_", " ")
-            .replaceFirstChar { it.uppercase() })
-        binding.tvRiskScore.text    = "${"%.0f".format(score * 100)}%"
+        binding.tvCurrentRisk.text  = RiskPresentation.displayLabel(risk, dash.riskLabel)
+        binding.tvRiskScore.text    = RiskPresentation.scoreText(score)
 
         // The headline is a per-day roll-up — say so, so a 2-hour day and a 2-minute day
         // aren't read as the same "current risk".
         val period = dash.riskPeriod
-        if (period?.label != null) {
-            val n = period.sessions ?: 0
-            binding.tvRiskPeriod.text = "${period.label} · $n ${if (n == 1) "session" else "sessions"}"
+        val periodText = RiskPresentation.periodText(period?.label, period?.sessions)
+        if (periodText != null) {
+            binding.tvRiskPeriod.text = periodText
             binding.tvRiskPeriod.visibility = View.VISIBLE
         } else {
             binding.tvRiskPeriod.visibility = View.GONE

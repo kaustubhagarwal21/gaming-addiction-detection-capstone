@@ -87,7 +87,18 @@ data class DashboardStats(
     @SerializedName("total_hours") val totalHours: Double,
     @SerializedName("current_risk") val currentRisk: String,
     @SerializedName("risk_score") val riskScore: Double,
-    @SerializedName("avg_daily_hours") val avgDailyHours: Double
+    @SerializedName("avg_daily_hours") val avgDailyHours: Double,
+    // Nullable defaults keep compatibility with servers predating the canonical
+    // latest-active-day risk contract.
+    @SerializedName("risk_label") val riskLabel: String? = null,
+    @SerializedName("risk_period") val riskPeriod: RiskPeriod? = null
+)
+
+data class RiskPeriod(
+    val label: String? = null,
+    val date: String? = null,
+    val sessions: Int? = null,
+    val aggregation: String? = null
 )
 
 data class SessionSummary(

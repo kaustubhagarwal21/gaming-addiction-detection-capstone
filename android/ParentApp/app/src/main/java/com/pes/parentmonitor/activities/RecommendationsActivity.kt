@@ -8,6 +8,7 @@ import androidx.lifecycle.lifecycleScope
 import com.pes.parentmonitor.api.ApiClient
 import com.pes.parentmonitor.databinding.ActivityRecommendationsBinding
 import com.pes.parentmonitor.util.PrefsManager
+import com.pes.parentmonitor.util.RiskPresentation
 import kotlinx.coroutines.launch
 
 class RecommendationsActivity : AppCompatActivity() {
@@ -38,8 +39,14 @@ class RecommendationsActivity : AppCompatActivity() {
                     val recs = dash.recommendations ?: emptyList()
                     val risk = dash.currentRisk ?: "casual"
 
+                    val label = RiskPresentation.displayLabel(risk, dash.riskLabel)
+                    val details = RiskPresentation.detailText(
+                        dash.riskScore,
+                        dash.riskPeriod?.label,
+                        dash.riskPeriod?.sessions
+                    )
                     binding.tvRiskContext.text =
-                        "Child's current risk: ${risk.replace("_", " ").uppercase()}"
+                        "Child's latest daily risk: $label\n$details"
 
                     if (recs.isEmpty()) {
                         binding.tvNoRecs.visibility = View.VISIBLE

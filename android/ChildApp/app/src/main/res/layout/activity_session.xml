@@ -314,7 +314,7 @@
                                 android:id="@+id/tvRiskLabel"
                                 android:layout_width="wrap_content"
                                 android:layout_height="wrap_content"
-                                android:text="CASUAL"
+                                android:text="LOW CONCERN"
                                 android:textColor="#FFFFFF"
                                 android:textSize="40sp"
                                 android:fontFamily="sans-serif-medium"
@@ -325,7 +325,7 @@
                                 android:id="@+id/tvRiskScore"
                                 android:layout_width="wrap_content"
                                 android:layout_height="wrap_content"
-                                android:text="Risk Score: 0%"
+                                android:text="This session &#183; 0% risk score"
                                 android:textColor="#E0D6FF"
                                 android:textSize="16sp"
                                 android:layout_marginTop="4dp" />

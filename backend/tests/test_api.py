@@ -154,6 +154,15 @@ def test_parent_dashboard(client):
     assert 'risk_score' in data
 
 
+def test_legacy_risk_alerts_use_family_facing_labels(client):
+    alerts = client.get('/api/alerts?user_id=1').get_json()['alerts']
+    risk_messages = [a['message'] for a in alerts if a['type'] == 'risk']
+    assert risk_messages
+    assert all('At-risk' not in message for message in risk_messages)
+    assert all('addiction risk' not in message.lower() for message in risk_messages)
+    assert any('Some concern' in message for message in risk_messages)
+
+
 # ─── New endpoints (Phase 3) ───────────────────────────────────────
 
 def test_screen_event(client):
@@ -563,3 +572,93 @@ def test_streak_spoiled_by_same_day_unhealthy(client):
     # A later healthy session the same (spoiled) day must NOT re-credit it.
     again = appmod._update_streak(1, weekly_hours=7.0, risk_level='casual')
     assert again['current_streak'] == 0
+
+
+def test_all_aggregate_headlines_share_latest_daily_risk(client, monkeypatch):
+    """Reproduce the reported 34% day versus 25% last-session discrepancy.
+
+    Aggregate dashboards/reports must agree on the duration-weighted latest day, while
+    the recent-session row must remain the actual 25% per-session result.
+    """
+    from datetime import datetime, timedelta
+    import app as appmod
+
+    conn = appmod.get_db()
+    uid = appmod.insert_returning_id(
+        conn,
+        "INSERT INTO users (name, pin, parent_pin, age) VALUES (?,?,?,?)",
+        ('Risk Contract Child', '8642', '2468', 16),
+        pk='user_id',
+    )
+    c = conn.cursor()
+    day = (datetime.now() - timedelta(days=1)).replace(
+        hour=12, minute=0, second=0, microsecond=0)
+
+    def add_session(start, score, category):
+        end = start + timedelta(hours=1)
+        sid = appmod.insert_returning_id(
+            conn,
+            "INSERT INTO sessions (user_id, game_name, start_time, end_time, "
+            "duration_seconds, final_risk_score, risk_category, confidence) "
+            "VALUES (?,?,?,?,?,?,?,?)",
+            (uid, 'Candy Crush', start.isoformat(), end.isoformat(), 3600,
+             score, category, 0.8),
+            pk='session_id',
+        )
+        c.execute(
+            "INSERT INTO predictions (session_id, behavior_score, chat_score, voice_score, "
+            "final_risk_score, risk_category, confidence, timestamp, behavior_present, "
+            "chat_present, voice_present) VALUES (?,?,?,?,?,?,?,?,?,?,?)",
+            (sid, score, 0.0, 0.0, score, category, 0.8, end.isoformat(), 1, 0, 0),
+        )
+
+    # The newer session is Casual/25%, but the two equal-duration sessions average 34%.
+    add_session(day, 0.43, 'at_risk')
+    add_session(day + timedelta(hours=2), 0.25, 'casual')
+    conn.commit()
+    conn.close()
+
+    parent = client.get(f'/api/dashboard/parent?user_id={uid}').get_json()
+    child = client.get(f'/api/dashboard/user?user_id={uid}').get_json()
+    weekly = client.get(f'/api/dashboard/weekly_report?user_id={uid}').get_json()
+
+    expected_period = parent['risk_period']
+    assert expected_period['sessions'] == 2
+    assert expected_period['aggregation'] == 'latest_active_day_duration_weighted'
+    for payload in (parent, child, weekly):
+        assert payload['current_risk'] == 'at_risk'
+        assert payload['risk_label'] == 'Some concern'
+        assert payload['risk_score'] == pytest.approx(0.34)
+        assert payload['risk_period'] == expected_period
+        assert payload['trend_data'][-1]['score'] == pytest.approx(0.34)
+
+    assert child['stats']['current_risk'] == 'at_risk'
+    assert child['stats']['risk_label'] == 'Some concern'
+    assert child['stats']['risk_score'] == pytest.approx(0.34)
+    assert child['stats']['risk_period'] == expected_period
+    # Per-session history is intentionally not flattened into the daily aggregate.
+    assert child['recent_sessions'][0]['risk_label'] == 'casual'
+    assert child['recent_sessions'][0]['risk_score'] == pytest.approx(0.25)
+
+    if not appmod.FPDF_AVAILABLE:
+        pytest.skip('fpdf2 is not installed')
+
+    captured = []
+    real_fpdf = appmod.FPDF
+
+    class RecordingFPDF(real_fpdf):
+        def cell(self, *args, **kwargs):
+            value = kwargs.get('text')
+            if value is None and len(args) >= 3:
+                value = args[2]
+            if value is not None:
+                captured.append(str(value))
+            return super().cell(*args, **kwargs)
+
+    monkeypatch.setattr(appmod, 'FPDF', RecordingFPDF)
+    pdf_response = client.get(f'/api/dashboard/weekly_report/pdf?user_id={uid}')
+    assert pdf_response.status_code == 200
+    assert pdf_response.content_type == 'application/pdf'
+    assert 'SOME CONCERN' in captured
+    assert any(text.startswith('Risk Score: 34%') for text in captured)
+    assert any('2 sessions' in text for text in captured)

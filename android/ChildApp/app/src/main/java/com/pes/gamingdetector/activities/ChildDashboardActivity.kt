@@ -16,6 +16,7 @@ import com.pes.gamingdetector.api.ApiClient
 import com.pes.gamingdetector.api.TrendPoint
 import com.pes.gamingdetector.databinding.ActivityChildDashboardBinding
 import com.pes.gamingdetector.util.PrefsManager
+import com.pes.gamingdetector.util.RiskPresentation
 import kotlinx.coroutines.launch
 
 class ChildDashboardActivity : AppCompatActivity() {
@@ -60,8 +61,21 @@ class ChildDashboardActivity : AppCompatActivity() {
                     val stats = dash.stats
 
                     if (stats != null) {
-                        binding.tvCurrentRisk.text    = stats.currentRisk.uppercase().replace("_", " ")
-                        binding.tvRiskScore.text      = "${"%.0f".format(stats.riskScore * 100)}% risk score"
+                        binding.tvCurrentRisk.text = RiskPresentation.displayLabel(
+                            stats.currentRisk,
+                            stats.riskLabel
+                        )
+                        binding.tvRiskScore.text = RiskPresentation.riskScoreText(stats.riskScore)
+                        val periodText = RiskPresentation.periodText(
+                            stats.riskPeriod?.label,
+                            stats.riskPeriod?.sessions
+                        )
+                        if (periodText != null) {
+                            binding.tvRiskPeriod.text = periodText
+                            binding.tvRiskPeriod.visibility = View.VISIBLE
+                        } else {
+                            binding.tvRiskPeriod.visibility = View.GONE
+                        }
                         binding.tvTotalSessions.text  = "${stats.totalSessions}"
                         binding.tvTotalHours.text     = "${"%.1f".format(stats.totalHours)}h"
                         binding.tvAvgDaily.text       = "${"%.1f".format(stats.avgDailyHours)}h"
@@ -75,9 +89,9 @@ class ChildDashboardActivity : AppCompatActivity() {
                     binding.tvNoSessions.visibility = if (sessions.isEmpty()) View.VISIBLE else View.GONE
                     val sb = StringBuilder()
                     sessions.take(5).forEach { s ->
-                        // risk_label is the internal key ("at_risk") — prettify for display
-                        val nice = s.riskLabel.replace("_", " ")
-                            .replaceFirstChar { it.uppercase() }
+                        // These rows intentionally remain per-session; only their family-facing
+                        // terminology is shared with the daily headline.
+                        val nice = RiskPresentation.displayLabel(s.riskLabel)
                         sb.append("• ${s.gameName} — $nice (${s.duration})\n")
                     }
                     binding.tvRecentSessions.text = sb.toString().trimEnd()

@@ -159,13 +159,13 @@ def seed_child(c, conn, user_id, name, plan):
             c.execute('''INSERT INTO alerts (user_id, type, message, severity, read, created_at)
                          VALUES (?,?,?,?,?,?)''',
                       (user_id, 'risk',
-                       f'High addiction risk detected for {name} — score {int(risk_score * 100)}%.',
+                       f'{name} reached High concern — score {int(risk_score * 100)}%.',
                        'high', 0, end_dt.isoformat()))
         elif risk_cat == 'at_risk' and risk_score > 0.50:
             c.execute('''INSERT INTO alerts (user_id, type, message, severity, read, created_at)
                          VALUES (?,?,?,?,?,?)''',
                       (user_id, 'risk',
-                       f'At-risk patterns detected for {name} — score {int(risk_score * 100)}%.',
+                       f'{name} reached Some concern — score {int(risk_score * 100)}%.',
                        'medium', 1, end_dt.isoformat()))
         inserted += 1
 

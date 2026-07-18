@@ -67,7 +67,7 @@
                             <TextView
                                 android:layout_width="wrap_content"
                                 android:layout_height="wrap_content"
-                                android:text="CURRENT RISK LEVEL"
+                                android:text="LATEST DAILY RISK"
                                 android:textColor="#E0D6FF"
                                 android:textSize="11sp"
                                 android:letterSpacing="0.16"
@@ -92,6 +92,15 @@
                                 android:textColor="#FFFFFF"
                                 android:textSize="20sp"
                                 android:layout_marginTop="4dp" />
+
+                            <TextView
+                                android:id="@+id/tvRiskPeriod"
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:textColor="#E0D6FF"
+                                android:textSize="13sp"
+                                android:layout_marginTop="4dp"
+                                android:visibility="gone" />
 
                             <View
                                 android:layout_width="match_parent"

@@ -643,6 +643,152 @@ def risk_category(score: float) -> str:
     return 'casual' if score < RISK_T1 else ('at_risk' if score < RISK_T2 else 'addicted')
 
 
+def _family_risk_message(message: str) -> str:
+    """Translate legacy stored alert wording to the current non-clinical labels."""
+    text = str(message)
+    text = re.sub(r'\bhigh addiction risk\b', 'High concern', text, flags=re.IGNORECASE)
+    text = re.sub(r'\bat-risk\b', 'Some concern', text, flags=re.IGNORECASE)
+    return text
+
+
+def _risk_period_label(day: str, shift_min: int = 0) -> str:
+    """Return a short family-facing label for an ISO calendar day."""
+    today = (datetime.now() + timedelta(minutes=shift_min)).date()
+    try:
+        parsed = datetime.fromisoformat(day).date()
+    except (TypeError, ValueError):
+        return str(day)
+    if parsed == today:
+        return 'Today'
+    if parsed == today - timedelta(days=1):
+        return 'Yesterday'
+    return parsed.strftime('%b %d')
+
+
+def _current_risk_summary(cursor, user_id: int) -> dict:
+    """Canonical headline risk used by every aggregate dashboard/report.
+
+    "Current risk" means the duration-weighted roll-up of all scored, completed
+    sessions on the most recent active day. A short final session therefore cannot
+    replace the rest of that day's evidence. Per-session endpoints deliberately do
+    not use this helper: their result remains specific to that session.
+
+    The latest prediction is retained only as a backwards-compatible fallback for an
+    account that has prediction data but no completed scored session yet.
+    """
+    cursor.execute('''SELECT p.risk_category, p.final_risk_score,
+                             p.behavior_present, p.chat_present, p.voice_present
+                      FROM predictions p JOIN sessions s ON s.session_id=p.session_id
+                      WHERE s.user_id=? ORDER BY p.timestamp DESC LIMIT 1''', (user_id,))
+    latest = cursor.fetchone()
+
+    fallback_score = float(latest['final_risk_score'] or 0.0) if latest else 0.0
+    fallback_category = ((latest['risk_category'] if latest else None)
+                         or risk_category(fallback_score))
+    signals = None
+    if latest and latest['behavior_present'] is not None:
+        signals = {
+            'behavior': bool(latest['behavior_present']),
+            'chat':     bool(latest['chat_present']),
+            'voice':    bool(latest['voice_present']),
+        }
+
+    summary = {
+        'current_risk': fallback_category,
+        'risk_label':   RISK_DISPLAY.get(fallback_category, fallback_category),
+        'risk_score':   round(fallback_score, 4),
+        'risk_period':  None,
+        'signals':      signals,
+    }
+
+    shift_min = _tz_shift_min(cursor, user_id)
+    cursor.execute('''SELECT start_time FROM sessions
+                      WHERE user_id=? AND end_time IS NOT NULL
+                      AND final_risk_score IS NOT NULL
+                      ORDER BY start_time DESC LIMIT 1''', (user_id,))
+    date_row = cursor.fetchone()
+    if not date_row or not date_row['start_time']:
+        return summary
+
+    day_date = (_parse_ts(date_row['start_time']) + timedelta(minutes=shift_min)).date()
+    day = day_date.isoformat()
+    stored_start = (datetime.combine(day_date, datetime.min.time())
+                    - timedelta(minutes=shift_min))
+    stored_end = stored_start + timedelta(days=1)
+    cursor.execute('''SELECT final_risk_score AS score,
+                             COALESCE(duration_seconds,0) AS duration
+                      FROM sessions WHERE user_id=? AND end_time IS NOT NULL
+                      AND start_time>=? AND start_time<? AND final_risk_score IS NOT NULL''',
+                   (user_id, stored_start.isoformat(), stored_end.isoformat()))
+    day_rows = cursor.fetchall()
+    if not day_rows:
+        return summary
+
+    durations = [max(0.0, float(row['duration'] or 0.0)) for row in day_rows]
+    scores = [float(row['score']) for row in day_rows]
+    duration_sum = sum(durations)
+    score = (sum(value * duration for value, duration in zip(scores, durations)) / duration_sum
+             if duration_sum > 0 else sum(scores) / len(scores))
+    category = risk_category(score)
+
+    cursor.execute('''SELECT MAX(p.behavior_present) AS behavior,
+                             MAX(p.chat_present) AS chat,
+                             MAX(p.voice_present) AS voice
+                      FROM predictions p JOIN sessions s ON s.session_id=p.session_id
+                      WHERE s.user_id=? AND s.end_time IS NOT NULL
+                      AND s.start_time>=? AND s.start_time<?''',
+                   (user_id, stored_start.isoformat(), stored_end.isoformat()))
+    signal_row = cursor.fetchone()
+    if signal_row and signal_row['behavior'] is not None:
+        signals = {
+            'behavior': bool(signal_row['behavior']),
+            'chat':     bool(signal_row['chat']),
+            'voice':    bool(signal_row['voice']),
+        }
+
+    return {
+        'current_risk': category,
+        'risk_label':   RISK_DISPLAY.get(category, category),
+        'risk_score':   round(score, 4),
+        'risk_period': {
+            'label':    _risk_period_label(day, shift_min),
+            'date':     day,
+            'sessions': len(day_rows),
+            'aggregation': 'latest_active_day_duration_weighted',
+        },
+        'signals': signals,
+    }
+
+
+def _daily_risk_trend(cursor, user_id: int, since: str, limit: int | None = None) -> list:
+    """Duration-weighted daily points, matching the canonical headline semantics."""
+    shift_min = _tz_shift_min(cursor, user_id)
+    stored_since = (_parse_ts(since) - timedelta(minutes=shift_min)).isoformat()
+    cursor.execute('''SELECT start_time, final_risk_score AS score,
+                             COALESCE(duration_seconds,0) AS duration
+                      FROM sessions WHERE user_id=? AND start_time>=?
+                      AND end_time IS NOT NULL AND final_risk_score IS NOT NULL
+                      ORDER BY start_time ASC''', (user_id, stored_since))
+    by_day = {}
+    for row in cursor.fetchall():
+        day = (_parse_ts(row['start_time']) + timedelta(minutes=shift_min)).date().isoformat()
+        bucket = by_day.setdefault(day, {'weighted': 0.0, 'duration': 0.0,
+                                         'score_sum': 0.0, 'count': 0})
+        score = float(row['score'])
+        duration = max(0.0, float(row['duration'] or 0.0))
+        bucket['weighted'] += score * duration
+        bucket['duration'] += duration
+        bucket['score_sum'] += score
+        bucket['count'] += 1
+
+    points = []
+    for day, bucket in by_day.items():
+        score = (bucket['weighted'] / bucket['duration'] if bucket['duration'] > 0
+                 else bucket['score_sum'] / bucket['count'])
+        points.append({'date': day, 'score': round(score, 4), 'label': risk_category(score)})
+    return points[-limit:] if limit else points
+
+
 # ── Child-local time helpers ───────────────────────────────────────────────
 # All timestamps are stored in the SERVER's local clock (datetime.now()). In production
 # the server runs in UTC while the child's phone is e.g. IST (+5:30), so any hour-of-day
@@ -1804,11 +1950,13 @@ def _maybe_create_alert(cursor, user_id: int, prediction: dict):
     score = prediction.get('final_risk_score', 0.0)
     if risk == 'addicted':
         _insert_alert(cursor, user_id, 'risk',
-                      f'High addiction risk detected — score {score:.0%}. Immediate attention recommended.',
+                      f'Gaming pattern reached High concern — score {score:.0%}. '
+                      'Immediate attention recommended.',
                       'high')
     elif risk == 'at_risk':
         _insert_alert(cursor, user_id, 'risk',
-                      f'At-risk gaming patterns detected — score {score:.0%}. Monitor gaming time.',
+                      f'Gaming pattern reached Some concern — score {score:.0%}. '
+                      'Monitor gaming time.',
                       'medium')
 
 
@@ -1847,11 +1995,11 @@ def _suggest_time_limit(weekly_hours: float, risk_level: str, age: int = 15) -> 
         return max(0.5, round(v * 2) / 2)
     if risk_level == 'addicted':
         suggested  = 1.0
-        reason     = "High addiction risk — strict 1-hour daily limit recommended"
+        reason     = "High concern — strict 1-hour daily limit recommended"
         urgency    = 'high'
     elif risk_level == 'at_risk':
         suggested  = _round_half(min(avg_daily * 0.70, 2.0))
-        reason     = f"At-risk pattern — reduce from {avg_daily:.1f}h to {suggested:.1f}h daily"
+        reason     = f"Some concern — reduce from {avg_daily:.1f}h to {suggested:.1f}h daily"
         urgency    = 'medium'
     else:
         cap        = 2.5 if age < 13 else 3.0
@@ -3387,12 +3535,9 @@ def user_dashboard():
                  GROUP BY risk_category''', (user_id, since))
     dist = {r['risk_category']: r['n'] for r in c.fetchall()}
 
-    # Latest prediction
-    c.execute('''SELECT p.* FROM predictions p
-                 JOIN sessions s ON s.session_id=p.session_id
-                 WHERE s.user_id=? ORDER BY p.timestamp DESC LIMIT 1''', (user_id,))
-    _row = c.fetchone()
-    latest = dict(_row) if _row else None
+    # Same latest-day headline used by the Parent dashboard and generated reports.
+    # Individual entries in recent_sessions intentionally remain per-session.
+    risk_summary = _current_risk_summary(c, user_id)
 
     # Game breakdown
     c.execute('''SELECT game_name, COUNT(*) AS sessions,
@@ -3401,21 +3546,13 @@ def user_dashboard():
                  ORDER BY total_min DESC''', (user_id, since))
     games = [dict(r) for r in c.fetchall()]
 
-    # Trend data (last 14 days)
-    c.execute(f'''SELECT SUBSTR(start_time,1,10) AS date,
-                 ROUND(AVG(final_risk_score),4) AS score,
-                 (CASE WHEN AVG(final_risk_score) < {RISK_T1} THEN 'casual'
-                       WHEN AVG(final_risk_score) < {RISK_T2} THEN 'at_risk'
-                       ELSE 'addicted' END) AS label
-                 FROM sessions WHERE user_id=? AND start_time>=? AND final_risk_score IS NOT NULL
-                 GROUP BY date ORDER BY date ASC LIMIT 14''',
-              (user_id, (datetime.now() - timedelta(days=14)).isoformat()))
-    trend = [dict(r) for r in c.fetchall()]
+    # Match the headline's duration-weighted day semantics so the newest chart point
+    # cannot disagree with the card above it.
+    trend = _daily_risk_trend(
+        c, user_id, (datetime.now() - timedelta(days=14)).isoformat(), limit=14)
 
     conn.close()
 
-    current_risk = latest.get('risk_category', 'casual') if latest else 'casual'
-    latest_score = latest.get('final_risk_score', 0.0) if latest else 0.0
     total_hours  = round(sum(s['duration_seconds'] or 0 for s in sessions) / 3600.0, 2)
     avg_daily    = round(total_hours / max(days, 1), 2)
 
@@ -3435,11 +3572,19 @@ def user_dashboard():
     return jsonify({
         'success':    True,
         'user_id':    user_id,
+        # Top-level aliases mirror /api/dashboard/parent's canonical risk contract.
+        'current_risk': risk_summary['current_risk'],
+        'risk_label':   risk_summary['risk_label'],
+        'risk_score':   risk_summary['risk_score'],
+        'risk_period':  risk_summary['risk_period'],
+        'disclaimer':   SCREENING_DISCLAIMER,
         'stats': {
             'total_sessions':  stats.get('n_sessions', 0),
             'total_hours':     total_hours,
-            'current_risk':    current_risk,
-            'risk_score':      round(latest_score, 4),
+            'current_risk':    risk_summary['current_risk'],
+            'risk_label':      risk_summary['risk_label'],
+            'risk_score':      risk_summary['risk_score'],
+            'risk_period':     risk_summary['risk_period'],
             'avg_daily_hours': avg_daily,
         },
         'risk_distribution': dist,
@@ -3513,66 +3658,16 @@ def parent_dashboard():
         live_status = {'is_playing': True, 'current_game': lrow_live['game_name'],
                        'session_duration_mins': live_min}
 
-    # Latest risk prediction
-    c.execute('''SELECT p.risk_category, p.final_risk_score, p.timestamp
-                 FROM predictions p JOIN sessions s ON s.session_id=p.session_id
-                 WHERE s.user_id=? ORDER BY p.timestamp DESC LIMIT 1''', (user_id,))
-    lrow   = c.fetchone()
-    latest = dict(lrow) if lrow else {}
-
-    # Headline risk as a per-DAY roll-up (most recent active day), DURATION-WEIGHTED so a
-    # brief session can't dominate — far more stable/representative for a parent than the
-    # single last session. (The child app stays per-session/live.) Falls back to a simple
-    # average if a day's sessions somehow total zero duration.
-    risk_period   = None
-    daily_signals = None
-    c.execute('''SELECT SUBSTR(start_time,1,10) AS d FROM sessions
-                 WHERE user_id=? AND final_risk_score IS NOT NULL
-                 ORDER BY start_time DESC LIMIT 1''', (user_id,))
-    drow = c.fetchone()
-    if drow and drow['d']:
-        day = drow['d']
-        c.execute('''SELECT final_risk_score AS s, COALESCE(duration_seconds,0) AS dur
-                     FROM sessions WHERE user_id=? AND SUBSTR(start_time,1,10)=?
-                     AND final_risk_score IS NOT NULL''', (user_id, day))
-        drows = c.fetchall()
-        if drows:
-            wsum  = sum(float(r['dur']) for r in drows)
-            score = (sum(float(r['s']) * float(r['dur']) for r in drows) / wsum
-                     if wsum > 0 else sum(float(r['s']) for r in drows) / len(drows))
-            latest['final_risk_score'] = round(score, 4)
-            latest['risk_category']    = ('casual' if score < RISK_T1 else
-                                          'at_risk' if score < RISK_T2 else 'addicted')
-            # Signals analysed across the WHOLE day (union): if ANY session that day had
-            # voice/chat, show it — not just whatever the last session happened to catch.
-            c.execute('''SELECT MAX(p.behavior_present) b, MAX(p.chat_present) ch, MAX(p.voice_present) v
-                         FROM predictions p JOIN sessions s ON s.session_id=p.session_id
-                         WHERE s.user_id=? AND SUBSTR(s.start_time,1,10)=?''', (user_id, day))
-            sg = c.fetchone()
-            if sg and sg['b'] is not None:
-                daily_signals = {'behavior': bool(sg['b']), 'chat': bool(sg['ch']),
-                                 'voice': bool(sg['v'])}
-            today = datetime.now().date()
-            try:
-                dd = datetime.fromisoformat(day).date()
-            except Exception:
-                dd = today
-            label = ('Today' if dd == today else
-                     'Yesterday' if dd == today - timedelta(days=1) else dd.strftime('%b %d'))
-            risk_period = {'label': label, 'date': day, 'sessions': len(drows)}
+    # Canonical aggregate headline shared with Child dashboard, Tips, reports and PDF.
+    risk_summary = _current_risk_summary(c, user_id)
+    risk_period = risk_summary['risk_period']
+    daily_signals = risk_summary['signals']
 
     # 14-day trend. The window filter matters: without it, ORDER BY date ASC LIMIT 14
     # returns the OLDEST 14 days in history, so the chart would freeze at the child's
     # first two weeks forever once more history accumulates.
-    c.execute(f'''SELECT SUBSTR(start_time,1,10) AS date,
-                 ROUND(AVG(final_risk_score),4) AS score,
-                 (CASE WHEN AVG(final_risk_score) < {RISK_T1} THEN 'casual'
-                       WHEN AVG(final_risk_score) < {RISK_T2} THEN 'at_risk'
-                       ELSE 'addicted' END) AS label
-                 FROM sessions WHERE user_id=? AND start_time>=? AND final_risk_score IS NOT NULL
-                 GROUP BY date ORDER BY date ASC LIMIT 14''',
-              (user_id, (datetime.now() - timedelta(days=14)).isoformat()))
-    trend = [dict(r) for r in c.fetchall()]
+    trend = _daily_risk_trend(
+        c, user_id, (datetime.now() - timedelta(days=14)).isoformat(), limit=14)
 
     # Top games
     c.execute('''SELECT game_name AS game, COUNT(*) AS sessions,
@@ -3646,7 +3741,9 @@ def parent_dashboard():
     # Unread alerts
     c.execute('SELECT * FROM alerts WHERE user_id=? ORDER BY created_at DESC LIMIT 20', (user_id,))
     alert_rows = [dict(r) for r in c.fetchall()]
-    formatted_alerts = [{'id': a['id'], 'type': a['type'], 'message': a['message'],
+    formatted_alerts = [{'id': a['id'], 'type': a['type'],
+                          'message': (_family_risk_message(a['message'])
+                                      if a['type'] == 'risk' else a['message']),
                           'severity': a['severity'], 'created_at': a['created_at'],
                           'read': bool(a['read'])} for a in alert_rows]
 
@@ -3667,30 +3764,13 @@ def parent_dashboard():
         if brow:
             risk_explanation = _shap_explain_behavior({f: float(brow[f] or 0) for f in BEHAVIORAL_FEATURES})
 
-    # Which signals fed the latest prediction, so the UI can say "Chat: not captured
-    # for this game" rather than showing a misleading 0%. NULL flags (legacy rows)
-    # are reported as None → the app simply omits the breakdown for those.
-    c.execute('''SELECT p.behavior_present, p.chat_present, p.voice_present
-                 FROM predictions p JOIN sessions s ON s.session_id=p.session_id
-                 WHERE s.user_id=? ORDER BY p.timestamp DESC LIMIT 1''', (user_id,))
-    sig_row = c.fetchone()
-    if sig_row and sig_row['behavior_present'] is not None:
-        latest_signals = {
-            'behavior': bool(sig_row['behavior_present']),
-            'chat':     bool(sig_row['chat_present']),
-            'voice':    bool(sig_row['voice_present']),
-        }
-    else:
-        latest_signals = None
-    # The headline is per-day, so report which signals were analysed across the WHOLE day
-    # (union), not just the last session — otherwise a short final session could hide that
-    # chat/voice were captured earlier the same day.
-    if daily_signals is not None:
-        latest_signals = daily_signals
+    # The headline is per-day, so this is the union of signals analysed across that
+    # whole day (or the latest-prediction fallback when no completed day exists).
+    latest_signals = daily_signals
 
     # Child age for personalised suggestions
     child_age = profile.get('age', 15) or 15
-    risk_level = latest.get('risk_category', 'casual')
+    risk_level = risk_summary['current_risk']
 
     sleep_impact = _sleep_impact_analysis(user_id, conn)
 
@@ -3724,9 +3804,9 @@ def parent_dashboard():
         'success':             True,
         'child_name':          profile.get('name', 'Your Child'),
         'current_risk':        risk_level,
-        'risk_label':          RISK_DISPLAY.get(risk_level, risk_level),
+        'risk_label':          risk_summary['risk_label'],
         'disclaimer':          SCREENING_DISCLAIMER,
-        'risk_score':          latest.get('final_risk_score', 0.0),
+        'risk_score':          risk_summary['risk_score'],
         'alerts':              formatted_alerts,
         'trend_data':          trend,
         'top_games':           top_games,
@@ -4054,7 +4134,9 @@ def get_alerts():
         except Exception:
             return None
 
-    alerts  = [{'id': r['id'], 'type': r['type'], 'message': r['message'],
+    alerts  = [{'id': r['id'], 'type': r['type'],
+                'message': (_family_risk_message(r['message'])
+                            if r['type'] == 'risk' else r['message']),
                 'severity': r['severity'], 'created_at': r['created_at'],
                 'age_minutes': _age_min(r['created_at']),
                 'read': bool(r['read']), 'feedback': r.get('feedback_label')} for r in rows]
@@ -4321,26 +4403,11 @@ def weekly_report():
         key=lambda x: x['hours'], reverse=True
     )[:5]
 
-    # 14-day trend
-    c.execute(f'''SELECT SUBSTR(start_time,1,10) AS date,
-                 ROUND(AVG(final_risk_score),4) AS score,
-                 (CASE WHEN AVG(final_risk_score) < {RISK_T1} THEN 'casual'
-                       WHEN AVG(final_risk_score) < {RISK_T2} THEN 'at_risk'
-                       ELSE 'addicted' END) AS label
-                 FROM sessions WHERE user_id=? AND start_time>=? AND final_risk_score IS NOT NULL
-                 GROUP BY date ORDER BY date ASC''',
-              (user_id, since14))
-    trend = [dict(r) for r in c.fetchall()]
-
-    # Latest risk
-    c.execute('''SELECT p.risk_category, p.final_risk_score FROM predictions p
-                 JOIN sessions s ON s.session_id=p.session_id
-                 WHERE s.user_id=? ORDER BY p.timestamp DESC LIMIT 1''', (user_id,))
-    lrow = c.fetchone()
+    trend = _daily_risk_trend(c, user_id, since14)
+    risk_summary = _current_risk_summary(c, user_id)
     conn.close()
 
-    current_risk  = lrow['risk_category']  if lrow else 'casual'
-    current_score = lrow['final_risk_score'] if lrow else 0.0
+    current_risk = risk_summary['current_risk']
 
     return jsonify({
         'success':           True,
@@ -4349,7 +4416,10 @@ def weekly_report():
         'session_count':     len(week_sessions),
         'late_night_count':  late_count,
         'current_risk':      current_risk,
-        'risk_score':        current_score,
+        'risk_label':        risk_summary['risk_label'],
+        'risk_score':        risk_summary['risk_score'],
+        'risk_period':       risk_summary['risk_period'],
+        'disclaimer':        SCREENING_DISCLAIMER,
         'top_games':         top_games,
         'trend_data':        trend,
         'recommendations':   _build_recommendations(current_risk),
@@ -4680,10 +4750,7 @@ def weekly_report_pdf():
               (user_id, since7))
     sessions = [dict(r) for r in c.fetchall()]
 
-    c.execute('''SELECT p.risk_category, p.final_risk_score, p.behavior_score, p.chat_score, p.voice_score
-                 FROM predictions p JOIN sessions s ON s.session_id=p.session_id
-                 WHERE s.user_id=? ORDER BY p.timestamp DESC LIMIT 1''', (user_id,))
-    lp = c.fetchone()
+    risk_summary = _current_risk_summary(c, user_id)
 
     c.execute('SELECT * FROM streaks WHERE user_id=?', (user_id,))
     streak = c.fetchone()
@@ -4728,8 +4795,9 @@ def weekly_report_pdf():
     late_count  = sum(1 for s in sessions
                       if _is_late_night(datetime.fromisoformat(s['start_time']), pdf_tz_shift))
     avg_daily   = week_hours / 7.0
-    risk_level  = lp['risk_category'] if lp else 'casual'
-    risk_score  = lp['final_risk_score'] if lp else 0.0
+    risk_level  = risk_summary['current_risk']
+    risk_label  = risk_summary['risk_label']
+    risk_score  = risk_summary['risk_score']
     peer_comp   = _peer_comparison(week_hours, profile.get('age', 15) or 15)
     time_lim    = _suggest_time_limit(week_hours, risk_level, profile.get('age', 15) or 15)
     recs        = _build_recommendations(risk_level)
@@ -4757,11 +4825,21 @@ def weekly_report_pdf():
     pdf.set_fill_color(*risk_color)
     pdf.set_text_color(255, 255, 255)
     pdf.set_font('Helvetica', 'B', 24)
-    pdf.cell(0, 16, risk_level.upper().replace('_',' '), align='C', fill=True, ln=True)
+    pdf.cell(0, 16, risk_label.upper(), align='C', fill=True, ln=True)
     pdf.set_font('Helvetica', '', 11)
+    period = risk_summary['risk_period']
+    if period:
+        session_count = period['sessions']
+        period_text = (f"{period['label']} - {session_count} "
+                       f"session{'s' if session_count != 1 else ''}")
+    else:
+        period_text = 'Latest available prediction'
+    pdf.cell(0, 8, f"Risk Score: {risk_score*100:.0f}%   |   {period_text}",
+             align='C', fill=True, ln=True)
     # 'percentile' is "plays more than X% of peers", so X=90 means the TOP 10%. Label it
     # as the Nth percentile rather than "Top 90%" (which read as the opposite).
-    pdf.cell(0, 8, f"Risk Score: {risk_score*100:.0f}%   |   Peer rank: {peer_comp['percentile']}th percentile", align='C', fill=True, ln=True)
+    pdf.cell(0, 8, f"Peer rank: {peer_comp['percentile']}th percentile",
+             align='C', fill=True, ln=True)
     pdf.ln(6)
 
     # Stats table

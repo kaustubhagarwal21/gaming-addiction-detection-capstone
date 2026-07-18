@@ -15,6 +15,7 @@ import com.pes.gamingdetector.R
 import com.pes.gamingdetector.api.ApiClient
 import com.pes.gamingdetector.databinding.ActivitySessionHistoryBinding
 import com.pes.gamingdetector.util.PrefsManager
+import com.pes.gamingdetector.util.RiskPresentation
 import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
 import java.util.Locale
@@ -97,14 +98,16 @@ class SessionHistoryActivity : AppCompatActivity() {
             val mins = secs / 60
             h.duration.text = if (mins >= 60) "${mins / 60}h ${mins % 60}m" else "${mins}m"
 
-            val risk  = s.riskCategory?.lowercase() ?: "casual"
+            // An unfinished/unscored session is unknown, not automatically low concern.
+            val risk  = s.riskCategory?.lowercase() ?: "unknown"
             val color = when (risk) {
                 "addicted" -> getColor(R.color.risk_high)
                 "at_risk"  -> getColor(R.color.risk_medium)
-                else       -> getColor(R.color.risk_low)
+                "casual"   -> getColor(R.color.risk_low)
+                else       -> Color.GRAY
             }
             h.dot.background.setTint(color)
-            h.badge.text = risk.uppercase().replace("_", " ")
+            h.badge.text = RiskPresentation.displayLabel(risk)
             h.badge.background.setTint(color)
         }
     }

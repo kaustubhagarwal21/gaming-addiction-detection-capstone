@@ -22,6 +22,7 @@ import com.pes.gamingdetector.util.ForegroundResolver
 import com.pes.gamingdetector.util.ForegroundTracker
 import com.pes.gamingdetector.util.GameDetector
 import com.pes.gamingdetector.util.PrefsManager
+import com.pes.gamingdetector.util.RiskPresentation
 import kotlinx.coroutines.*
 
 /**
@@ -494,14 +495,18 @@ class PassiveMonitorService : Service() {
                     val pred = resp.body()?.prediction
                     val category = pred?.riskLabel ?: "unknown"
                     val score    = pred?.riskScore
-                    val scoreStr = if (score != null) " (${(score * 100).toInt()}%)" else ""
                     val emoji = when (category.lowercase()) {
                         "casual"   -> "✅"
                         "at_risk"  -> "⚠️"
                         "addicted" -> "🔴"
                         else       -> "🎮"
                     }
-                    showSessionEndNotification(gameName, "$emoji ${category.replace('_', ' ').replaceFirstChar { it.uppercase() }}$scoreStr")
+                    val riskLine = RiskPresentation.scopedRiskText(
+                        "This session",
+                        category,
+                        score
+                    )
+                    showSessionEndNotification(gameName, "$emoji $riskLine")
                 }
                 resp.code() in 400..499 && resp.code() != 408 && resp.code() != 429 ->
                     // Permanent reject (e.g. 404 — the session no longer exists server-side).
@@ -526,7 +531,7 @@ class PassiveMonitorService : Service() {
         val notif = NotificationCompat.Builder(this, Constants.CHANNEL_ALERTS)
             .setSmallIcon(R.drawable.ic_launcher)
             .setContentTitle("$gameName session ended")
-            .setContentText("Risk level: $riskLine")
+            .setContentText(riskLine)
             .setAutoCancel(true)
             .setContentIntent(intent)
             .build()

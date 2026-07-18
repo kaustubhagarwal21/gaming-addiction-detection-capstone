@@ -720,7 +720,7 @@
                             android:layout_width="match_parent"
                             android:layout_height="wrap_content"
                             android:layout_marginTop="4dp"
-                            android:text="Daily risk score (0–100%, vertical) per day (date, horizontal). Higher = more concern; above the amber line is at-risk, above red is high concern."
+                            android:text="Daily risk score (0–100%, vertical) per day (date, horizontal). Higher = more concern; above the amber line is Some concern, above red is High concern."
                             android:textColor="@color/text_secondary"
                             android:textSize="12sp"
                             android:lineSpacingExtra="2dp" />

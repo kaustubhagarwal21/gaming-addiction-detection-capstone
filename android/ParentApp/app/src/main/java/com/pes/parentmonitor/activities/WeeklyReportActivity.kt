@@ -14,6 +14,7 @@ import com.pes.parentmonitor.api.ParentalDashboard
 import com.pes.parentmonitor.api.TrendPoint
 import com.pes.parentmonitor.databinding.ActivityWeeklyReportBinding
 import com.pes.parentmonitor.util.PrefsManager
+import com.pes.parentmonitor.util.RiskPresentation
 import kotlinx.coroutines.launch
 
 class WeeklyReportActivity : AppCompatActivity() {
@@ -81,10 +82,14 @@ class WeeklyReportActivity : AppCompatActivity() {
             "at_risk"  -> getColor(R.color.risk_medium)
             else       -> getColor(R.color.risk_low)
         }
-        binding.tvRiskLevel.text = risk.uppercase().replace("_", "-")
+        binding.tvRiskLevel.text = RiskPresentation.displayLabel(risk, dash.riskLabel)
         binding.tvRiskLevel.setTextColor(color)
         binding.riskBar.setBackgroundColor(color)
-        binding.tvRiskContext.text = "${"%.0f".format(score * 100)}% risk score"
+        binding.tvRiskContext.text = RiskPresentation.detailText(
+            score,
+            dash.riskPeriod?.label,
+            dash.riskPeriod?.sessions
+        )
 
         // Top games — this week's, not the all-time leaderboard (falls back for an
         // older backend that doesn't send the weekly list yet).
