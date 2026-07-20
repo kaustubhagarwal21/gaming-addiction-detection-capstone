@@ -36,6 +36,11 @@ services:
         generateValue: true
       - key: KEEP_AUDIO
         value: "0"               # never retain raw audio in production
+      - key: VOICE_VAD_MIN_SPEECH
+        value: "0.35"            # pilot finding: default 0.1 let game music/ambience
+                                 # through the speech gate and flood the emotion model
+                                 # ("77% frustrated" on casual play). Require 35% of
+                                 # frames to be actual speech; reversible knob.
       # Durable external Postgres (Neon). Set the value in the Render dashboard
       # (Environment tab). sync:false means blueprint syncs never overwrite your
       # manual value. If it's ever unset, the app safely falls back to ephemeral

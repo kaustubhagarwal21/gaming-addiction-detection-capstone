@@ -381,6 +381,39 @@ def test_voice_garbage_intensity_rejected_cleanly(client):
     client.post(f'/api/session/{sid}/end')
 
 
+def test_voice_probs_shadow_logged_without_changing_serving(client, monkeypatch):
+    """The shadow evidence column: the full acoustic distribution is stored per voice
+    event while the SERVED emotion/intensity stay exactly what the fusion produced —
+    the observe-only prerequisite for the domain-shift mitigations (abstain margin,
+    prior correction), mirroring the AUTH_ENFORCE shadow-mode pattern."""
+    import io
+    import json as _json
+    import app as appmod
+
+    fixed = {'angry': 0.05, 'excited': 0.1, 'frustrated': 0.7, 'neutral': 0.15}
+    monkeypatch.setattr(appmod, 'analyse_audio',
+                        lambda path: ('frustrated', 0.7, 9.5, dict(fixed)))
+
+    sid = client.post('/api/session/start',
+                      json={'user_id': 1, 'game_name': 'BGMI'}).get_json()['session_id']
+    r = client.post(f'/api/session/{sid}/voice',
+                    data={'audio': (io.BytesIO(b'RIFFfakewav'), 'seg.wav')},
+                    content_type='multipart/form-data')
+    assert r.status_code == 200 and r.get_json()['success'] is True
+
+    conn = appmod.get_db()
+    row = conn.execute('SELECT emotion, intensity, probs FROM voice_events '
+                       'WHERE session_id=? ORDER BY id DESC LIMIT 1', (sid,)).fetchone()
+    conn.close()
+    assert row is not None
+    stored = _json.loads(row['probs'])
+    assert stored == {k: round(v, 4) for k, v in fixed.items()}
+    assert abs(sum(stored.values()) - 1.0) < 1e-6
+    # Serving unchanged: intensity is still the model max-prob the fusion consumed.
+    assert row['intensity'] == 0.7
+    client.post(f'/api/session/{sid}/end')
+
+
 def test_export_user_data(client):
     """Access/portability: the bundle carries the deletion-scope tables and NEVER the
     credential/push fields."""

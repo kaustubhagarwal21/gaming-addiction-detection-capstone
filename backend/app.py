@@ -1140,6 +1140,12 @@ def init_db():
     add_column(c, 'users', 'parent_pin_hash', 'TEXT DEFAULT NULL')
     add_column(c, 'users', 'consent_given_at',  'TEXT DEFAULT NULL')    # parental monitoring consent
     add_column(c, 'users', 'consent_version',   'TEXT DEFAULT NULL')
+    # SHADOW EVIDENCE for the voice domain-shift mitigations: the classifier's full
+    # probability vector per event (JSON), so abstain-margin / prior-correction /
+    # BBSE candidates can be evaluated OFFLINE against live pilot audio (raw audio is
+    # deleted by design, so forward-logging probabilities is the only way to measure
+    # a fix before changing what is served). Served fields are untouched.
+    add_column(c, 'voice_events', 'probs', 'TEXT DEFAULT NULL')
     # Unique per-family code. NULL on legacy/seed rows (parent logs in with PIN only);
     # new families get a generated code so two families sharing a parent PIN can't
     # collide — the parent logs in with code + PIN.
@@ -3437,11 +3443,16 @@ def save_voice(sid):
         except (TypeError, ValueError):
             duration = 0.0
         fname = None
+        probs = None   # client-supplied emotion — no model distribution to log
 
     conn = get_db()
     c    = conn.cursor()
-    c.execute('INSERT INTO voice_events (session_id, emotion, intensity, duration_s, audio_file, timestamp) VALUES (?,?,?,?,?,?)',
-              (sid, emotion, intensity, duration, fname, datetime.now().isoformat()))
+    # probs (shadow column): full acoustic distribution when the model ran, else NULL
+    # (fallback heuristic / client-JSON path). Rounded — this is evidence, not state.
+    probs_json = (json.dumps({k: round(v, 4) for k, v in probs.items()})
+                  if isinstance(probs, dict) else None)
+    c.execute('INSERT INTO voice_events (session_id, emotion, intensity, duration_s, audio_file, timestamp, probs) VALUES (?,?,?,?,?,?,?)',
+              (sid, emotion, intensity, duration, fname, datetime.now().isoformat(), probs_json))
     conn.commit()
     conn.close()
     # Re-score so a freshly-arrived voice emotion actually counts. The voice pipeline

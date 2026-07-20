@@ -1386,7 +1386,7 @@ assumptions --- drive the next revision.
 \begin{itemize}[leftmargin=1.4em]
   \item Production-deployed cloud backend (HTTPS, token auth, consent, durable
         managed Postgres); both apps build as signed release APKs.
-  \item A layered test program, all passing: a 67-test API suite (isolated database;
+  \item A layered test program, all passing: a 68-test API suite (isolated database;
         includes ML-unit tests for the shared audio extractor, noisy-OR fusion,
         threshold-tuner math and the session-streak alert; run automatically in CI
         against \textbf{both} SQLite and PostgreSQL~16 --- the production dialect ---
@@ -1594,7 +1594,7 @@ Parent value & Per-day weighted risk + ``why'' (SHAP), live ``playing now'' + mo
 Child wellbeing & Mira check-in (typing indicator, double-send guard), gamified daily check-in + streak, reflections, breathing, break/limit nudges, today-vs-goal progress \\
 Reliability/anti-tamper & Heartbeat watchdog (uninstall/kill/offline alert, child-local quiet hours), optional Device Admin (uninstall block + instant disable alert), battery-optimisation exemption, double-start-safe services, consent-gated boot resume, parent-PIN lock on logout/settings (server-verified, constant-time), logout \emph{and} login alerts with honest monitoring status, idempotent session-end, self-scoring stale-session guard, per-child risk notifications, multi-guardian FCM push (lazy-init) \\
 Privacy/Security & Token auth + \emph{role} checks on every parent-only endpoint, deleted-account tokens locked out despite the stateless 30-day TTL (TTL-cached existence probe), peppered PIN hashes (validated, family-wide PIN change), HTTPS-only, encrypted token store, consent (versioned), raw-audio deletion, retention purge, parent-controlled data export mirroring the deletion scope (credentials excluded), 16\,MB body cap, opt-in Sentry crash monitoring (stack traces only, no PII), family code always recoverable in PIN-gated Settings \\
-Engineering & Dual-dialect DB with pooled validated Postgres connections + composite indexes on the hot query paths, per-client rate limiting, hot-path caching/throttling + audio-concurrency cap + bounded throttle caches, thread-safe device-side shared state (concurrent cache, crash-safe confirm-then-delete offline queue, WorkManager network-aware retry), signed APKs, layered tests (67 API + 41 Android JVM + 81 production-mode + 25 live-cloud) + concurrency smoke + CI (pytest on SQLite \emph{and} PostgreSQL, Android lint + unit tests per push, weekly drift monitor against the production DB), real-device validated, lint-clean, deployed + durable DB \\
+Engineering & Dual-dialect DB with pooled validated Postgres connections + composite indexes on the hot query paths, per-client rate limiting, hot-path caching/throttling + audio-concurrency cap + bounded throttle caches, thread-safe device-side shared state (concurrent cache, crash-safe confirm-then-delete offline queue, WorkManager network-aware retry), signed APKs, layered tests (68 API + 41 Android JVM + 81 production-mode + 25 live-cloud) + concurrency smoke + CI (pytest on SQLite \emph{and} PostgreSQL, Android lint + unit tests per push, weekly drift monitor against the production DB), real-device validated, lint-clean, deployed + durable DB \\
 \bottomrule
 \end{tabularx}
 \end{center}
@@ -1649,6 +1649,25 @@ value depends on accumulating real usage data the prototype does not yet have:
         during late-night play'' for sharper escalation detection. Easy to engineer;
         adding them without real labels to validate against would be unfalsifiable
         complexity, so they wait for pilot data.
+  \item \textbf{Voice domain-shift correction (instrumented, evaluation in progress).}
+        The pilot made the acoustic model's domain gap concrete: $77\%$ of real events
+        were labelled \emph{frustrated} during casual play, the acted-adult training
+        distribution meeting child/ambient phone audio (\S6.3). Three mitigations are
+        identified, and the two that need no retraining are already \emph{instrumented}:
+        (i)~stricter voice-activity gating so game music and ambience stop reaching the
+        model (a reversible server-side threshold, raised at deploy); (ii)~an
+        abstain-margin rule (serve an emotion only when it beats \emph{neutral} by a
+        margin, else degrade to low-confidence neutral); and (iii)~label-shift
+        (Saerens/BBSE) prior correction. Because raw audio is deleted by design, these
+        cannot be back-tested --- so the server now shadow-logs the classifier's full
+        probability distribution per event (serving unchanged), and an offline analysis
+        (\texttt{ml/analyze\_voice\_shadow.py}) measures what each candidate \emph{would}
+        have served on live pilot audio. The honest limit stands: (i)--(iii) suppress
+        \emph{confidently-wrong off-distribution} predictions but cannot raise the
+        underlying $57.4\%$ speaker-independent skill --- that is bounded by training
+        data, and only real child-condition labelled speech (an opt-in retained-clip
+        consent tier) closes it. Instrument now, correct on evidence, retrain on real
+        labels later.
   \item \textbf{Code-mixed text model and Hindi speech recognition.} The lexicon
         covers romanised and Devanagari Hindi abuse and the recogniser is
         Indian-English (\S4.3, \S5.2), but two gaps remain: a multilingual
