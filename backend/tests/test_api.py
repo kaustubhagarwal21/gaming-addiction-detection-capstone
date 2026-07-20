@@ -460,6 +460,33 @@ def test_auth_enforced_blocks_untokened_request(client, monkeypatch):
     assert r.status_code == 401
 
 
+def test_parent_can_edit_child_profile(client):
+    """A parent edits name + age; the change persists and is readable back."""
+    r = client.post('/api/user/update',
+                    json={'user_id': 1, 'name': 'Arjun R', 'age': 15})
+    assert r.status_code == 200 and r.get_json()['success'] is True
+    prof = client.get('/api/user/profile?user_id=1').get_json()
+    assert prof['name'] == 'Arjun R'
+    assert prof['age'] == 15
+    # Out-of-range age is silently ignored, not stored.
+    client.post('/api/user/update', json={'user_id': 1, 'age': 999})
+    assert client.get('/api/user/profile?user_id=1').get_json()['age'] == 15
+
+
+def test_child_token_cannot_edit_profile(client, monkeypatch):
+    """A child's own token owns the row but must NOT rewrite the profile (age is a
+    monitoring-tamper vector). Enforce mode + a real child token → 403."""
+    import app as appmod
+    tok = client.post('/api/user/login',
+                      json={'pin': '1234', 'role': 'child'}).get_json().get('token')
+    assert tok
+    monkeypatch.setattr(appmod, 'AUTH_ENFORCE', True)
+    r = client.post('/api/user/update',
+                    json={'user_id': 1, 'age': 25},
+                    headers={'Authorization': f'Bearer {tok}'})
+    assert r.status_code == 403
+
+
 # ─── Regression tests for the external-audit round of fixes ───────────
 
 def test_set_limit_rejects_nan(client):

@@ -1376,7 +1376,7 @@ assumptions --- drive the next revision.
 \begin{itemize}[leftmargin=1.4em]
   \item Production-deployed cloud backend (HTTPS, token auth, consent, durable
         managed Postgres); both apps build as signed release APKs.
-  \item A layered test program, all passing: a 65-test API suite (isolated database;
+  \item A layered test program, all passing: a 67-test API suite (isolated database;
         includes ML-unit tests for the shared audio extractor, noisy-OR fusion,
         threshold-tuner math and the session-streak alert; run automatically in CI
         against \textbf{both} SQLite and PostgreSQL~16 --- the production dialect ---
@@ -1386,7 +1386,7 @@ assumptions --- drive the next revision.
         silence floor and late re-score, the watchdog's quiet hours, end-session
         idempotency, feedback re-rating, parent-controlled deletion), and a
         \textbf{25-check end-to-end probe of the live cloud deployment}. Both apps pass
-        Android Lint with zero errors, and 38 JVM unit tests (run in CI) pin the
+        Android Lint with zero errors, and 41 JVM unit tests (run in CI) pin the
         offline chat queue's delivery semantics, the WAV container encoding, IME
         keystroke-to-sentence reconstruction, and the parent-alert triage rules.
   \item Robustness under load on free-tier hosting: pooled, probe-validated connections
@@ -1563,11 +1563,11 @@ Detection & Any-game detection (UsageStats + category + parent overrides), sessi
 Capture & Custom-keyboard (IME) + Accessibility typed-chat (canvas games included), on-device Vosk STT, voice features with silence floor, real behavioural metrics, offline chat retry queue \\
 ML & Calibrated RF behaviour (ten objective features, bake-off-confirmed, survey-grounded play time) + SHAP, \textbf{gaming-domain-trained} calibrated LogReg on word+char\_wb TF-IDF (3 real corpora incl.\ Davidson) with noisy-OR lexicon fusion (incl.\ Hinglish terms) + \textbf{session-level streak alert}, \textbf{real-audio HistGB voice on 36 acoustic features trained on 4 corpora / 163 speakers / 3 languages, speaker-independent evaluation} behind a VAD gate, availability-weighted fusion, valence--arousal voice/text fusion, genre weighting, late-voice re-score, env-tunable thresholds + feedback threshold tuner, in-domain evaluation on held-out CONDA \\
 Credibility & Probability calibration, anomaly detection (robust median/MAD baselines), observation mode, honest model card --- surfaced to the parent in plain language, incl.\ the in-domain chat-alert precision and the real-speech voice accuracy (``why trust this'') --- child-local timezone for hour-of-day signals, \textbf{score-distribution drift monitor} (PSI + KS vs.\ a reference window, incl.\ modality-presence rates that separate capture regressions from model drift) \\
-Parent value & Per-day weighted risk + ``why'' (SHAP), live ``playing now'' + monitoring-health strip, 14-day trend, recently/most-played games, real-time alerts with friendly ages + feedback agreement rate, weekly report (true weekly numbers) + PDF, limits, send-nudge-to-child, switch child without re-login \\
+Parent value & Per-day weighted risk + ``why'' (SHAP), live ``playing now'' + monitoring-health strip, 14-day trend, recently/most-played games, real-time alerts with friendly ages + feedback agreement rate, weekly report (true weekly numbers) + PDF, limits, send-nudge-to-child, parent-only child-profile editing (name/age/PIN reset; age is deliberately not child-editable --- it feeds the peer comparison and limit caps), switch child without re-login \\
 Child wellbeing & Mira check-in (typing indicator, double-send guard), gamified daily check-in + streak, reflections, breathing, break/limit nudges, today-vs-goal progress \\
 Reliability/anti-tamper & Heartbeat watchdog (uninstall/kill/offline alert, child-local quiet hours), optional Device Admin (uninstall block + instant disable alert), battery-optimisation exemption, double-start-safe services, consent-gated boot resume, parent-PIN lock on logout/settings (server-verified, constant-time), logout \emph{and} login alerts with honest monitoring status, idempotent session-end, self-scoring stale-session guard, per-child risk notifications, multi-guardian FCM push (lazy-init) \\
 Privacy/Security & Token auth + \emph{role} checks on every parent-only endpoint, deleted-account tokens locked out despite the stateless 30-day TTL (TTL-cached existence probe), peppered PIN hashes (validated, family-wide PIN change), HTTPS-only, encrypted token store, consent (versioned), raw-audio deletion, retention purge, parent-controlled data export mirroring the deletion scope (credentials excluded), 16\,MB body cap, opt-in Sentry crash monitoring (stack traces only, no PII), family code always recoverable in PIN-gated Settings \\
-Engineering & Dual-dialect DB with pooled validated Postgres connections + composite indexes on the hot query paths, per-client rate limiting, hot-path caching/throttling + audio-concurrency cap + bounded throttle caches, thread-safe device-side shared state (concurrent cache, crash-safe confirm-then-delete offline queue, WorkManager network-aware retry), signed APKs, layered tests (65 API + 38 Android JVM + 81 production-mode + 25 live-cloud) + concurrency smoke + CI (pytest on SQLite \emph{and} PostgreSQL, Android lint + unit tests per push, weekly drift monitor against the production DB), real-device validated, lint-clean, deployed + durable DB \\
+Engineering & Dual-dialect DB with pooled validated Postgres connections + composite indexes on the hot query paths, per-client rate limiting, hot-path caching/throttling + audio-concurrency cap + bounded throttle caches, thread-safe device-side shared state (concurrent cache, crash-safe confirm-then-delete offline queue, WorkManager network-aware retry), signed APKs, layered tests (67 API + 41 Android JVM + 81 production-mode + 25 live-cloud) + concurrency smoke + CI (pytest on SQLite \emph{and} PostgreSQL, Android lint + unit tests per push, weekly drift monitor against the production DB), real-device validated, lint-clean, deployed + durable DB \\
 \bottomrule
 \end{tabularx}
 \end{center}

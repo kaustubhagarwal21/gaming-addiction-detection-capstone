@@ -278,6 +278,12 @@ data class GenericResponse(
     val message: String?
 )
 
+data class ChildProfile(
+    @SerializedName("user_id") val userId: Int,
+    val name: String,
+    val age: Int?
+)
+
 data class SessionSummary(
     val id: Int,
     @SerializedName("game_name") val gameName: String,

@@ -2583,6 +2583,13 @@ def update_profile():
     user_id = data.get('user_id', 1)
     deny = guard(user_id)
     if deny: return deny
+    # Profile edits are PARENT-controlled, like data export/deletion and limits. Age in
+    # particular feeds the peer-percentile comparison and the age-based time-limit cap, so
+    # a child editing their own age would quietly weaken their own monitoring — the same
+    # tamper vector the parent-PIN gate exists to close. A child's own token owns this row
+    # (passes guard) but must not rewrite the profile.
+    deny = deny_non_parent()
+    if deny: return deny
     conn = get_db()
     c    = conn.cursor()
     if 'name' in data:

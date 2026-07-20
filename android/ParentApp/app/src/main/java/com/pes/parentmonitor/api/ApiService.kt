@@ -59,6 +59,12 @@ interface ApiService {
     @POST("api/user/delete_data")
     suspend fun deleteData(@Body body: Map<String, String>): Response<GenericResponse>
 
+    @GET("api/user/profile")
+    suspend fun getProfile(@Query("user_id") userId: Int): Response<ChildProfile>
+
+    @POST("api/user/update")
+    suspend fun updateProfile(@Body body: @JvmSuppressWildcards Map<String, Any>): Response<GenericResponse>
+
     @Streaming
     @GET("api/dashboard/weekly_report/pdf")
     suspend fun downloadWeeklyReportPdf(@Query("user_id") userId: Int): Response<ResponseBody>

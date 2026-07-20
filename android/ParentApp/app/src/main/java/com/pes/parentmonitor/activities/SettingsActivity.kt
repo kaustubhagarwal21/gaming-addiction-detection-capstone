@@ -12,6 +12,7 @@ import com.pes.parentmonitor.api.ModelCard
 import com.pes.parentmonitor.databinding.ActivitySettingsBinding
 import com.pes.parentmonitor.util.PrefsManager
 import com.pes.parentmonitor.util.PrivacyText
+import com.pes.parentmonitor.util.ProfileValidation
 import kotlinx.coroutines.launch
 
 class SettingsActivity : AppCompatActivity() {
@@ -47,6 +48,8 @@ class SettingsActivity : AppCompatActivity() {
                 .setPositiveButton("Close", null)
                 .show()
         }
+
+        binding.btnEditChild.setOnClickListener { editChildProfile() }
 
         binding.btnDeleteChildData.setOnClickListener { confirmDeleteChildData() }
 
@@ -137,6 +140,101 @@ class SettingsActivity : AppCompatActivity() {
             .setMessage(sb.toString())
             .setPositiveButton("Close", null)
             .show()
+    }
+
+    /** Parent-only edit of the selected child's name, age, and (optional) login PIN.
+        Pre-fills from the server so the parent sees current values; sends only fields
+        that changed. All edits are parent-controlled server-side (age feeds the
+        peer-comparison and time-limit cap, so it isn't child-editable). */
+    private fun editChildProfile() {
+        val childId = prefs.childUserId
+        if (childId == -1) {
+            Toast.makeText(this, "No child selected", Toast.LENGTH_SHORT).show()
+            return
+        }
+        lifecycleScope.launch {
+            val api = ApiClient.getInstance(prefs.serverUrl)
+            val profile = try {
+                api.getProfile(childId).takeIf { it.isSuccessful }?.body()
+            } catch (_: Exception) { null }
+
+            val pad = (16 * resources.displayMetrics.density).toInt()
+            val nameField = android.widget.EditText(this@SettingsActivity).apply {
+                hint = "Name"; setText(profile?.name ?: prefs.childName)
+                inputType = android.text.InputType.TYPE_CLASS_TEXT or
+                    android.text.InputType.TYPE_TEXT_FLAG_CAP_WORDS
+            }
+            val ageField = android.widget.EditText(this@SettingsActivity).apply {
+                hint = "Age"; setText(profile?.age?.toString() ?: "")
+                inputType = android.text.InputType.TYPE_CLASS_NUMBER
+            }
+            val pinField = android.widget.EditText(this@SettingsActivity).apply {
+                hint = "New child PIN (leave blank to keep)"
+                inputType = android.text.InputType.TYPE_CLASS_NUMBER or
+                    android.text.InputType.TYPE_NUMBER_VARIATION_PASSWORD
+            }
+            val layout = android.widget.LinearLayout(this@SettingsActivity).apply {
+                orientation = android.widget.LinearLayout.VERTICAL
+                setPadding(pad, pad / 2, pad, 0)
+                addView(nameField); addView(ageField); addView(pinField)
+            }
+            AlertDialog.Builder(this@SettingsActivity)
+                .setTitle("Edit Child Profile")
+                .setView(layout)
+                .setNegativeButton("Cancel", null)
+                .setPositiveButton("Save") { _, _ ->
+                    submitChildProfile(childId, nameField.text?.toString(),
+                        ageField.text?.toString(), pinField.text?.toString(),
+                        profile?.name, profile?.age)
+                }
+                .show()
+        }
+    }
+
+    private fun submitChildProfile(childId: Int, rawName: String?, rawAge: String?,
+                                   rawPin: String?, curName: String?, curAge: Int?) {
+        val nameRes = ProfileValidation.validateName(rawName)
+        if (nameRes is ProfileValidation.Result.Error) {
+            Toast.makeText(this, nameRes.message, Toast.LENGTH_SHORT).show(); return
+        }
+        val ageRes = ProfileValidation.validateAge(rawAge)
+        if (ageRes is ProfileValidation.Result.Error) {
+            Toast.makeText(this, ageRes.message, Toast.LENGTH_SHORT).show(); return
+        }
+        val pinRes = ProfileValidation.validateOptionalPin(rawPin)
+        if (pinRes is ProfileValidation.Result.Error) {
+            Toast.makeText(this, pinRes.message, Toast.LENGTH_SHORT).show(); return
+        }
+        val name = (nameRes as ProfileValidation.Result.Ok).value
+        val age  = (ageRes as ProfileValidation.Result.Ok).value.toInt()
+        val pin  = (pinRes as ProfileValidation.Result.Ok).value
+
+        // Send only what changed; nothing changed → no round trip.
+        val body = HashMap<String, Any>()
+        body["user_id"] = childId
+        if (name != curName) body["name"] = name
+        if (age != curAge) body["age"] = age
+        if (pin.isNotEmpty()) body["pin"] = pin
+        if (body.size == 1) {
+            Toast.makeText(this, "No changes", Toast.LENGTH_SHORT).show(); return
+        }
+        lifecycleScope.launch {
+            try {
+                val resp = ApiClient.getInstance(prefs.serverUrl).updateProfile(body)
+                when {
+                    resp.isSuccessful && resp.body()?.success == true -> {
+                        if (body.containsKey("name")) prefs.childName = name  // keep the roster label fresh
+                        Toast.makeText(this@SettingsActivity, "Profile updated", Toast.LENGTH_SHORT).show()
+                    }
+                    resp.code() == 409 ->
+                        Toast.makeText(this@SettingsActivity, "That child PIN is already taken", Toast.LENGTH_LONG).show()
+                    else ->
+                        Toast.makeText(this@SettingsActivity, "Update failed (${resp.code()})", Toast.LENGTH_LONG).show()
+                }
+            } catch (e: Exception) {
+                Toast.makeText(this@SettingsActivity, "Update failed: ${e.message}", Toast.LENGTH_LONG).show()
+            }
+        }
     }
 
     private fun confirmDeleteChildData() {
