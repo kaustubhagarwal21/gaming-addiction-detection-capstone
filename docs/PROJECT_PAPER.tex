@@ -1506,11 +1506,22 @@ The pilot's findings, positive and negative alike:
         live re-scores: channels genuinely appear and vanish per game and moment,
         which is exactly the condition the renormalising ensemble (\S3.2) was designed
         for.
-  \item \textbf{Tamper/permission monitoring caught a real event:} the custom keyboard
-        was silently disabled on the pilot device mid-pilot (an OS default-IME reset);
+  \item \textbf{Tamper/permission monitoring caught two real events.} On one device
+        the custom keyboard was silently disabled mid-pilot (an OS default-IME reset):
         the heartbeat's capture-permission flags flipped, the parent dashboard showed
-        ``monitoring degraded'', and a one-shot alert fired --- the designed failure
-        visibility, observed in the wild.
+        ``monitoring degraded'', and a one-shot alert fired. On the second device, the
+        anti-tamper design met an actual tamper: a participant deactivated Device
+        Administrator and uninstalled the app --- \texttt{onDisableRequested} raised
+        the high-severity ``trying to remove monitoring'' alert \emph{four seconds
+        before the device went silent for good}. The uninstall was detected in real
+        time, exactly as designed; the removal itself was, of course, the
+        participant's right.
+  \item \textbf{Pilot attrition is itself a finding.} One of the two enrolled
+        families withdrew in the first week (the uninstall above), leaving one active
+        device. For a consent-based monitoring system, acceptability is as much a
+        research question as accuracy: a larger validation cohort must expect and
+        measure this drop-out rate, and the consent design must make leaving exactly
+        this easy --- which it did.
   \item \textbf{The predicted voice-model limitation appeared on cue:} $77\%$ of pilot
         voice events were labelled \emph{frustrated} at high intensity during casual
         puzzle play --- the acted-adult emotion model over-predicting on child/ambient
