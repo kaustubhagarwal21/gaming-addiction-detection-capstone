@@ -86,7 +86,7 @@ in-game and offensive-language corpora, reaches $0.95$ precision at its alert
 threshold on held-out real gaming chat, and is built for the Indian context ---
 code-mixed Hinglish/Devanagari abuse is detected whether typed or \emph{spoken}
 (transcribed on-device, so raw audio never leaves the phone); the voice model is trained on $9{,}817$ real
-speech clips across $163$ speakers in three languages and evaluated
+speech clips across $154$ speakers in three languages and evaluated
 speaker-independently; the behaviour generator's play-time distributions and the
 dashboard's peer percentiles follow a real survey of $13{,}464$ gamers; and an
 $11{,}191$-respondent IGDS9-SF dataset validates both the severity base rate and the
@@ -456,7 +456,7 @@ chat's register); it is evaluated on CONDA's \emph{held-out} validation split it
 never saw (\S\ref{sec:chatresults}). The voice model is trained on \emph{four real
 speech corpora} --- RAVDESS~\cite{ravdess2018} + CREMA-D~\cite{cremad2014} (English),
 EMO-DB~\cite{emodb2005} (German) and URDU~\cite{urdu2018} ---
-$9{,}817$ clips across $163$ speakers in three languages, all ingested through the
+$9{,}817$ clips across $154$ speakers in three languages, all ingested through the
 identical serving extractor (\S\ref{sec:voiceresults}); the Urdu corpus is
 deliberately included for its phonetic proximity to the target users' Hindi.
 A further open dataset provides \emph{label-side} grounding: the cross-cultural
@@ -585,7 +585,7 @@ refuses otherwise). For voice, splits are \textbf{speaker-independent}
 (\texttt{GroupShuffleSplit} on speaker id, with augmented variants inheriting their
 clip's speaker): a random clip split lets the model partly recognise the
 \emph{person}, and we quantify that leakage directly --- the same configuration
-reads $0.657$ under random splits and $0.57$ speaker-independent, a $\approx 9$-point
+reads $0.657$ under random splits and $0.574$ speaker-independent, a $\approx 9$-point
 inflation that also \emph{flipped the model-selection verdict}
 (\S\ref{sec:modelselection}).
 
@@ -787,7 +787,11 @@ duplicates beyond the server's own de-duplication window.
 
 \subsection{Voice recording and emotion (valence--arousal fusion)}
 \texttt{VoiceRecorderService} records PCM segments and extracts 36 acoustic features
-(13 MFCCs, pitch mean/std, energy mean/std), which the backend classifies into
+--- 13 MFCC means $+$ 13 MFCC standard deviations, pitch mean/std, frame-energy
+(RMS) mean/std, and spectral-centroid, zero-crossing-rate and spectral-rolloff
+mean/std ($17$-feature frozen prefix $+$ $19$ append-only v2 features; the shared
+extractor \texttt{audio\_features.py} is the single source of truth) --- which the
+backend classifies into
 angry / excited / frustrated / neutral. The acoustic model reliably separates
 \emph{arousal} (animated vs.\ quiet speech) but cannot judge \emph{valence} (positive
 vs.\ negative): loud-but-calm speech, or a child's naturally high-pitched voice, can be
@@ -1124,7 +1128,8 @@ chat.
 The deployed voice model is trained on \emph{four real speech corpora}: RAVDESS
 (1{,}440 clips, 24 speakers) $+$ CREMA-D (7{,}442 clips, 91 speakers of varied age
 and ethnicity) $+$ EMO-DB (535 clips, 10 speakers, \emph{German}) $+$ URDU (400
-clips, 38 speakers, \emph{Urdu} --- included deliberately for its phonetic proximity
+clips, 29 speakers as distributed --- the release nominally lists 38, but 29
+distinct speaker ids appear in the published files --- \emph{Urdu} --- included deliberately for its phonetic proximity
 to the target users' Hindi). All $9{,}817$ clips are ingested \emph{through the
 identical serving extractor} (silence floor $\rightarrow$ gain normalisation
 $\rightarrow$ 36 features), with emotion labels mapped onto the system's four
@@ -1132,7 +1137,9 @@ classes, one noise/band-limit augmented variant per clip, and class balancing.
 The classifier (\texttt{HistGradientBoosting}) and the extended feature set were
 selected from a six-family bake-off under the speaker-independent protocol
 (\S\ref{sec:modelselection}). On a \textbf{speaker-independent} held-out split
-($31$ of $153$ speakers, $2{,}791$ rows; no test speaker appears in training):
+($31$ of $153$ speakers --- one of the $154$ ingested speakers contributed no clip
+that survived the silence-floor gate --- $2{,}791$ rows; no test speaker appears in
+training):
 \begin{center}
 \begin{tabular}{lcccc}
 \toprule
@@ -1140,8 +1147,8 @@ selected from a six-family bake-off under the speaker-independent protocol
 \midrule
 F1 & 0.68 & 0.49 & 0.50 & 0.61 \\
 \midrule
-Accuracy & \multicolumn{4}{c}{\textbf{0.57}} \quad (chance $= 0.25$) \\
-Macro-F1 & \multicolumn{4}{c}{0.57} \\
+Accuracy & \multicolumn{4}{c}{\textbf{0.574}} \quad (chance $= 0.25$) \\
+Macro-F1 & \multicolumn{4}{c}{0.568} \\
 \bottomrule
 \end{tabular}
 \end{center}
@@ -1149,7 +1156,7 @@ This \emph{replaces} the earlier synthetic-feature model, whose $0.9925$ accurac
 had already flagged as internal validity only. The protocol matters as much as the
 number: under random clip splits this same configuration reads $0.657$, and the
 $\approx 9$-point gap \emph{is the quantified speaker leakage} --- the model partly
-recognising people rather than emotions (\S\ref{sec:evalmethod}). $0.57$ on unseen
+recognising people rather than emotions (\S\ref{sec:evalmethod}). $0.574$ on unseen
 speakers across three languages is the honest generalisation number, and it is why
 voice keeps its low, corroborating-only ensemble weight ($0.30$, tied with chat and
 below behaviour's $0.40$). The earlier measured
@@ -1301,7 +1308,9 @@ Single-threshold rows hide the operating curve; domain transfer was asserted, no
 tested; voice was the only synthetically-trained channel; the daily check-ins were
 unused as an outcome signal &
 Model card carries threshold-free metrics; voice model \emph{retrained} on real
-speech (RAVDESS+CREMA-D, 115 speakers): $0.572$ accuracy replaces the $0.9925$
+speech (RAVDESS+CREMA-D, 115 speakers): $0.572$ accuracy --- then still measured
+under random clip splits; the speaker-independent correction lands two rows below
+--- replaces the $0.9925$
 synthetic figure (\S\ref{sec:voiceresults}); risk-vs-next-day-mood correlation
 computable from data already collected \\
 \addlinespace
@@ -1334,12 +1343,13 @@ because \emph{real} class overlap is larger --- the more honest number; directio
 check: hours vs.\ anxiety $r{=}{+}0.065$, vs.\ life satisfaction $r{=}{-}0.119$ \\
 \addlinespace
 Corpus expansion: chat gains Davidson offensive-language tweets ($24{,}783$ real);
-voice gains EMO-DB (German) + URDU, reaching $163$ speakers / 3 languages &
+voice gains EMO-DB (German) + URDU, reaching $154$ speakers / 3 languages &
 More real data in the registers that matter --- informal slang-heavy text for chat;
 speaker, age and language diversity (Urdu $\approx$ target users' Hindi) for voice &
 Chat held-out gaming PR-AUC $0.805 \rightarrow 0.834$; new alert point
 \emph{strictly dominates} ($0.950$/$0.491$ vs.\ $0.924$/$0.445$); voice real-speech
-accuracy $0.645 \rightarrow 0.657$ on a larger, more diverse held-out set \\
+accuracy $0.645 \rightarrow 0.657$ on a larger, more diverse held-out set
+(random-split era; superseded by the speaker-independent protocol in the final row) \\
 \addlinespace
 Fusion/usage audit: session chat score $\rightarrow$ max of per-message scores;
 anomaly detector $\rightarrow$ robust median/MAD $z$; ensemble weights, genre
@@ -1358,7 +1368,7 @@ metric suite &
 Random clip splits leak speaker identity; single-threshold rows and headline
 accuracies hide error structure, uncertainty and the contribution of each design
 choice &
-Leakage quantified ($0.657 \rightarrow 0.57$, and it had been selecting the wrong
+Leakage quantified ($0.657 \rightarrow 0.574$, and it had been selecting the wrong
 model); every design choice now carries a measured, CI-qualified delta
 (\S\ref{sec:ablations}); domain data revealed as the dominant chat factor
 ($+0.32$ PR-AUC) \\
@@ -1578,7 +1588,7 @@ fix plus a regression guard.
 \midrule
 Detection & Any-game detection (UsageStats + category + parent overrides), session lifecycle with grace/ancillary handling \\
 Capture & Custom-keyboard (IME) + Accessibility typed-chat (canvas games included), on-device Vosk STT, voice features with silence floor, real behavioural metrics, offline chat retry queue \\
-ML & Calibrated RF behaviour (ten objective features, bake-off-confirmed, survey-grounded play time) + SHAP, \textbf{gaming-domain-trained} calibrated LogReg on word+char\_wb TF-IDF (3 real corpora incl.\ Davidson) with noisy-OR lexicon fusion (incl.\ Hinglish terms) + \textbf{session-level streak alert}, \textbf{real-audio HistGB voice on 36 acoustic features trained on 4 corpora / 163 speakers / 3 languages, speaker-independent evaluation} behind a VAD gate, availability-weighted fusion, valence--arousal voice/text fusion, genre weighting, late-voice re-score, env-tunable thresholds + feedback threshold tuner, in-domain evaluation on held-out CONDA \\
+ML & Calibrated RF behaviour (ten objective features, bake-off-confirmed, survey-grounded play time) + SHAP, \textbf{gaming-domain-trained} calibrated LogReg on word+char\_wb TF-IDF (3 real corpora incl.\ Davidson) with noisy-OR lexicon fusion (incl.\ Hinglish terms) + \textbf{session-level streak alert}, \textbf{real-audio HistGB voice on 36 acoustic features trained on 4 corpora / 154 speakers / 3 languages, speaker-independent evaluation} behind a VAD gate, availability-weighted fusion, valence--arousal voice/text fusion, genre weighting, late-voice re-score, env-tunable thresholds + feedback threshold tuner, in-domain evaluation on held-out CONDA \\
 Credibility & Probability calibration, anomaly detection (robust median/MAD baselines), observation mode, honest model card --- surfaced to the parent in plain language, incl.\ the in-domain chat-alert precision and the real-speech voice accuracy (``why trust this'') --- child-local timezone for hour-of-day signals, \textbf{score-distribution drift monitor} (PSI + KS vs.\ a reference window, incl.\ modality-presence rates that separate capture regressions from model drift) \\
 Parent value & Per-day weighted risk + ``why'' (SHAP), live ``playing now'' + monitoring-health strip, 14-day trend, recently/most-played games, real-time alerts with friendly ages + feedback agreement rate, weekly report (true weekly numbers) + PDF, limits, send-nudge-to-child, parent-only child-profile editing (name/age/PIN reset; age is deliberately not child-editable --- it feeds the peer comparison and limit caps), switch child without re-login \\
 Child wellbeing & Mira check-in (typing indicator, double-send guard), gamified daily check-in + streak, reflections, breathing, break/limit nudges, today-vs-goal progress \\
