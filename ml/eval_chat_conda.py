@@ -144,7 +144,11 @@ def main():
     scores = served_scores(df['text'].tolist(), clf, vec, cal)
     y = df['toxic'].values
 
-    sweep = [metrics_at(scores, y, t) for t in (0.3, 0.5, 0.6, 0.7, 0.85, 0.9, ALERT_T, 0.97)]
+    # Sorted, de-duplicated: with ALERT_T at its default 0.9 the old literal tuple
+    # contained 0.9 twice and never 0.95 — yet 0.95 is the served HIGH-severity
+    # marker (CHAT_ALERT_HIGH_T), whose row the paper cites. Include both markers.
+    sweep = [metrics_at(scores, y, t)
+             for t in sorted({0.3, 0.5, 0.6, 0.7, 0.85, 0.9, ALERT_T, 0.95, 0.97})]
     best = max(sweep, key=lambda m: m['f1_toxic'])
     out = {
         'dataset': 'built-in smoke sample' if args.smoke else os.path.basename(args.csv),
