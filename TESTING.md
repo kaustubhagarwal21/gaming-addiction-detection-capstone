@@ -50,6 +50,8 @@ risk-flap bugs (`AlertTriage`).
 | `python ml/ablation_studies.py` | One-component-at-a-time ablations for all three channels (bootstrap 95% CIs) → `docs/ablation_results.json`; `--only chat\|voice\|behaviour` re-runs a section |
 | `python ml/make_figures.py` | Regenerates the paper's figures (PR curve, confusion matrices) into `docs/figures/` |
 | `python ml/analyze_igds.py` | IGDS9-SF open dataset (n=11,191): severity base rate + toxicity-involvement vs IGD severity (chat-channel premise validation) |
+| `python ml/analyze_fusion_sensitivity.py` | Stress-tests the fusion priors on stored pilot predictions (weight simplex sweep, genre-effect sweep, threshold sweep) after proving exact replication of served scores; writes `docs/fusion_sensitivity.json` |
+| `python ml/calibrate_thresholds_prevalence.py` | Prevalence-anchored RISK_T2 calibration (IGDS9-SF disordered-range rate), population-gated below 10 children |
 | `python ml/analyze_voice_shadow.py` | Offline evaluation of the voice domain-shift mitigations (abstain-margin sweep, BBSE prior correction) on shadow-logged probability vectors from live pilot audio |
 | `python ml/monitor_drift.py` | Score-distribution drift monitor (PSI + KS, band shares, modality-presence rates) — recent window vs reference; the pilot-phase health check |
 

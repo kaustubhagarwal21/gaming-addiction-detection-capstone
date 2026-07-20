@@ -1462,6 +1462,7 @@ real-device, real-network operation reveals, and finding and fixing them --- rat
 than not looking --- is part of the production-readiness this paper claims.
 
 \subsection{Live family pilot: first real-world results}
+\label{sec:pilot}
 A consented family pilot began on 6~July~2026: release APKs sideloaded onto family
 devices, talking to the production cloud deployment. Over the first 12 days the system
 recorded, unattended, \textbf{55 auto-detected sessions} across 11 active days
@@ -1526,6 +1527,25 @@ The pilot's findings, positive and negative alike:
         before the device went silent for good}. The uninstall was detected in real
         time, exactly as designed; the removal itself was, of course, the
         participant's right.
+  \item \textbf{The fusion priors were stress-tested against the pilot's own
+        predictions --- and ranked.} The 40/30/30 weights, genre multiplier and
+        0.33/0.67 thresholds are stated priors, so we measured how much each one
+        actually drives outcomes (\texttt{ml/analyze\_fusion\_sensitivity.py}; the
+        re-implementation first reproduces every served score to within $10^{-4}$).
+        Across 1{,}961 pilot predictions: perturbing the \emph{ensemble weights}
+        anywhere within $\pm 0.15$ of the prior changes the served band for at most
+        $0.3\%$ of predictions (median $0.0\%$) --- the weights are demonstrably
+        immaterial in practice. The \emph{genre multiplier} is the opposite: removing
+        it flips $36\%$ of bands and doubling its effect flips $51\%$ (the pilot's
+        casual-genre $0.70$ discount is load-bearing), and $\pm 0.05$ on the
+        \emph{thresholds} flips up to $20\%$. This ranks the calibration agenda by
+        evidence: genre weighting and band thresholds need real-label calibration
+        first; the ensemble weights, whose ``unvalidated'' status reads as the
+        headline concern, measurably are not one. A prevalence-anchoring method for
+        the top-band threshold (match the share of children in the top band to the
+        IGDS9-SF disordered-range rate) is implemented and population-gated
+        (\texttt{ml/calibrate\_thresholds\_prevalence.py}) --- it activates when the
+        cohort, or a locally collected IGDS9-SF survey, provides a population.
   \item \textbf{Pilot attrition is itself a finding.} One of the two enrolled
         families withdrew in the first week (the uninstall above), leaving one active
         device. For a consent-based monitoring system, acceptability is as much a
@@ -1637,9 +1657,15 @@ value depends on accumulating real usage data the prototype does not yet have:
 \begin{itemize}[leftmargin=1.4em]
   \item \textbf{Feedback-driven retraining, stage two.} Threshold tuning from parent
         verdicts is delivered (Beta-posterior recommendations, applied as environment
-        variables); what remains data-bound is learning the ensemble \emph{weights}
-        and retraining the models on real labels --- the change that converts
-        synthetic accuracy into validated performance. Needs a pilot at scale.
+        variables); what remains data-bound is calibrating the fusion parameters and
+        retraining the models on real labels --- the change that converts synthetic
+        accuracy into validated performance. The pilot's sensitivity analysis
+        (\Sef{sec:pilot}) already \emph{prioritises} this agenda: genre weighting and band
+        thresholds measurably drive outcomes and go first; the ensemble weights
+        measurably do not ($\leq 0.3\%$ band impact) and can wait. Needs a pilot at
+        scale, plus the IGDS9-SF ground-truth instrument (per-child parent-report
+        scores linked to telemetry; a locally floated adult survey supplies the
+        population prevalence anchor meanwhile).
   \item \textbf{Per-user personalisation of the risk score.} The robust anomaly
         detector already flags deviation from a child's \emph{own} baseline
         (median/MAD $z$-scores over their history); the remaining step is letting
