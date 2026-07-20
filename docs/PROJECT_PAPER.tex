@@ -1522,11 +1522,17 @@ The pilot's findings, positive and negative alike:
         excessive false-alarm rate at $0.001$ and recommended \emph{zero change} to the
         deployed $0.90$ chat-alert threshold --- the first real-label corroboration of
         an operating point previously chosen from held-out curves alone.
-  \item \textbf{The drift monitor's first scheduled run taught an operations lesson:}
-        it flagged PSI up to $5.97$ --- correctly detecting not model drift but the
-        \emph{population handover} from seeded demo data to real pilot traffic. The
-        monitor now clamps its windows to a data-regime epoch (the pilot start) so
-        cross-regime comparisons cannot masquerade as drift.
+  \item \textbf{The drift monitor's first scheduled runs each taught an operations
+        lesson.} Run one flagged PSI up to $5.97$ --- correctly detecting not model
+        drift but the \emph{population handover} from seeded demo data to real pilot
+        traffic; the monitor now clamps its windows to a data-regime epoch (the pilot
+        start). Run two, the first genuine pilot-vs-pilot comparison, flagged PSI
+        $1.4$ on the voice score while behaviour and chat were perfectly stable
+        (PSI $0.000$) --- the cause being one child simply playing $4.7\times$ more in
+        week two. The lesson: \emph{population}-stability metrics need a population;
+        with $n{=}1$, week-over-week PSI reflects ordinary individual variability. The
+        red-run gate now requires $\geq 3$ distinct children per window, while the full
+        report is still published every week.
   \item \textbf{A production restart cost nothing.} A free-tier health-check restart
         occurred during an active session; the offline chat queue re-delivered on the
         transient errors, the session was healed server-side, and the watchdog

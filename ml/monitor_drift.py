@@ -83,6 +83,19 @@ def load_window(cur, start_iso, end_iso):
     return [dict(r) for r in cur.fetchall()]
 
 
+def window_users(cur, start_iso, end_iso) -> int:
+    """Distinct children behind a window's predictions. PSI's industry 0.1/0.2 bars
+    assume a POPULATION; with one pilot user, week-over-week PSI blows past 0.2 from
+    ordinary behavioural variability (observed: PSI 1.4 because one child simply
+    played 4.7x more in week two). Used to gate --fail-on-drift, not the report."""
+    cur.execute(f'''SELECT COUNT(DISTINCT s.user_id) AS n
+                    FROM predictions p JOIN sessions s ON s.session_id = p.session_id
+                    WHERE p.timestamp >= {_PH} AND p.timestamp < {_PH}''',
+                (start_iso, end_iso))
+    row = cur.fetchone()
+    return int(row['n'] or 0)
+
+
 def label(v):
     return 'DRIFT' if v > 0.2 else ('moderate' if v > 0.1 else 'stable')
 
@@ -103,6 +116,13 @@ def main():
                          'boundary: demo/seed rows vs real pilot rows differ hugely by '
                          'construction, and comparing across that boundary reports '
                          'population change as model drift (first pilot Monday: PSI 5.97).')
+    ap.add_argument('--min-users', type=int,
+                    default=int(os.environ.get('DRIFT_MIN_USERS', '3')),
+                    help='fail-on-drift only fires when BOTH windows contain at least '
+                         'this many distinct children. Population-stability metrics '
+                         'need a population: with a single pilot user, week-over-week '
+                         'PSI exceeds 0.2 from ordinary behavioural variability. The '
+                         'report is still printed and written either way.')
     args = ap.parse_args()
 
     now = datetime.now()
@@ -119,10 +139,14 @@ def main():
     cur = conn.cursor()
     ref = load_window(cur, ref_start.isoformat(), recent_start.isoformat())
     rec = load_window(cur, recent_start.isoformat(), now.isoformat())
+    users_ref = window_users(cur, ref_start.isoformat(), recent_start.isoformat())
+    users_rec = window_users(cur, recent_start.isoformat(), now.isoformat())
     conn.close()
 
-    print(f"reference: {ref_start.date()} .. {recent_start.date()}  ({len(ref)} predictions)")
-    print(f"recent   : {recent_start.date()} .. {now.date()}  ({len(rec)} predictions)")
+    print(f"reference: {ref_start.date()} .. {recent_start.date()}  "
+          f"({len(ref)} predictions, {users_ref} children)")
+    print(f"recent   : {recent_start.date()} .. {now.date()}  "
+          f"({len(rec)} predictions, {users_rec} children)")
     if len(ref) < MIN_ROWS or len(rec) < MIN_ROWS:
         print(f"\nInsufficient data (need >= {MIN_ROWS} predictions per window) — "
               "widen the windows or re-run once the pilot has accumulated history.")
@@ -175,7 +199,14 @@ def main():
             json.dump(report, f, indent=2)
         print(f"[OK] wrote {args.json}")
     if args.fail_on_drift and worst > 0.2:
-        sys.exit(2)
+        pop = min(users_ref, users_rec)
+        if pop < args.min_users:
+            print(f"\nnote: red-run gate NOT enforced — only {pop} distinct child(ren) in a "
+                  f"window (< --min-users {args.min_users}). Population-stability metrics "
+                  "need a population: single-user week-over-week PSI reflects one child's "
+                  "ordinary variability, not model drift. Reported above, not failed.")
+        else:
+            sys.exit(2)
 
 
 if __name__ == '__main__':
