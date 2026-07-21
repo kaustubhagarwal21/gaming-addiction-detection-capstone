@@ -16,6 +16,8 @@
 \usepackage{booktabs}
 \usepackage{tabularx}
 \usepackage{xltabular}   % tabularx X-columns that break cleanly across pages (revision table)
+\usepackage{tikz}
+\usetikzlibrary{positioning, arrows.meta, fit, backgrounds, calc}
 \usepackage{amsmath}
 \usepackage{newtxtext}   % dark, readable Times text (replaces thin Computer Modern)
 \usepackage{newtxmath}   % matching math font; keeps real subscripts in formulae
@@ -294,34 +296,65 @@ The platform follows a three-tier architecture (Figure-equivalent shown below):
 a \textbf{data-collection tier} (Child app), a \textbf{serving tier} (Flask backend +
 ML ensemble), and a \textbf{presentation tier} (Parent app).
 
-\begin{lstlisting}
-            CHILD APP (Android, Kotlin)                 PARENT APP (Android, Kotlin)
-   +------------------------------------+        +-------------------------------+
-   | UsageStatsManager  -> GameDetector |        | Risk band + SHAP "why"        |
-   | AccessibilityService -> typed chat |        | 14-day trend, alerts feed     |
-   | AudioRecord + Vosk  -> voice + STT  |        | Feedback: Accurate/False alarm|
-   | Behavioural feature engine          |        | Weekly PDF, limits, settings  |
-   +------------------+-----------------+        +---------------+---------------+
-                      |  HTTPS (token auth)              ^/v  HTTPS (poll + nudge)
-                      v                                          |
-        +-------------------------------------------------------------------+
-        |                 CLOUD BACKEND  (Flask, gunicorn)                  |
-        |  Session API | Chat/Voice ingest | Prediction engine | Alerts     |
-        |  Auth (signed tokens) | Consent | Retention purge | PDF report    |
-        +------------------------------+------------------------------------+
-                                       |
-            +--------------------------+--------------------------+
-            v                          v                          v
-     BEHAVIOUR (40%)            CHAT TOXICITY (30%)          VOICE EMOTION (30%)
-   RandomForest (3-class)     LogReg + TF-IDF             GradientBoosting (4-class)
-   + isotonic calibration     + keyword lexicon           + valence-arousal fusion
-   + SHAP explanations
-            \_________________________ weighted ensemble ____________________/
-                                       v
-                     Risk score 0..1  ->  Casual / At-Risk / Addicted
-                                       v
-                          Managed Postgres (Neon) / SQLite
-\end{lstlisting}
+\begin{figure}[h]
+\centering
+\begin{tikzpicture}[
+  font=\scriptsize, >=Latex,
+  box/.style={draw, rounded corners, align=left, inner sep=4pt, line width=0.4pt},
+  app/.style={box, fill=blue!7, text width=4.9cm},
+  cloud/.style={box, fill=black!6, text width=11.9cm, align=center},
+  model/.style={box, fill=green!8, text width=3.5cm, align=center},
+  fuse/.style={box, fill=green!16, text width=8.2cm, align=center},
+  db/.style={box, fill=orange!12, align=center, text width=2.6cm},
+  flow/.style={->, thick, black!70},
+]
+% ---- tier 1: the two apps ----
+\node[app] (child) {\textbf{CHILD APP} \;(Android/Kotlin)\\[2pt]
+  UsageStats $\to$ game detection\\
+  Accessibility + custom IME $\to$ typed chat\\
+  AudioRecord + Vosk $\to$ voice + on-device STT\\
+  behavioural feature engine};
+\node[app, right=2.4cm of child] (parent) {\textbf{PARENT APP} \;(Android/Kotlin)\\[2pt]
+  risk band + SHAP ``why''\\
+  14-day trend, alerts, emotions\\
+  feedback: accurate / false alarm\\
+  weekly PDF, limits, parent$\to$child nudges};
+% ---- tier 2: backend ----
+\node[cloud, below=1.5cm of $(child.south)!0.5!(parent.south)$] (backend)
+  {\textbf{CLOUD BACKEND} \;(Flask + gunicorn, Render)\\[1pt]
+   session API \,$\cdot$\, chat/voice ingest \,$\cdot$\, prediction engine \,$\cdot$\, alerts
+   \,$\cdot$\, signed-token auth \,$\cdot$\, consent \,$\cdot$\, retention purge \,$\cdot$\, PDF report};
+% ---- tier 2b: the three models ----
+\node[model, below=1.3cm of backend.south west, xshift=1.9cm] (beh)
+  {\textbf{BEHAVIOUR} (40\%)\\ RandomForest, 3-class\\ + isotonic + SHAP};
+\node[model, below=1.3cm of backend] (chat)
+  {\textbf{CHAT} (30\%)\\ LogReg + TF-IDF\\ + keyword lexicon (noisy-OR)};
+\node[model, below=1.3cm of backend.south east, xshift=-1.9cm] (voice)
+  {\textbf{VOICE} (30\%)\\ HistGB, 4-class\\ + valence--arousal fusion};
+% ---- fusion + output + store ----
+\node[fuse, below=1.1cm of chat] (fuse)
+  {availability-weighted ensemble $\to$ risk $0..1$ $\to$ \textbf{Low / Some / High concern}};
+\node[db, right=1.0cm of fuse] (db) {Managed Postgres (Neon) / SQLite};
+% ---- edges ----
+\draw[flow] (child.south) |- ([yshift=-6mm]child.south) -| (backend.north west)
+  node[pos=0.25, above, font=\tiny]{HTTPS, token auth};
+\draw[flow] (backend.north east) -- (parent.south)
+  node[pos=0.5, right, font=\tiny, xshift=1pt]{HTTPS poll + nudge};
+\draw[flow] (backend.south) -- (beh.north);
+\draw[flow] (backend.south) -- (chat.north);
+\draw[flow] (backend.south) -- (voice.north);
+\draw[flow] (beh.south)  -- (fuse.north);
+\draw[flow] (chat.south) -- (fuse.north);
+\draw[flow] (voice.south)-- (fuse.north);
+\draw[flow] (backend.east) -| (db.north)
+  node[pos=0.25, above, font=\tiny]{persist};
+\end{tikzpicture}
+\caption{Three-tier architecture: a data-collection tier (Child app), a serving tier
+(Flask backend + the availability-weighted ML ensemble), and a presentation tier
+(Parent app). All transport is HTTPS with signed-token auth; raw audio is deleted after
+feature extraction.}
+\label{fig:arch}
+\end{figure}
 
 \subsection{Data-collection tier (Child app)}
 The Child app runs always-on foreground services that:
