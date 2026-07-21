@@ -21,6 +21,7 @@ import com.pes.gamingdetector.util.Constants
 import com.pes.gamingdetector.util.ForegroundResolver
 import com.pes.gamingdetector.util.ForegroundTracker
 import com.pes.gamingdetector.util.GameDetector
+import com.pes.gamingdetector.util.OfflineSessionBuffer
 import com.pes.gamingdetector.util.PrefsManager
 import com.pes.gamingdetector.util.RiskPresentation
 import kotlinx.coroutines.*
@@ -195,8 +196,10 @@ class PassiveMonitorService : Service() {
                     }
                 }
             } catch (_: Exception) { /* network blip — try again next tick */ }
-            // Same cadence: retry any chat lines captured while offline (no-op when empty).
+            // Same cadence: retry anything captured while offline (no-op when empty) —
+            // chat lines and back-fillable offline sessions.
             try { ChatUploadQueue.flush(this@PassiveMonitorService) } catch (_: Exception) {}
+            try { OfflineSessionBuffer.flush(this@PassiveMonitorService) } catch (_: Exception) {}
             delay(NUDGE_POLL_MS)
         }
     }
@@ -232,6 +235,51 @@ class PassiveMonitorService : Service() {
             android.provider.Settings.Secure.DEFAULT_INPUT_METHOD) ?: "")
             .contains(packageName, ignoreCase = true)
     } catch (_: Exception) { false }
+
+    // Self-heal for silently-lost capture permissions. A monitored child rarely opens
+    // the app (they just play games), so HomeActivity's on-resume re-prompt never fires —
+    // in the pilot the Wellbeing Keyboard sat OFF for days after an OS default-IME reset.
+    // This edge-triggered check runs in the always-on monitor loop: when accessibility or
+    // the keyboard flips from ON to OFF it posts ONE notification that opens HomeActivity,
+    // whose existing permission chain then walks the child through re-enabling it. Only
+    // fires on the 1->0 transition (not every tick while off), and only after a baseline
+    // exists (never nags a child who hasn't set it up yet).
+    @Volatile private var lastCaptureBits: String? = null
+
+    private fun checkCaptureRegression() {
+        val bits = "${if (isAccessibilityOn()) 1 else 0}${if (isKeyboardActive()) 1 else 0}"
+        val prev = lastCaptureBits
+        lastCaptureBits = bits
+        if (prev == null) return                       // first observation: no baseline
+        when {
+            prev[1] == '1' && bits[1] == '0' -> notifyReenable(
+                "Wellbeing Keyboard turned off",
+                "In-game chat capture is paused. Tap to switch it back on.")
+            prev[0] == '1' && bits[0] == '0' -> notifyReenable(
+                "Chat monitoring turned off",
+                "Accessibility was disabled. Tap to re-enable gaming-wellbeing monitoring.")
+        }
+    }
+
+    /** One-tap self-heal: opens HomeActivity, which re-runs the permission chain and shows
+     *  the exact re-enable dialog. Same notification-permission tolerance as showNudge. */
+    private fun notifyReenable(title: String, text: String) {
+        try {
+            val pi = PendingIntent.getActivity(
+                this, 2, Intent(this, HomeActivity::class.java),
+                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
+            val notif = NotificationCompat.Builder(this, Constants.CHANNEL_ALERTS)
+                .setSmallIcon(R.drawable.ic_launcher)
+                .setContentTitle(title)
+                .setContentText(text)
+                .setStyle(NotificationCompat.BigTextStyle().bigText(text))
+                .setPriority(NotificationCompat.PRIORITY_HIGH)
+                .setContentIntent(pi)
+                .setAutoCancel(true)
+                .build()
+            NotificationManagerCompat.from(this).notify(NOTIF_ID + 7, notif)
+        } catch (_: SecurityException) { /* notifications not permitted — skip */ }
+    }
 
     private fun showNudge(message: String, kind: String?) {
         try {
@@ -337,6 +385,7 @@ class PassiveMonitorService : Service() {
                 // screen on — i.e. exactly when the user is in Settings toggling things) so
                 // the parent's monitoring-health view updates within seconds, not ~5 min.
                 if (statusKey() != lastStatusKey) sendHeartbeat()
+                checkCaptureRegression()
             }
             // Poll fast (5s) only when it matters — the screen is on, or a session is
             // running (so its grace-end stays prompt). While locked AND idle (phone in
@@ -452,6 +501,19 @@ class PassiveMonitorService : Service() {
                 trackedPackage = pkg
                 gameLeftAt = 0L
 
+                // Offline-head backfill: if this SAME game had begun while offline (a
+                // start we couldn't register then), the span from that offline start until
+                // now is an untracked session that just came online — record it so it
+                // becomes a real, scored, parent-visible session instead of vanishing.
+                // A different game means the offline attempt was abandoned; either way we
+                // clear the marker so it can't leak into a later unrelated session.
+                val offStart = prefs.offlineSessionStartMs
+                if (offStart > 0L && prefs.offlineSessionGame == gameName) {
+                    OfflineSessionBuffer.record(this, gameName, offStart,
+                        System.currentTimeMillis(), prefs.offlineSessionKey)
+                }
+                prefs.clearOfflineSession()
+
                 // Launch GameMonitorService (behavioral data + voice analysis)
                 ContextCompat.startForegroundService(
                     this,
@@ -463,7 +525,16 @@ class PassiveMonitorService : Service() {
                     }
                 )
             }
-        } catch (_: Exception) {}
+        } catch (_: Exception) {
+            // Network failure (offline / Render cold-start): remember when THIS game
+            // began so the online start above can back-fill the offline head. Set once
+            // per offline bout — don't push the start forward on every retry tick.
+            if (prefs.offlineSessionStartMs == 0L || prefs.offlineSessionGame != gameName) {
+                prefs.offlineSessionStartMs = System.currentTimeMillis()
+                prefs.offlineSessionGame = gameName
+                prefs.offlineSessionKey = java.util.UUID.randomUUID().toString()
+            }
+        }
     }
 
     // Clears tracked state synchronously and runs the async end behind a guard so

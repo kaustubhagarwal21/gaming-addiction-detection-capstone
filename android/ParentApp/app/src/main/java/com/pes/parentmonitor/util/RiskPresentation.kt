@@ -4,13 +4,19 @@ import java.util.Locale
 import kotlin.math.roundToInt
 
 /**
- * One presentation contract for the risk summary shown across parent-facing screens.
+ * One presentation contract for risk results on every family-facing surface, in BOTH
+ * apps: [category] is the stable machine key (colours, rules, storage); [serverLabel]
+ * is the screening label the API sends. The UI never shows a child or parent a
+ * clinical-sounding raw key.
  *
- * [category] is the stable machine value used for colours and recommendation rules;
- * [serverLabel] is the parent-friendly screening label returned by the dashboard API.
+ * KEEP THE TWO COPIES IDENTICAL apart from the package line — CI diffs
+ * ChildApp/.../RiskPresentation.kt against ParentApp/.../RiskPresentation.kt and
+ * fails the build if they diverge (they did once; see the risk-consistency release).
  */
 object RiskPresentation {
-    fun displayLabel(category: String?, serverLabel: String?): String {
+    private const val SEPARATOR = " · "
+
+    fun displayLabel(category: String?, serverLabel: String? = null): String {
         val value = serverLabel?.trim()?.takeIf { it.isNotEmpty() }
             ?: category?.trim()?.takeIf { it.isNotEmpty() }
             ?: return "Unknown"
@@ -29,18 +35,34 @@ object RiskPresentation {
     fun scoreText(score: Double?): String =
         "${((score ?: 0.0) * 100).roundToInt()}%"
 
+    fun riskScoreText(score: Double?): String =
+        "${scoreText(score)} risk score"
+
     fun periodText(label: String?, sessions: Int?): String? {
         val cleanLabel = label?.trim()?.takeIf { it.isNotEmpty() } ?: return null
         return if (sessions == null) {
             cleanLabel
         } else {
-            "$cleanLabel · $sessions ${if (sessions == 1) "session" else "sessions"}"
+            "$cleanLabel$SEPARATOR$sessions ${if (sessions == 1) "session" else "sessions"}"
         }
     }
 
     fun detailText(score: Double?, periodLabel: String?, sessions: Int?): String =
         listOfNotNull(
-            "${scoreText(score)} risk score",
+            riskScoreText(score),
             periodText(periodLabel, sessions)
-        ).joinToString(" · ")
+        ).joinToString(SEPARATOR)
+
+    fun scopedRiskText(
+        scope: String,
+        category: String?,
+        score: Double?,
+        serverLabel: String? = null
+    ): String {
+        val parts = listOfNotNull(
+            displayLabel(category, serverLabel),
+            score?.let { scoreText(it) }
+        )
+        return "$scope: ${parts.joinToString(SEPARATOR)}"
+    }
 }

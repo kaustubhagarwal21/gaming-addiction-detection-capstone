@@ -54,6 +54,25 @@ class PrefsManager(context: Context) {
         get() = prefs.getString(Constants.KEY_CHILD_CODE, "") ?: ""
         set(v) = prefs.edit().putString(Constants.KEY_CHILD_CODE, v).apply()
 
+    // Marks a game whose session START failed because the device was offline (server
+    // unreachable / Render cold-start). If connectivity returns while the SAME game is
+    // still playing, the interval from this start is back-filled as a real session.
+    var offlineSessionStartMs: Long
+        get() = prefs.getLong("offline_session_start", 0L)
+        set(v) = prefs.edit().putLong("offline_session_start", v).apply()
+    var offlineSessionGame: String
+        get() = prefs.getString("offline_session_game", "") ?: ""
+        set(v) = prefs.edit().putString("offline_session_game", v).apply()
+    var offlineSessionKey: String
+        get() = prefs.getString("offline_session_key", "") ?: ""
+        set(v) = prefs.edit().putString("offline_session_key", v).apply()
+
+    fun clearOfflineSession() {
+        offlineSessionStartMs = 0L
+        offlineSessionGame = ""
+        offlineSessionKey = ""
+    }
+
     // The family code (shown at registration, returned again on every login) — kept so
     // Settings can always display it; without this it was shown exactly once and easily
     // forgotten, locking the parent out of the Parent app.

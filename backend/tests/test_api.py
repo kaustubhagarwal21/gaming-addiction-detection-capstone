@@ -381,6 +381,47 @@ def test_voice_garbage_intensity_rejected_cleanly(client):
     client.post(f'/api/session/{sid}/end')
 
 
+def test_backfill_offline_session(client):
+    """An offline session posts start/end + a client key; the server creates a scored,
+    already-closed session, and a re-send with the SAME key dedupes (no duplicate)."""
+    from datetime import datetime, timedelta
+    start = (datetime.now() - timedelta(hours=2)).isoformat()
+    end   = (datetime.now() - timedelta(hours=1)).isoformat()
+    body  = {'user_id': 1, 'game_name': 'BGMI', 'start_time': start,
+             'end_time': end, 'client_key': 'offline-abc-123'}
+    r = client.post('/api/session/backfill', json=body)
+    assert r.status_code == 200
+    d = r.get_json()
+    assert d['success'] is True and d['backfilled'] is True
+    assert d['duration_seconds'] == 3600
+    sid = d['session_id']
+    assert d['prediction']['risk_label'] in ('casual', 'at_risk', 'addicted')
+
+    # Idempotent: same client_key returns the same session, no new row.
+    r2 = client.post('/api/session/backfill', json=body)
+    d2 = r2.get_json()
+    assert d2['session_id'] == sid and d2.get('deduped') is True
+
+
+def test_backfill_validates_and_clamps(client):
+    """Missing key / bad times are 400; an absurd interval is clamped, not stored raw."""
+    from datetime import datetime, timedelta
+    assert client.post('/api/session/backfill',
+                       json={'user_id': 1, 'game_name': 'BGMI',
+                             'start_time': 'x', 'end_time': 'y',
+                             'client_key': 'k1'}).status_code == 400
+    assert client.post('/api/session/backfill',
+                       json={'user_id': 1, 'game_name': 'BGMI',
+                             'start_time': datetime.now().isoformat(),
+                             'end_time': datetime.now().isoformat()}).status_code == 400
+    # 40-hour interval → clamped to the stale ceiling (6h), never stored as-is.
+    start = (datetime.now() - timedelta(hours=40)).isoformat()
+    r = client.post('/api/session/backfill',
+                    json={'user_id': 1, 'game_name': 'BGMI', 'start_time': start,
+                          'end_time': datetime.now().isoformat(), 'client_key': 'k-long'})
+    assert r.get_json()['duration_seconds'] == 6 * 3600
+
+
 def test_voice_probs_shadow_logged_without_changing_serving(client, monkeypatch):
     """The shadow evidence column: the full acoustic distribution is stored per voice
     event while the SERVED emotion/intensity stay exactly what the fusion produced —

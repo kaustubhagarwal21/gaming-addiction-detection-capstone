@@ -1169,6 +1169,11 @@ def init_db():
     add_column(c, 'predictions', 'behavior_present', 'INTEGER DEFAULT NULL')
     add_column(c, 'predictions', 'chat_present',     'INTEGER DEFAULT NULL')
     add_column(c, 'predictions', 'voice_present',    'INTEGER DEFAULT NULL')
+    # Client-generated idempotency key for OFFLINE sessions back-filled after the fact
+    # (a game started with no connectivity can't allocate a server session id live, so
+    # the child app buffers start/end locally and posts them when the network returns).
+    # Unique per real offline session, so a re-sent buffer entry can't duplicate it.
+    add_column(c, 'sessions', 'client_key', 'TEXT DEFAULT NULL')
 
     # Last day an unhealthy session spoiled the healthy-day streak, so a later healthy
     # session the same day can't re-credit an already-broken day (see _update_streak).
@@ -3199,6 +3204,82 @@ def end_session(sid):
                     'duration_seconds': duration,
                     'short_session': short_session,
                     'prediction': pred_response})
+
+
+@app.route('/api/session/backfill', methods=['POST'])
+@limiter.limit("20 per minute")
+def backfill_session():
+    """Retroactively record a session that ran while the device was OFFLINE. A session
+    START needs the server to allocate an id, so a game begun with no connectivity is
+    not tracked live; the child app buffers {game, start, end, client_key} on disk and
+    posts it here when the network returns. Created already-closed and scored through the
+    normal pipeline — it has no live chat/voice (those are captured only online), so the
+    prediction is behaviour-driven and availability-weighted fusion handles the absent
+    channels. Idempotent on client_key so a re-sent buffer entry cannot duplicate it."""
+    data       = request.get_json() or {}
+    user_id    = data.get('user_id')
+    game_name  = str(data.get('game_name', '')).strip()[:64]
+    client_key = str(data.get('client_key', '')).strip()[:64]
+    try:
+        user_id = int(user_id)
+        if user_id <= 0:
+            raise ValueError()
+    except (TypeError, ValueError):
+        return jsonify({'error': 'user_id must be a positive integer'}), 400
+    deny = guard(user_id)
+    if deny: return deny
+    if not game_name or not client_key:
+        return jsonify({'error': 'game_name and client_key required'}), 400
+    try:
+        start = _parse_ts(data['start_time'])
+        end   = _parse_ts(data['end_time'])
+    except Exception:
+        return jsonify({'error': 'valid start_time and end_time required'}), 400
+    if end < start:
+        end = start
+    # Clamp an absurd interval (client clock nonsense) to the same stale ceiling the
+    # server-side self-healer uses, so one bad buffer entry can't inject a 40-hour session.
+    duration = min(max(0, int((end - start).total_seconds())), STALE_SESSION_HOURS * 3600)
+
+    conn = get_db()
+    c    = conn.cursor()
+    c.execute('SELECT session_id FROM sessions WHERE user_id=? AND client_key=?',
+              (user_id, client_key))
+    existing = c.fetchone()
+    if existing:                                   # already back-filled — return unchanged
+        conn.close()
+        return jsonify({'success': True, 'session_id': existing['session_id'],
+                        'duration_seconds': duration, 'deduped': True})
+    sid = insert_returning_id(
+        conn,
+        'INSERT INTO sessions (user_id, game_name, start_time, end_time, '
+        'duration_seconds, client_key) VALUES (?,?,?,?,?,?)',
+        (user_id, game_name, start.isoformat(), end.isoformat(), duration, client_key),
+        pk='session_id')
+    conn.commit()
+    conn.close()
+
+    _save_behavioral_snapshot(sid)
+    prediction = run_prediction(sid)
+
+    conn2 = get_db()
+    c2    = conn2.cursor()
+    _maybe_create_alert(c2, user_id, prediction)
+    conn2.commit()
+    c2.execute('''SELECT COALESCE(ROUND(SUM(duration_seconds)/3600.0,2),0) AS wh
+                  FROM sessions WHERE user_id=? AND start_time>=?''',
+               (user_id, (datetime.now() - timedelta(days=7)).isoformat()))
+    wh = c2.fetchone()
+    conn2.close()
+    _update_streak(user_id, float((wh['wh'] if wh else 0) or 0),
+                   prediction.get('risk_category', 'casual'))
+
+    logger.info(f"Backfilled offline session {sid}: {game_name} ({duration}s)")
+    return jsonify({'success': True, 'session_id': sid, 'duration_seconds': duration,
+                    'backfilled': True, 'prediction': {
+                        'risk_label':  prediction['risk_category'],
+                        'risk_score':  prediction['final_risk_score'],
+                    }})
 
 
 @app.route('/api/session/<int:sid>', methods=['GET'])

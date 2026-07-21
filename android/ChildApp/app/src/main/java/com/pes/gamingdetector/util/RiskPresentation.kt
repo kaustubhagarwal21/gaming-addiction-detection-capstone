@@ -4,13 +4,17 @@ import java.util.Locale
 import kotlin.math.roundToInt
 
 /**
- * Family-facing presentation rules for aggregate and per-session risk results.
+ * One presentation contract for risk results on every family-facing surface, in BOTH
+ * apps: [category] is the stable machine key (colours, rules, storage); [serverLabel]
+ * is the screening label the API sends. The UI never shows a child or parent a
+ * clinical-sounding raw key.
  *
- * Category keys remain stable for API/storage logic, while every child-facing surface
- * uses the same non-clinical screening labels as the parent app.
+ * KEEP THE TWO COPIES IDENTICAL apart from the package line — CI diffs
+ * ChildApp/.../RiskPresentation.kt against ParentApp/.../RiskPresentation.kt and
+ * fails the build if they diverge (they did once; see the risk-consistency release).
  */
 object RiskPresentation {
-    private const val SEPARATOR = " \u00B7 "
+    private const val SEPARATOR = " · "
 
     fun displayLabel(category: String?, serverLabel: String? = null): String {
         val value = serverLabel?.trim()?.takeIf { it.isNotEmpty() }
@@ -28,10 +32,10 @@ object RiskPresentation {
         }
     }
 
-    fun scoreText(score: Double): String =
-        "${(score * 100).roundToInt()}%"
+    fun scoreText(score: Double?): String =
+        "${((score ?: 0.0) * 100).roundToInt()}%"
 
-    fun riskScoreText(score: Double): String =
+    fun riskScoreText(score: Double?): String =
         "${scoreText(score)} risk score"
 
     fun periodText(label: String?, sessions: Int?): String? {
@@ -43,6 +47,12 @@ object RiskPresentation {
         }
     }
 
+    fun detailText(score: Double?, periodLabel: String?, sessions: Int?): String =
+        listOfNotNull(
+            riskScoreText(score),
+            periodText(periodLabel, sessions)
+        ).joinToString(SEPARATOR)
+
     fun scopedRiskText(
         scope: String,
         category: String?,
@@ -51,7 +61,7 @@ object RiskPresentation {
     ): String {
         val parts = listOfNotNull(
             displayLabel(category, serverLabel),
-            score?.let(::scoreText)
+            score?.let { scoreText(it) }
         )
         return "$scope: ${parts.joinToString(SEPARATOR)}"
     }

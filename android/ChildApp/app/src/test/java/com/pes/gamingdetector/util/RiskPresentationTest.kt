@@ -4,44 +4,46 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Test
 
+/** Mirrors the other app's copy exactly (CI enforces the main-source twin too). */
 class RiskPresentationTest {
+
     @Test
-    fun `canonical machine categories use family safe labels`() {
+    fun `machine keys and server labels map to family-facing labels`() {
         assertEquals("Low concern", RiskPresentation.displayLabel("casual"))
         assertEquals("Some concern", RiskPresentation.displayLabel("at_risk"))
         assertEquals("High concern", RiskPresentation.displayLabel("addicted"))
+        assertEquals("Some concern", RiskPresentation.displayLabel("AT-RISK"))
+        assertEquals("High concern", RiskPresentation.displayLabel(null, "High concern"))
+        assertEquals("Some concern", RiskPresentation.displayLabel("casual", "Some concern"))
+        assertEquals("Unknown", RiskPresentation.displayLabel(null, null))
+        assertEquals("Unknown", RiskPresentation.displayLabel("  ", ""))
+        assertEquals("Mystery", RiskPresentation.displayLabel("mystery"))
     }
 
     @Test
-    fun `canonical server label wins and legacy raw labels stay safe`() {
-        assertEquals(
-            "Some concern",
-            RiskPresentation.displayLabel("at_risk", "Some concern")
-        )
-        assertEquals(
-            "Some concern",
-            RiskPresentation.displayLabel("casual", "at_risk")
-        )
-        assertEquals("Unknown", RiskPresentation.displayLabel(null))
+    fun `score texts round and tolerate null`() {
+        assertEquals("34%", RiskPresentation.scoreText(0.336))
+        assertEquals("0%", RiskPresentation.scoreText(null))
+        assertEquals("25% risk score", RiskPresentation.riskScoreText(0.25))
     }
 
     @Test
-    fun `period describes latest daily aggregation and pluralizes sessions`() {
-        assertEquals("Today \u00B7 1 session", RiskPresentation.periodText("Today", 1))
-        assertEquals("Yesterday \u00B7 2 sessions", RiskPresentation.periodText("Yesterday", 2))
-        assertEquals("Jun 03", RiskPresentation.periodText("Jun 03", null))
-        assertNull(RiskPresentation.periodText(null, 2))
+    fun `period text pluralises and hides when absent`() {
+        assertEquals("Yesterday · 2 sessions", RiskPresentation.periodText("Yesterday", 2))
+        assertEquals("Today · 1 session", RiskPresentation.periodText("Today", 1))
+        assertEquals("Today", RiskPresentation.periodText("Today", null))
+        assertNull(RiskPresentation.periodText("  ", 3))
+        assertNull(RiskPresentation.periodText(null, 3))
     }
 
     @Test
-    fun `scoped session text cannot be mistaken for dashboard aggregate`() {
-        assertEquals(
-            "Live session: Some concern \u00B7 34%",
-            RiskPresentation.scopedRiskText("Live session", "at_risk", 0.34)
-        )
-        assertEquals(
-            "This session: Low concern \u00B7 25%",
-            RiskPresentation.scopedRiskText("This session", "casual", 0.25)
-        )
+    fun `detail and scoped texts compose the shared pieces`() {
+        assertEquals("34% risk score · Yesterday · 2 sessions",
+            RiskPresentation.detailText(0.34, "Yesterday", 2))
+        assertEquals("34% risk score", RiskPresentation.detailText(0.34, null, null))
+        assertEquals("This session: Low concern · 25%",
+            RiskPresentation.scopedRiskText("This session", "casual", 0.25))
+        assertEquals("Live session: Some concern",
+            RiskPresentation.scopedRiskText("Live session", "at_risk", null))
     }
 }

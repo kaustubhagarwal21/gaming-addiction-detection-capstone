@@ -957,11 +957,16 @@ transcripts enter this same durable queue --- what the child says while offline 
 captured and delivered later.
 
 \textbf{Best-effort with server-side healing.} A session \emph{start} requires a server
-round trip, so a gaming session that begins fully offline is not recorded; if
-connectivity returns mid-game, tracking begins from that moment (the offline head of the
-session is lost, and detection retries every 5\,s until it succeeds). A session
-\emph{end} that fails to send is healed server-side: the stale-session watchdog closes
-the open session at its last recorded activity, so its duration stays realistic. Screen
+round trip, so a gaming session that begins fully offline is not tracked \emph{live};
+detection retries every 5\,s until it succeeds. The offline \emph{head} of such a
+session is now recovered rather than lost: when the game began offline and connectivity
+returns while the same game is still playing, the interval from that offline start is
+buffered on disk and posted to a dedicated back-fill endpoint (idempotent on a
+client-generated key, its duration server-clamped), becoming a real, scored,
+parent-visible session --- durability and de-duplication mirror the offline chat queue.
+A session \emph{end} that fails to send is healed server-side: the stale-session
+watchdog closes the open session at its last recorded activity, so its duration stays
+realistic. Screen
 and notification events are fire-and-forget and dropped while offline --- high-volume,
 low-stakes telemetry where an occasional gap is acceptable --- and the short
 voice-emotion audio segments are deliberately \emph{not} buffered (raw audio is large and
@@ -973,10 +978,11 @@ surfaces the silence to the parent as a ``monitoring has gone silent'' alert (su
 the child's quiet hours). On the Parent app side, dashboards, alerts and reports are
 read-only cloud views that require connectivity; offline, the parent sees the last
 successfully fetched data rather than stale-but-live-looking numbers, and any child data
-captured offline appears as soon as the deferred uploads reach the server. A natural
-extension identified for future work is an on-device session buffer that records
-start/end times locally and back-fills them when connectivity returns, closing the
-``session started while offline'' gap.
+captured offline appears as soon as the deferred uploads reach the server. The one
+residual gap is a session played \emph{entirely} offline that also ends before
+connectivity returns (no online continuation to anchor the back-fill); this is rarer
+than the brief-outage-at-start case the buffer now covers, and closing it fully is
+noted as future work.
 
 \subsection{Security and accounts}
 A family registers once and receives a unique family code; each child has a private
@@ -1386,7 +1392,7 @@ assumptions --- drive the next revision.
 \begin{itemize}[leftmargin=1.4em]
   \item Production-deployed cloud backend (HTTPS, token auth, consent, durable
         managed Postgres); both apps build as signed release APKs.
-  \item A layered test program, all passing: a 68-test API suite (isolated database;
+  \item A layered test program, all passing: a 70-test API suite (isolated database;
         includes ML-unit tests for the shared audio extractor, noisy-OR fusion,
         threshold-tuner math and the session-streak alert; run automatically in CI
         against \textbf{both} SQLite and PostgreSQL~16 --- the production dialect ---
@@ -1396,7 +1402,7 @@ assumptions --- drive the next revision.
         silence floor and late re-score, the watchdog's quiet hours, end-session
         idempotency, feedback re-rating, parent-controlled deletion), and a
         \textbf{25-check end-to-end probe of the live cloud deployment}. Both apps pass
-        Android Lint with zero errors, and 41 JVM unit tests (run in CI) pin the
+        Android Lint with zero errors, and 46 JVM unit tests (run in CI) pin the
         offline chat queue's delivery semantics, the WAV container encoding, IME
         keystroke-to-sentence reconstruction, and the parent-alert triage rules.
   \item Robustness under load on free-tier hosting: pooled, probe-validated connections
@@ -1614,7 +1620,7 @@ Parent value & Per-day weighted risk + ``why'' (SHAP), live ``playing now'' + mo
 Child wellbeing & Mira check-in (typing indicator, double-send guard), gamified daily check-in + streak, reflections, breathing, break/limit nudges, today-vs-goal progress \\
 Reliability/anti-tamper & Heartbeat watchdog (uninstall/kill/offline alert, child-local quiet hours), optional Device Admin (uninstall block + instant disable alert), battery-optimisation exemption, double-start-safe services, consent-gated boot resume, parent-PIN lock on logout/settings (server-verified, constant-time), logout \emph{and} login alerts with honest monitoring status, idempotent session-end, self-scoring stale-session guard, per-child risk notifications, multi-guardian FCM push (lazy-init) \\
 Privacy/Security & Token auth + \emph{role} checks on every parent-only endpoint, deleted-account tokens locked out despite the stateless 30-day TTL (TTL-cached existence probe), peppered PIN hashes (validated, family-wide PIN change), HTTPS-only, encrypted token store, consent (versioned), raw-audio deletion, retention purge, parent-controlled data export mirroring the deletion scope (credentials excluded), 16\,MB body cap, opt-in Sentry crash monitoring (stack traces only, no PII), family code always recoverable in PIN-gated Settings \\
-Engineering & Dual-dialect DB with pooled validated Postgres connections + composite indexes on the hot query paths, per-client rate limiting, hot-path caching/throttling + audio-concurrency cap + bounded throttle caches, thread-safe device-side shared state (concurrent cache, crash-safe confirm-then-delete offline queue, WorkManager network-aware retry), signed APKs, layered tests (68 API + 41 Android JVM + 81 production-mode + 25 live-cloud) + concurrency smoke + CI (pytest on SQLite \emph{and} PostgreSQL, Android lint + unit tests per push, weekly drift monitor against the production DB), real-device validated, lint-clean, deployed + durable DB \\
+Engineering & Dual-dialect DB with pooled validated Postgres connections + composite indexes on the hot query paths, per-client rate limiting, hot-path caching/throttling + audio-concurrency cap + bounded throttle caches, thread-safe device-side shared state (concurrent cache, crash-safe confirm-then-delete offline queue, WorkManager network-aware retry), signed APKs, layered tests (70 API + 46 Android JVM + 81 production-mode + 25 live-cloud) + concurrency smoke + CI (pytest on SQLite \emph{and} PostgreSQL, Android lint + unit tests per push, weekly drift monitor against the production DB), real-device validated, lint-clean, deployed + durable DB \\
 \bottomrule
 \end{tabularx}
 \end{center}
@@ -1660,7 +1666,8 @@ value depends on accumulating real usage data the prototype does not yet have:
         variables); what remains data-bound is calibrating the fusion parameters and
         retraining the models on real labels --- the change that converts synthetic
         accuracy into validated performance. The pilot's sensitivity analysis
-        (\Sef{sec:pilot}) already \emph{prioritises} this agenda: genre weighting and band
+        (\S
+ef{sec:pilot}) already \emph{prioritises} this agenda: genre weighting and band
         thresholds measurably drive outcomes and go first; the ensemble weights
         measurably do not ($\leq 0.3\%$ band impact) and can wait. Needs a pilot at
         scale, plus the IGDS9-SF ground-truth instrument (per-child parent-report

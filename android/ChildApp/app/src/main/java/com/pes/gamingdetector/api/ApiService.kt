@@ -31,6 +31,12 @@ interface ApiService {
     @POST("api/session/start")
     suspend fun startSession(@Body request: StartSessionRequest): Response<SessionResponse>
 
+    // Retroactively record a session that ran while offline (see OfflineSessionBuffer).
+    @POST("api/session/backfill")
+    suspend fun backfillSession(
+        @Body body: @JvmSuppressWildcards Map<String, Any>
+    ): Response<GenericResponse>
+
     @POST("api/session/{id}/end")
     suspend fun endSession(
         @Path("id") sessionId: Int,

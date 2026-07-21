@@ -58,6 +58,23 @@ jobs:
           DATABASE_URL: postgresql://capstone:capstone@localhost:5432/capstone_test
         run: python -m pytest tests/ -v
 
+  # The two apps deliberately carry an IDENTICAL RiskPresentation (main + test) so
+  # family-facing risk wording can never drift between them again — enforce it.
+  shared-source-sync:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: RiskPresentation twins must match (apart from the package line)
+        run: |
+          set -e
+          for f in "main/java/com/pes/gamingdetector/util/RiskPresentation.kt main/java/com/pes/parentmonitor/util/RiskPresentation.kt" \
+                   "test/java/com/pes/gamingdetector/util/RiskPresentationTest.kt test/java/com/pes/parentmonitor/util/RiskPresentationTest.kt"; do
+            set -- $f
+            diff <(tail -n +2 "android/ChildApp/app/src/$1") <(tail -n +2 "android/ParentApp/app/src/$2") \
+              || { echo "::error::RiskPresentation twins diverged: $1 vs $2"; exit 1; }
+          done
+          echo "twins identical"
+
   android-checks:
     runs-on: ubuntu-latest
     strategy:
