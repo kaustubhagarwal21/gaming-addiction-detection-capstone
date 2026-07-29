@@ -30,6 +30,15 @@ import kotlinx.coroutines.launch
  * history at prediction time, so the app no longer posts behavioural data.
  */
 class GameMonitorService : Service() {
+    companion object {
+        // Break/limit nudge notification ids, namespaced (like the parent-nudge ids in
+        // PassiveMonitorService) well away from the small positive foreground-service
+        // ids so a nudge can never replace an ongoing service notification.
+        private const val NOTIF_BREAK_90      = 0x42000001
+        private const val NOTIF_BREAK_120     = 0x42000002
+        private const val NOTIF_LIMIT_REACHED = 0x42000003
+    }
+
     private var sessionId: Int = -1
     private var gameName: String = ""
     private var serverUrl: String = Constants.BASE_URL
@@ -79,11 +88,11 @@ class GameMonitorService : Service() {
                         // A service restarted after two hours must not send the older
                         // 90-minute reminder one minute after the 2-hour reminder.
                         sent90 = true
-                        sendBreakNudge("2-Hour Reminder",
+                        sendBreakNudge(NOTIF_BREAK_120, "2-Hour Reminder",
                             "2 hours of gaming done! Time to take a proper break and rest your eyes.")
                     } else if (mins >= 90 && !sent90) {
                         sent90 = true
-                        sendBreakNudge("90-Minute Check-in",
+                        sendBreakNudge(NOTIF_BREAK_90, "90-Minute Check-in",
                             "You've been gaming for 90 minutes. Take a 10-minute break — your brain will thank you!")
                     }
                     // Parent-set daily limit reached for today (completed sessions + this one).
@@ -91,7 +100,7 @@ class GameMonitorService : Service() {
                         val limit = checkDailyLimitReached(start)
                         if (limit != null) {
                             limitNotified = true
-                            sendBreakNudge("Daily limit reached",
+                            sendBreakNudge(NOTIF_LIMIT_REACHED, "Daily limit reached",
                                 "You've hit your ${"%.1f".format(limit)}h gaming limit for today. " +
                                 "Time to wrap up and do something else — your parent set this with you. 🌟")
                         }
@@ -128,7 +137,7 @@ class GameMonitorService : Service() {
         return durationClock!!.elapsedMs(SystemClock.elapsedRealtime())
     }
 
-    private fun sendBreakNudge(title: String, message: String) {
+    private fun sendBreakNudge(notificationId: Int, title: String, message: String) {
         try {
             val notif = NotificationCompat.Builder(this, Constants.CHANNEL_ALERTS)
                 .setSmallIcon(R.drawable.ic_launcher)
@@ -138,7 +147,11 @@ class GameMonitorService : Service() {
                 .setPriority(NotificationCompat.PRIORITY_HIGH)
                 .setAutoCancel(true)
                 .build()
-            NotificationManagerCompat.from(this).notify(System.currentTimeMillis().toInt() and 0xFFFF, notif)
+            // Stable id per nudge kind. The old random 16-bit id (millis and 0xFFFF)
+            // could land on a reserved foreground-service id (1001 monitoring, 1011
+            // voice, 1099 passive monitor, ...) and replace that ongoing card with an
+            // auto-cancel nudge. Same-kind replacement is fine — the newer text wins.
+            NotificationManagerCompat.from(this).notify(notificationId, notif)
         } catch (_: SecurityException) { /* notifications not permitted — skip */ }
     }
 

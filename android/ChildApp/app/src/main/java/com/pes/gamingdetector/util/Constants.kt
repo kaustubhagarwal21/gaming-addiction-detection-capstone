@@ -16,7 +16,6 @@ object Constants {
     const val KEY_ACTIVE_SESSION_START = "active_session_start"
     const val KEY_PENDING_END_SESSION_ID = "pending_end_session_id"
     const val KEY_PENDING_END_STOPPED_AT = "pending_end_stopped_at"
-    const val KEY_CHILD_CODE = "child_code"
     const val KEY_AUTH_TOKEN = "auth_token"
     const val KEY_AUTH_SERVER_URL = "auth_server_url"
 
@@ -26,7 +25,6 @@ object Constants {
 
     // Notification IDs
     const val NOTIF_MONITORING  = 1001
-    const val NOTIF_ALERT       = 1002
     const val NOTIF_SESSION_END = 1003
 
     // Package → display game name (used for auto-session detection + notification capture).
@@ -69,5 +67,4 @@ object Constants {
 
     // Timing constants (ms)
     const val VOICE_SEGMENT_DURATION_MS = 10_000L
-    const val LIVE_PREDICT_INTERVAL_MS = 60_000L
 }

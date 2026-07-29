@@ -221,7 +221,7 @@ a shadow mode (log violations without breaking clients) → enforce rollout. Rat
 limiting via Flask-Limiter; tokens of deleted accounts are rejected by an existence
 check. 169 backend tests — run in CI against both SQLite and Postgres 16, the
 production dialect — cover the authz matrix, including regression tests for the
-alert-ownership gap we found and fixed; 89 Android JVM unit tests guard the
+alert-ownership gap we found and fixed; 87 Android JVM unit tests guard the
 offline-session/capture-health logic, profile validation, risk presentation,
 offline queue, WAV, keystroke reconstruction, and alert-triage logic.
 

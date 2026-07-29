@@ -120,10 +120,6 @@ class PrefsManager(context: Context) {
         .remove(Constants.KEY_PENDING_END_STOPPED_AT)
         .commit()
 
-    var childCode: String
-        get() = prefs.getString(Constants.KEY_CHILD_CODE, "") ?: ""
-        set(v) = prefs.edit().putString(Constants.KEY_CHILD_CODE, v).apply()
-
     // Marks a game whose session START failed because the device was offline (server
     // unreachable / Render cold-start). If connectivity returns while the SAME game is
     // still playing, the interval from this start is back-filled as a real session.

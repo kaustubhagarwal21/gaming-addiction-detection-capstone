@@ -31,7 +31,7 @@ Notes
 ```
 .\gradlew.bat testDebugUnitTest
 ```
-89 tests across the two apps (56 Child, 33 Parent) pin the pure decision logic:
+87 tests across the two apps (56 Child, 31 Parent) pin the pure decision logic:
 offline-session backfill and persisted capture-health rules
 (OfflineSessionLogic/CaptureHealthLogic), profile-edit validation
 (`ProfileValidation`), auth revision/origin handling, server URL validation,
@@ -127,8 +127,9 @@ signed release APKs from `android/*/app/build/outputs/apk/release/app-release.ap
       this risk level" SHAP factors, signals-analysed ticks.
 - [ ] **No notification loop**: with the dashboard open near a band boundary, the
       "Risk Level Changed" notification must NOT repeat every minute. *(This exact
-      loop was found on-device and fixed — dashboard and poller used different risk
-      definitions; re-notify now also has a 30-min per-level cooldown.)*
+      loop was found on-device — dashboard and poller used different risk
+      definitions. The band-comparison notification was ultimately removed entirely:
+      notifications now come only from durable alert rows, deduplicated by alert id.)*
 - [ ] **Alerts**: friendly ages ("2h ago"); rate one Accurate/False alarm → buttons
       become a "thanks" line; the **agreement banner** appears at the top.
 - [ ] **Send a nudge** (preset or custom) → notification pops on the child phone

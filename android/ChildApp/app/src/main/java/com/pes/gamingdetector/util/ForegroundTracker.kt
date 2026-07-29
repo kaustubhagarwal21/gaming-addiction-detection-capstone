@@ -1,7 +1,5 @@
 package com.pes.gamingdetector.util
 
-import android.os.SystemClock
-
 /**
  * Process-local cache of the current foreground app, populated by
  * ChatAccessibilityService's TYPE_WINDOW_STATE_CHANGED events.
@@ -18,7 +16,6 @@ import android.os.SystemClock
 object ForegroundTracker {
 
     @Volatile private var currentPkg: String? = null
-    @Volatile private var lastChangeAt: Long = 0L
 
     private val IGNORE_PREFIXES = listOf(
         "com.android.systemui",
@@ -32,9 +29,7 @@ object ForegroundTracker {
         if (pkg.isNullOrEmpty() || pkg == "android") return
         if (IGNORE_PREFIXES.any { pkg.startsWith(it) }) return
         currentPkg = pkg
-        lastChangeAt = SystemClock.elapsedRealtime()
     }
 
     fun current(): String? = currentPkg
-    fun lastChangeAt(): Long = lastChangeAt
 }

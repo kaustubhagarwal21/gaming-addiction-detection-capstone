@@ -12,7 +12,6 @@ object Constants {
     const val KEY_FAMILY_CODE = "family_code"
     const val KEY_SERVER_URL = "server_url"
     const val KEY_CHILD_USER_ID = "child_user_id"
-    const val KEY_LAST_RISK_LEVEL = "last_risk_level"
     const val KEY_FCM_TOKEN = "fcm_token"
     const val KEY_LAST_ALERT_ID = "last_notified_alert_id"
     const val KEY_AUTH_TOKEN = "auth_token"

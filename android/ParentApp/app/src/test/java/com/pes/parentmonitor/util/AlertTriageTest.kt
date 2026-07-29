@@ -7,9 +7,8 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
- * The alert-notification decision rules. Two past bugs live here as regression tests:
- * the shared high-water mark that suppressed a sibling's alerts, and the risk-flapping
- * spam the cooldown exists to stop.
+ * The alert-notification decision rules. A past bug lives here as a regression test:
+ * the shared high-water mark that suppressed a sibling's alerts.
  */
 class AlertTriageTest {
 
@@ -59,16 +58,6 @@ class AlertTriageTest {
         assertEquals(2, picked?.id)
     }
 
-    // ── risk-change notifications ───────────────────────────────────────────
-
-    @Test
-    fun `only elevated risk levels notify, case-insensitively`() {
-        assertTrue(AlertTriage.isNotifyWorthyRisk("at_risk"))
-        assertTrue(AlertTriage.isNotifyWorthyRisk("ADDICTED"))
-        assertFalse(AlertTriage.isNotifyWorthyRisk("casual"))
-        assertFalse(AlertTriage.isNotifyWorthyRisk(""))
-    }
-
     @Test
     fun `notification title carries the batch count`() {
         // A burst collapses to one card (worst severity wins), so the title must say
@@ -87,15 +76,5 @@ class AlertTriageTest {
             assertFalse("$it is factual, not a model assessment",
                 AlertTriage.isFeedbackEligible(it))
         }
-    }
-
-    @Test
-    fun `cooldown suppresses re-notification inside the window and allows it after`() {
-        val notifiedAt = 1_750_000_000_000L   // a realistic wall-clock ms timestamp
-        val window = AlertTriage.RISK_RENOTIFY_MS
-        assertFalse(AlertTriage.riskCooldownPassed(notifiedAt, notifiedAt + window))      // boundary: still suppressed
-        assertTrue(AlertTriage.riskCooldownPassed(notifiedAt, notifiedAt + window + 1))
-        // never notified → the service's `?: 0L` default must always clear the window
-        assertTrue(AlertTriage.riskCooldownPassed(0L, notifiedAt))
     }
 }

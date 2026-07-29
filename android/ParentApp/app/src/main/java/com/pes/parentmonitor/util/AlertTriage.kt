@@ -3,15 +3,11 @@ package com.pes.parentmonitor.util
 import com.pes.parentmonitor.api.Alert
 
 /**
- * The pure decision logic of AlertPollingService — which alerts are new, which one to
- * surface, and when a risk change deserves a (re-)notification. No Android types, so
- * it runs under plain-JVM unit tests; the service owns polling, prefs, and the
- * notification plumbing.
+ * The pure decision logic of AlertPollingService — which alerts are new and which one
+ * to surface. No Android types, so it runs under plain-JVM unit tests; the service
+ * owns polling, prefs, and the notification plumbing.
  */
 object AlertTriage {
-    /** One risk-change notification per child+level per window is plenty. */
-    const val RISK_RENOTIFY_MS = 30 * 60 * 1000L
-
     fun severityRank(s: String): Int = when (s.lowercase()) {
         "high"   -> 3
         "medium" -> 2
@@ -36,10 +32,6 @@ object AlertTriage {
         if (newCount <= 1) "Gaming alert · $childName"
         else "$newCount new alerts · $childName"
 
-    /** Only elevated levels notify; a drop back to casual is visible in the app. */
-    fun isNotifyWorthyRisk(risk: String): Boolean =
-        risk.lowercase() in listOf("at_risk", "addicted")
-
     /**
      * Parent verdicts are useful only for alerts that contain a model/heuristic
      * assessment. Include aggregate streak alerts and late risk revisions as well as
@@ -53,9 +45,4 @@ object AlertTriage {
             "toxicity",
             "toxicity_streak",
         )
-
-    /** Consecutive sessions either side of a band cut-off flip the level back and
-     *  forth; the cooldown stops that turning into notification spam. */
-    fun riskCooldownPassed(lastNotifiedAt: Long, now: Long): Boolean =
-        now - lastNotifiedAt > RISK_RENOTIFY_MS
 }

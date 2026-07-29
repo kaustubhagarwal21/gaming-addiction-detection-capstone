@@ -6408,6 +6408,7 @@ def get_streak():
     c       = conn.cursor()
     c.execute('SELECT * FROM streaks WHERE user_id=?', (user_id,))
     row = c.fetchone()
+    local_today = _local_now(c, user_id).date().isoformat() if row else None
     conn.close()
     if not row:
         return jsonify({'success': True, 'current_streak': 0, 'longest_streak': 0,
@@ -6418,6 +6419,10 @@ def get_streak():
     cur  = row['current_streak']
     best = row['longest_streak']
     total = row['total_healthy_days']
+    # Same definition _update_streak maintains: today (child-local) was credited healthy.
+    # The empty-streak branch above already returns this field; the populated branch
+    # omitted it, so the endpoint's shape depended on whether a streak row existed.
+    is_healthy_today = row.get('last_healthy_date') == local_today
 
     # Badge tier
     if cur >= 30:   badge = 'gold';   badge_label = 'Gold — 30-day streak!'
@@ -6430,7 +6435,8 @@ def get_streak():
            f"Best streak: {best} days. Total healthy days: {total}.")
 
     return jsonify({'success': True, 'current_streak': cur, 'longest_streak': best,
-                    'total_healthy_days': total, 'badge': badge, 'badge_label': badge_label,
+                    'total_healthy_days': total, 'is_healthy_today': is_healthy_today,
+                    'badge': badge, 'badge_label': badge_label,
                     'message': msg})
 
 
