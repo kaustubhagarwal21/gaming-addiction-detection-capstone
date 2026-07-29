@@ -16,7 +16,7 @@ from datetime import datetime, timedelta
 # logic — no train/serve or hashing skew. Importing app also runs init_db(), which
 # guarantees the schema exists before we insert.
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from app import get_db, insert_returning_id, hash_pin
+from app import get_db, insert_returning_id, hash_pin, USE_POSTGRES
 
 
 SESSION_PLAN = [
@@ -253,6 +253,17 @@ def seed_extras(c, conn, user_id, name):
 
 
 def seed():
+    # This script OVERWRITES user ids 1 and 3 (names + PINs reset to the demo
+    # credentials published in this repo) and DELETES their existing sessions, chats,
+    # voice events, alerts and reflections. On the local SQLite dev DB that's the
+    # point; on a real (Postgres) deployment those ids belong to real children, so a
+    # cloud run must be an explicit, deliberate opt-in.
+    if USE_POSTGRES and os.environ.get('SEED_DEMO_FORCE') != '1':
+        raise SystemExit(
+            'Refusing to seed a Postgres database: user ids 1 and 3 would be '
+            'overwritten with the published demo credentials and ALL their existing '
+            'data deleted. If this really is a disposable demo/staging database, '
+            're-run with SEED_DEMO_FORCE=1.')
     conn = get_db()
     c    = conn.cursor()
 
@@ -284,6 +295,12 @@ def seed():
     else:
         c.execute("UPDATE users SET name='Priya', pin_hash=?, parent_pin_hash=?, family_code=?, pin='', parent_pin='', age=12 WHERE user_id=3",
                   (priya_pin, parent_pin, family_code))
+    if USE_POSTGRES:
+        # The explicit-id INSERTs above bypass the SERIAL sequence. Without this, the
+        # next real /api/register draws user_id 1 (or 3) again, collides on users_pkey,
+        # and the family is told their (perfectly free) PIN is "already taken".
+        c.execute("SELECT setval(pg_get_serial_sequence('users','user_id'), "
+                  "(SELECT MAX(user_id) FROM users))")
     conn.commit()
 
     n1 = seed_child(c, conn, 1, 'Arjun', SESSION_PLAN)

@@ -31,7 +31,13 @@ os.environ.setdefault('AUTH_ENFORCE', '0')
 os.environ.setdefault('SEED_DEFAULT_USER', '1')
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
-from app import app as flask_app, get_db, insert_returning_id, limiter  # noqa: E402
+from app import (  # noqa: E402
+    CONSENT_VERSION,
+    app as flask_app,
+    get_db,
+    insert_returning_id,
+    limiter,
+)
 
 # Disable rate limiting for the suite (the documented Flask-Limiter testing recipe).
 # The limits are per-minute and the whole suite runs in seconds from one client IP, so
@@ -51,7 +57,10 @@ def _seed():
     session with a prediction and an alert, so dashboards/feedback have real rows."""
     conn = get_db()
     c = conn.cursor()
-    c.execute("UPDATE users SET family_code=? WHERE user_id=1", (FAMILY_CODE,))
+    c.execute("""UPDATE users SET family_code=?, consent_given_at=?,
+                 consent_version=? WHERE user_id=1""",
+              (FAMILY_CODE, (datetime.now() - timedelta(days=365)).isoformat(),
+               CONSENT_VERSION))
 
     now = datetime.now()
     start = (now - timedelta(hours=2)).isoformat()
@@ -81,6 +90,15 @@ def _seed_db():
 
 @pytest.fixture()
 def client():
+    # Consent is mutable in policy-boundary tests; reset it per test so one acceptance
+    # timestamp cannot make another test's historical/backfill fixture pre-consent.
+    conn = get_db()
+    conn.execute("""UPDATE users SET consent_given_at=?, consent_version=?
+                    WHERE user_id=1""",
+                 ((datetime.now() - timedelta(days=365)).isoformat(),
+                  CONSENT_VERSION))
+    conn.commit()
+    conn.close()
     flask_app.config['TESTING'] = True
     with flask_app.test_client() as c:
         yield c

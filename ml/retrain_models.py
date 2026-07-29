@@ -20,6 +20,11 @@ warnings.filterwarnings('ignore')
 
 MODELS_DIR = os.path.join(os.path.dirname(__file__), '..', 'backend', 'models')
 DATA_DIR   = os.path.join(os.path.dirname(__file__), '..', 'data')
+RISK_T1 = float(os.environ.get('RISK_T1', '0.33'))
+RISK_T2 = float(os.environ.get('RISK_T2', '0.67'))
+if not (np.isfinite(RISK_T1) and np.isfinite(RISK_T2)
+        and 0.0 < RISK_T1 < RISK_T2 < 1.0):
+    raise ValueError("RISK_T1/RISK_T2 must satisfy 0 < RISK_T1 < RISK_T2 < 1")
 
 # Share the EXACT preprocessing + feature derivation the backend serves with (no
 # train/serve skew). derive_psychometrics is the single source of truth for the 10
@@ -572,7 +577,8 @@ def verify_end_to_end(behavior_clf, scaler, feature_names, chat_clf, vectorizer)
         v_score = VOICE_RISK[s['voice']]
 
         ensemble = 0.40 * b_score + 0.30 * c_score + 0.30 * v_score
-        risk = 'casual' if ensemble < 0.33 else ('at_risk' if ensemble < 0.67 else 'addicted')
+        risk = ('casual' if ensemble < RISK_T1
+                else ('at_risk' if ensemble < RISK_T2 else 'addicted'))
         ok   = 'OK' if risk == s['expected'] else 'FAIL'
 
         print(f"{s['name']:<20} {label_map[b_pred]:<10} {b_score:>7.3f} {c_score:>7.3f} {v_score:>7.3f} {ensemble:>8.3f} {risk:<10} {ok}")

@@ -119,6 +119,34 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
+
+def _env_int(name: str, default: int, minimum: int | None = None) -> int:
+    raw = os.environ.get(name, str(default))
+    try:
+        if not re.fullmatch(r'[+-]?\d+', str(raw).strip()):
+            raise ValueError()
+        value = int(raw)
+    except (TypeError, ValueError):
+        raise RuntimeError(f'{name} must be an integer') from None
+    if minimum is not None and value < minimum:
+        raise RuntimeError(f'{name} must be at least {minimum}')
+    return value
+
+
+def _env_float(name: str, default: float, minimum=None, maximum=None) -> float:
+    raw = os.environ.get(name, str(default))
+    try:
+        value = float(raw)
+    except (TypeError, ValueError):
+        raise RuntimeError(f'{name} must be a number') from None
+    if not math.isfinite(value):
+        raise RuntimeError(f'{name} must be finite')
+    if minimum is not None and value < minimum:
+        raise RuntimeError(f'{name} must be at least {minimum}')
+    if maximum is not None and value > maximum:
+        raise RuntimeError(f'{name} must be at most {maximum}')
+    return value
+
 # Production error monitoring — enabled only when SENTRY_DSN is set (the SDK was in
 # requirements but never initialised, so server errors vanished into logs nobody
 # tails). send_default_pii=False: never attach request bodies/user context — this
@@ -145,14 +173,18 @@ if _SENTRY_DSN:
 #       apps are updated to send tokens.
 #   enforce (AUTH_ENFORCE=1, set in production) — missing/invalid token → 401,
 #       accessing someone else's data → 403.
+AUTH_ENFORCE = os.environ.get('AUTH_ENFORCE', '0') == '1'
 AUTH_SECRET  = os.environ.get('AUTH_SECRET')
-if not AUTH_SECRET:
+if not AUTH_SECRET or not AUTH_SECRET.strip():
+    if AUTH_ENFORCE:
+        raise RuntimeError(
+            'AUTH_SECRET is required when AUTH_ENFORCE=1; refusing to use the '
+            'public development signing key')
     # Stable dev fallback so tokens survive a reload locally; production MUST set
     # AUTH_SECRET (a random value here would invalidate every token on restart).
     AUTH_SECRET = 'dev-insecure-secret-DO-NOT-USE-IN-PRODUCTION'
     logger.warning("AUTH_SECRET not set — using insecure dev fallback. Set AUTH_SECRET in production.")
-AUTH_ENFORCE = os.environ.get('AUTH_ENFORCE', '0') == '1'
-TOKEN_TTL    = int(os.environ.get('AUTH_TOKEN_TTL_SECONDS', str(30 * 24 * 3600)))  # 30 days
+TOKEN_TTL = _env_int('AUTH_TOKEN_TTL_SECONDS', 30 * 24 * 3600, minimum=1)
 _token_signer = URLSafeTimedSerializer(AUTH_SECRET, salt='gad-auth-v1')
 
 # PIN hashing. PINs are never stored in plaintext. We use a keyed HMAC (server-side
@@ -175,13 +207,49 @@ def verify_pin(pin: str, stored_hash: str) -> bool:
     return hmac.compare_digest(hash_pin(pin), stored_hash)
 
 
-def mint_token(role: str, user_id: int, allowed_ids) -> str:
+def mint_token(role: str, user_id: int, allowed_ids, family_code: str | None = None,
+               credential_version: int | None = None) -> str:
     """Issue a signed token for a freshly authenticated user."""
-    return _token_signer.dumps({
+    claims = {
         'role': role,
         'uid': int(user_id),
         'allowed': sorted({int(x) for x in allowed_ids}),
-    })
+    }
+    # Parent membership is dynamic: a sibling can be registered after the parent logged
+    # in. The signed family identifier lets guard() authorize that new child without
+    # forcing a logout/login. Old tokens without this claim keep their frozen allow-list.
+    if role == 'parent':
+        family = str(family_code or '').strip().upper()
+        # Keep the helper safe for internal/test callers that only know the parent's
+        # representative child id. Login normally supplies family_code explicitly,
+        # but emitting a parent token without a family/version claim makes it
+        # immediately fail the credential-version check.
+        if not family:
+            conn = get_db()
+            row = conn.execute('SELECT family_code FROM users WHERE user_id=?',
+                               (int(user_id),)).fetchone()
+            conn.close()
+            family = str((row['family_code'] if row else '') or '').strip().upper()
+        if not family:
+            raise ValueError('Cannot mint a parent token without a family code')
+        claims['family'] = family
+        if credential_version is None:
+            conn = get_db()
+            row = conn.execute(
+                'SELECT MAX(family_auth_version) AS v FROM users WHERE family_code=?',
+                (family,)).fetchone()
+            conn.close()
+            credential_version = int((row['v'] if row else 0) or 0)
+        claims['family_auth_version'] = int(credential_version)
+    else:
+        if credential_version is None:
+            conn = get_db()
+            row = conn.execute('SELECT auth_version FROM users WHERE user_id=?',
+                               (int(user_id),)).fetchone()
+            conn.close()
+            credential_version = int((row['auth_version'] if row else 0) or 0)
+        claims['auth_version'] = int(credential_version)
+    return _token_signer.dumps(claims)
 
 
 def _read_token():
@@ -222,6 +290,70 @@ def _user_exists(uid: int) -> bool:
     return exists
 
 
+def _token_auth_version_current(claims: dict) -> bool:
+    """Reject tokens minted before the latest child/family credential rotation."""
+    try:
+        role = claims.get('role')
+        conn = get_db()
+        if role == 'parent':
+            family = str(claims.get('family') or '').strip().upper()
+            expected = _positive_int(
+                int(claims.get('family_auth_version', -1)) + 1,
+                'family_auth_version') - 1
+            rows = conn.execute(
+                'SELECT family_auth_version FROM users WHERE family_code=?',
+                (family,)).fetchall()
+            conn.close()
+            versions = {int(row['family_auth_version'] or 0) for row in rows}
+            return bool(family and versions == {expected})
+        uid = int(claims.get('uid'))
+        expected = int(claims.get('auth_version', -1))
+        row = conn.execute('SELECT auth_version FROM users WHERE user_id=?',
+                           (uid,)).fetchone()
+        conn.close()
+        return bool(row and int(row['auth_version'] or 0) == expected)
+    except Exception:
+        try:
+            conn.close()
+        except Exception:
+            pass
+        return False
+
+
+def _parent_family_allows(claims: dict, target_uid: int) -> bool:
+    """Resolve a signed parent family claim against current database membership."""
+    family = str((claims or {}).get('family') or '').strip().upper()
+    if (claims or {}).get('role') != 'parent' or not family:
+        return False
+    try:
+        conn = get_db()
+        row = conn.execute('SELECT 1 FROM users WHERE user_id=? AND family_code=?',
+                           (target_uid, family)).fetchone()
+        conn.close()
+        return row is not None
+    except Exception:
+        # A DB outage must not broaden authorization. Existing token allow-list entries
+        # are evaluated separately and preserve the old-token availability path.
+        return False
+
+
+def _authorized_user_ids(claims: dict | None = None) -> list[int]:
+    """Current child ids for a parent token, with old-token compatibility."""
+    claims = claims if claims is not None else (getattr(g, 'auth', None) or {})
+    fallback = sorted({int(v) for v in claims.get('allowed', [])})
+    family = str(claims.get('family') or '').strip().upper()
+    if claims.get('role') != 'parent' or not family:
+        return fallback
+    try:
+        conn = get_db()
+        rows = conn.execute('SELECT user_id FROM users WHERE family_code=? ORDER BY user_id',
+                            (family,)).fetchall()
+        conn.close()
+        return [int(row['user_id']) for row in rows]
+    except Exception:
+        return fallback
+
+
 def guard(target_uid=None):
     """Authenticate the caller and authorize access to target_uid's data.
 
@@ -241,16 +373,26 @@ def guard(target_uid=None):
         if AUTH_ENFORCE:
             return jsonify({'success': False, 'message': 'Invalid authentication token'}), 401
 
+    if g.auth is not None and not _token_auth_version_current(g.auth):
+        logger.warning("AUTH token revoked by credential version: uid=%s",
+                       g.auth.get('uid'))
+        g.auth = None
+        if AUTH_ENFORCE:
+            return jsonify({'success': False,
+                            'message': 'Security settings changed - please log in again'}), 401
+
     if g.auth is None and AUTH_ENFORCE:
         return jsonify({'success': False, 'message': 'Authentication required'}), 401
 
     if target_uid is not None:
         try:
-            tid = int(target_uid)
+            tid = _positive_int(target_uid, 'user_id')
         except (TypeError, ValueError):
             return (jsonify({'success': False, 'message': 'invalid user id'}), 400) if AUTH_ENFORCE else None
         allowed = (g.auth or {}).get('allowed', [])
-        if g.auth is not None and tid not in allowed:
+        dynamically_allowed = bool(
+            g.auth is not None and _parent_family_allows(g.auth, tid))
+        if g.auth is not None and tid not in allowed and not dynamically_allowed:
             if AUTH_ENFORCE:
                 logger.warning("AUTHZ DENY: uid=%s tried target=%s allowed=%s",
                                g.auth.get('uid'), tid, allowed)
@@ -353,6 +495,11 @@ DATABASE_URL = os.environ.get('DATABASE_URL', '').strip()
 if DATABASE_URL.startswith('postgres://'):          # Render gives postgres://; psycopg2 prefers postgresql://
     DATABASE_URL = 'postgresql://' + DATABASE_URL[len('postgres://'):]
 USE_POSTGRES = DATABASE_URL.startswith('postgresql')
+REQUIRE_DATABASE_URL = os.environ.get('REQUIRE_DATABASE_URL', '0') == '1'
+if REQUIRE_DATABASE_URL and not USE_POSTGRES:
+    raise RuntimeError(
+        'A PostgreSQL DATABASE_URL is required when REQUIRE_DATABASE_URL=1; '
+        'refusing to fall back to ephemeral SQLite')
 # A real (Postgres) deployment that isn't enforcing auth, or is still on the insecure dev
 # secret, is wide open — every endpoint accepts unauthenticated/forged tokens. render.yaml
 # sets these correctly, but a hand-rolled deploy might not, so fail LOUD in the logs.
@@ -452,11 +599,21 @@ class _PgConnection:
 # discarded and replaced instead of failing the request.
 _PG_POOL      = None
 _PG_POOL_LOCK = threading.Lock()
-PG_POOL_MAX   = int(os.environ.get('PG_POOL_MAX', '10'))   # > gunicorn threads (8) + slack
+_PG_POOL_PID  = None
+PG_POOL_MAX = _env_int('PG_POOL_MAX', 10, minimum=1)
 
 
 def _pg_pool():
-    global _PG_POOL
+    global _PG_POOL, _PG_POOL_PID
+    pid = os.getpid()
+    # psycopg pools/connections are not fork-safe.  The production command does not
+    # preload the app, but keep this guard as a defence for alternate launchers: never
+    # hand a worker a connection pool constructed in the master process.
+    if _PG_POOL is not None and _PG_POOL_PID != pid:
+        logger.warning("Discarding Postgres pool inherited across fork (%s -> %s)",
+                       _PG_POOL_PID, pid)
+        _PG_POOL = None
+        _PG_POOL_PID = None
     if _PG_POOL is None:
         with _PG_POOL_LOCK:
             if _PG_POOL is None:
@@ -468,6 +625,7 @@ def _pg_pool():
                     # quickly rather than hanging a request on first reuse.
                     keepalives=1, keepalives_idle=30,
                     keepalives_interval=10, keepalives_count=3)
+                _PG_POOL_PID = pid
     return _PG_POOL
 
 
@@ -525,6 +683,17 @@ def add_column(c, table, name, decl):
             c.execute(f'ALTER TABLE {table} ADD COLUMN {name} {decl}')
         except Exception:
             pass
+
+
+def _column_exists(c, table: str, name: str) -> bool:
+    """Whether a column existed before an idempotent migration step."""
+    if USE_POSTGRES:
+        c.execute('''SELECT 1 FROM information_schema.columns
+                     WHERE table_schema=current_schema()
+                     AND table_name=? AND column_name=?''', (table, name))
+        return c.fetchone() is not None
+    c.execute(f'PRAGMA table_info({table})')
+    return any(str(row['name']) == name for row in c.fetchall())
 
 
 def insert_returning_id(conn, sql, params, pk='id'):
@@ -600,8 +769,10 @@ SCREENING_DISCLAIMER = ("Wellbeing screening indicator based on gaming patterns 
 # Env-overridable so real feedback labels can tune them WITHOUT a code change:
 # ml/tune_from_feedback.py analyses the parent-feedback table and writes recommended
 # values (backend/models/threshold_tuning.json) to set as env vars on the service.
-RISK_T1 = float(os.environ.get('RISK_T1', '0.33'))   # below → casual (low concern)
-RISK_T2 = float(os.environ.get('RISK_T2', '0.67'))   # below → at_risk; at/above → addicted
+RISK_T1 = _env_float('RISK_T1', 0.33, minimum=0.0, maximum=1.0)
+RISK_T2 = _env_float('RISK_T2', 0.67, minimum=0.0, maximum=1.0)
+if not 0.0 < RISK_T1 < RISK_T2 < 1.0:
+    raise RuntimeError('Risk thresholds must satisfy 0 < RISK_T1 < RISK_T2 < 1')
 
 # Per-message chat-toxicity alert cutoffs. Deliberately high: a per-message alert is
 # an accusation about a SPECIFIC line the parent may confront the child over, so it is
@@ -615,8 +786,9 @@ RISK_T2 = float(os.environ.get('RISK_T2', '0.67'))   # below → at_risk; at/abo
 # Recall that per-message recall gives up is recovered by the SESSION-level streak
 # alert below, which aggregates repeated moderately-flagged messages.
 # Env-overridable for the same feedback-driven tuning as the risk bands above.
-CHAT_ALERT_T      = float(os.environ.get('CHAT_ALERT_T', '0.90'))       # at/above → toxicity alert
-CHAT_ALERT_HIGH_T = float(os.environ.get('CHAT_ALERT_HIGH_T', '0.95'))  # at/above → 'high' severity
+CHAT_ALERT_T = _env_float('CHAT_ALERT_T', 0.90, minimum=0.0, maximum=1.0)
+CHAT_ALERT_HIGH_T = _env_float(
+    'CHAT_ALERT_HIGH_T', 0.95, minimum=0.0, maximum=1.0)
 
 # Session-level escalation. The per-message threshold is precision-first (in-domain
 # recall ~0.26 per message) — but toxic players repeat, and repetition is itself
@@ -625,8 +797,13 @@ CHAT_ALERT_HIGH_T = float(os.environ.get('CHAT_ALERT_HIGH_T', '0.95'))  # at/abo
 # 0.26 -> ~0.59 at 3 messages). So when CHAT_STREAK_N messages in one session score
 # >= CHAT_STREAK_BAR (a lower, "concerning" bar), ONE aggregate alert is raised even
 # though no single message crossed the per-message cutoff.
-CHAT_STREAK_BAR = float(os.environ.get('CHAT_STREAK_BAR', '0.6'))
-CHAT_STREAK_N   = int(os.environ.get('CHAT_STREAK_N', '3'))
+CHAT_STREAK_BAR = _env_float(
+    'CHAT_STREAK_BAR', 0.6, minimum=0.0, maximum=1.0)
+CHAT_STREAK_N = _env_int('CHAT_STREAK_N', 3, minimum=1)
+if not 0.0 <= CHAT_STREAK_BAR <= CHAT_ALERT_T <= CHAT_ALERT_HIGH_T <= 1.0:
+    raise RuntimeError(
+        'Chat thresholds must satisfy 0 <= CHAT_STREAK_BAR <= CHAT_ALERT_T '
+        '<= CHAT_ALERT_HIGH_T <= 1')
 
 # Tamper watchdog: child app heartbeats ~every 5 min; if the server hasn't heard from it
 # for this long, flag it to the parent (uninstalled / force-stopped / killed / offline).
@@ -682,9 +859,16 @@ def _current_risk_summary(cursor, user_id: int) -> dict:
                       WHERE s.user_id=? ORDER BY p.timestamp DESC LIMIT 1''', (user_id,))
     latest = cursor.fetchone()
 
-    fallback_score = float(latest['final_risk_score'] or 0.0) if latest else 0.0
+    latest_score = latest['final_risk_score'] if latest else None
+    try:
+        fallback_score = (float(latest_score) if latest_score is not None
+                          and math.isfinite(float(latest_score)) else None)
+    except (TypeError, ValueError):
+        fallback_score = None
     fallback_category = ((latest['risk_category'] if latest else None)
-                         or risk_category(fallback_score))
+                         if fallback_score is not None else 'unknown')
+    if not fallback_category:
+        fallback_category = risk_category(fallback_score)
     signals = None
     if latest and latest['behavior_present'] is not None:
         signals = {
@@ -696,10 +880,26 @@ def _current_risk_summary(cursor, user_id: int) -> dict:
     summary = {
         'current_risk': fallback_category,
         'risk_label':   RISK_DISPLAY.get(fallback_category, fallback_category),
-        'risk_score':   round(fallback_score, 4),
+        'risk_score':   round(fallback_score, 4) if fallback_score is not None else None,
         'risk_period':  None,
         'signals':      signals,
     }
+
+    # Observation mode is based on meaningful, completed/scored sessions only.  Empty
+    # starts, abandoned zero-evidence rows and live sessions must not unlock a stronger
+    # diagnostic-looking label merely by increasing a counter.
+    cursor.execute('''SELECT COUNT(*) AS n FROM sessions
+                      WHERE user_id=? AND end_time IS NOT NULL
+                      AND final_risk_score IS NOT NULL
+                      AND risk_category IN ('casual','at_risk','addicted')''', (user_id,))
+    count_row = cursor.fetchone()
+    meaningful_sessions = int((count_row['n'] if count_row else 0) or 0)
+    observation_mode = meaningful_sessions < 3
+    summary['observation_mode'] = observation_mode
+    summary['sessions_analyzed'] = meaningful_sessions
+    if observation_mode and summary['current_risk'] == 'addicted':
+        summary['current_risk'] = 'at_risk'
+        summary['risk_label'] = RISK_DISPLAY.get('at_risk', 'at_risk')
 
     shift_min = _tz_shift_min(cursor, user_id)
     cursor.execute('''SELECT start_time FROM sessions
@@ -730,6 +930,8 @@ def _current_risk_summary(cursor, user_id: int) -> dict:
     score = (sum(value * duration for value, duration in zip(scores, durations)) / duration_sum
              if duration_sum > 0 else sum(scores) / len(scores))
     category = risk_category(score)
+    if observation_mode and category == 'addicted':
+        category = 'at_risk'
 
     cursor.execute('''SELECT MAX(p.behavior_present) AS behavior,
                              MAX(p.chat_present) AS chat,
@@ -757,6 +959,8 @@ def _current_risk_summary(cursor, user_id: int) -> dict:
             'aggregation': 'latest_active_day_duration_weighted',
         },
         'signals': signals,
+        'observation_mode': observation_mode,
+        'sessions_analyzed': meaningful_sessions,
     }
 
 
@@ -817,10 +1021,34 @@ def _tz_shift_min(c, user_id) -> int:
         tz = row['tz_offset_min'] if row else None
         if tz is None:
             return 0
+        # Real civil UTC offsets are within -12:00..+14:00.  Clamp legacy/corrupt
+        # values defensively so timedelta arithmetic can never overflow a request.
+        tz = max(-720, min(840, int(tz)))
         server_off = int(round((datetime.now() - datetime.utcnow()).total_seconds() / 60))
-        return int(tz) - server_off
+        return tz - server_off
     except Exception:
         return 0
+
+
+def _local_now(c, user_id: int) -> datetime:
+    return datetime.now() + timedelta(minutes=_tz_shift_min(c, user_id))
+
+
+def _stored_local_day_bounds(c, user_id: int, day=None):
+    """Return naive server-clock [start,end) for one child-local calendar day."""
+    shift = _tz_shift_min(c, user_id)
+    local_day = day or (datetime.now() + timedelta(minutes=shift)).date()
+    local_start = datetime.combine(local_day, datetime.min.time())
+    stored_start = local_start - timedelta(minutes=shift)
+    return stored_start, stored_start + timedelta(days=1)
+
+
+def _stored_recent_local_days(c, user_id: int, days: int):
+    """Start boundary for ``days`` child-local calendar days including today."""
+    shift = _tz_shift_min(c, user_id)
+    local_today = (datetime.now() + timedelta(minutes=shift)).date()
+    first_day = local_today - timedelta(days=max(1, days) - 1)
+    return datetime.combine(first_day, datetime.min.time()) - timedelta(minutes=shift)
 
 
 def _is_late_night(dt, shift_min: int = 0) -> bool:
@@ -908,6 +1136,114 @@ def _close_request_dbs(exc):
             pass
 
 
+@app.before_request
+def _validate_json_envelope():
+    """Reject malformed JSON shapes at the API boundary.
+
+    Every JSON endpoint in this service consumes an object.  Flask will happily parse
+    an array/string/number, after which handlers calling ``.get`` used to raise a 500.
+    Nested objects are not part of any request contract; the only array-valued fields
+    are the two explicit acknowledgement/id-list endpoints below.
+    """
+    if request.method not in ('POST', 'PUT', 'PATCH') or not request.is_json:
+        return None
+    data = request.get_json(silent=True)
+    if not isinstance(data, dict):
+        return jsonify({'success': False,
+                        'message': 'Request JSON must be an object'}), 400
+    allowed_arrays = {
+        '/api/alerts/mark_read': {'alert_ids'},
+        '/api/child/nudges/ack': {'nudge_ids'},
+    }
+    for key, value in data.items():
+        if isinstance(value, dict):
+            return jsonify({'success': False,
+                            'message': f'{key} must be a scalar value'}), 400
+        if isinstance(value, list) and key not in allowed_arrays.get(request.path, set()):
+            return jsonify({'success': False,
+                            'message': f'{key} must not be an array'}), 400
+    return None
+
+
+def _positive_int(value, field='value') -> int:
+    """Strict positive JSON integer (booleans/fractions are never identifiers)."""
+    if isinstance(value, bool):
+        raise ValueError(f'{field} must be a positive integer')
+    if isinstance(value, float):
+        if not value.is_integer():
+            raise ValueError(f'{field} must be a positive integer')
+        # An integral JSON float (5.0) is a valid id; int(str(5.0)) would raise
+        # "invalid literal" instead of parsing it, defeating the guard above.
+        value = int(value)
+    parsed = int(str(value).strip())
+    if parsed <= 0:
+        raise ValueError(f'{field} must be a positive integer')
+    return parsed
+
+
+def _finite_number(value, field='value', minimum=None, maximum=None) -> float:
+    if isinstance(value, bool):
+        raise ValueError(f'{field} must be a finite number')
+    parsed = float(value)
+    if not math.isfinite(parsed):
+        raise ValueError(f'{field} must be a finite number')
+    if minimum is not None and parsed < minimum:
+        raise ValueError(f'{field} is below the minimum')
+    if maximum is not None and parsed > maximum:
+        raise ValueError(f'{field} is above the maximum')
+    return parsed
+
+
+def _bounded_query_int(name: str, default: int, minimum: int, maximum: int) -> int:
+    raw = request.args.get(name)
+    if raw is None:
+        return default
+    try:
+        if isinstance(raw, bool) or not re.fullmatch(r'[+-]?\d+', str(raw).strip()):
+            raise ValueError()
+        value = int(raw)
+    except (TypeError, ValueError):
+        return default
+    return max(minimum, min(maximum, value))
+
+
+_REQUIRED_USER_QUERY_PATHS = {
+    '/api/user/profile',
+    '/api/user/export',
+    '/api/consent',
+    '/api/sessions',
+    '/api/dashboard/user',
+    '/api/dashboard/parent',
+    '/api/dashboard/emotions',
+    '/api/dashboard/chat_analysis',
+    '/api/feedback/summary',
+    '/api/alerts',
+    '/api/child/status',
+    '/api/dashboard/weekly_report',
+    '/api/child/streak',
+    '/api/child/nudges',
+    '/api/child/get_limit',
+    '/api/dashboard/child_enriched',
+    '/api/dashboard/weekly_report/pdf',
+    '/api/anomalies',
+    '/api/counselor/history',
+    '/api/child/reflections',
+}
+
+
+@app.before_request
+def _require_user_query_parameter():
+    """Never let a user-scoped GET silently fall back to somebody else's account."""
+    if request.method != 'GET' or request.path not in _REQUIRED_USER_QUERY_PATHS:
+        return None
+    try:
+        _positive_int(request.args.get('user_id'), 'user_id')
+    except (TypeError, ValueError):
+        return jsonify({'success': False,
+                        'message': 'user_id must be a positive integer'}), 400
+    return None
+
+
 @app.errorhandler(Exception)
 def _json_errors(e):
     """Always return JSON (never an HTML error page) so the mobile clients can parse
@@ -989,6 +1325,7 @@ def init_db():
             intensity   REAL    DEFAULT 0.0,
             duration_s  REAL    DEFAULT 0.0,
             audio_file  TEXT,
+            capture_valid INTEGER DEFAULT 1,
             timestamp   TEXT    DEFAULT CURRENT_TIMESTAMP,
             FOREIGN KEY (session_id) REFERENCES sessions(session_id)
         );
@@ -1138,6 +1475,10 @@ def init_db():
     add_column(c, 'users', 'parent_id',       'INTEGER DEFAULT NULL')   # multi-child support
     add_column(c, 'users', 'pin_hash',        'TEXT DEFAULT NULL')      # keyed-hash credentials
     add_column(c, 'users', 'parent_pin_hash', 'TEXT DEFAULT NULL')
+    # Signed-token revocation counters. Rotating a Child PIN invalidates that child's
+    # tokens; rotating a Family PIN invalidates every parent token for the family.
+    add_column(c, 'users', 'auth_version',        'INTEGER DEFAULT 0')
+    add_column(c, 'users', 'family_auth_version', 'INTEGER DEFAULT 0')
     add_column(c, 'users', 'consent_given_at',  'TEXT DEFAULT NULL')    # parental monitoring consent
     add_column(c, 'users', 'consent_version',   'TEXT DEFAULT NULL')
     # SHADOW EVIDENCE for the voice domain-shift mitigations: the classifier's full
@@ -1146,6 +1487,10 @@ def init_db():
     # deleted by design, so forward-logging probabilities is the only way to measure
     # a fix before changing what is served). Served fields are untouched.
     add_column(c, 'voice_events', 'probs', 'TEXT DEFAULT NULL')
+    # Rejected/silent/unreadable audio is retained as an audit event, but must not
+    # become low-risk "neutral" evidence in the multimodal score. NULL/1 preserves
+    # legacy rows; new rejected uploads explicitly write 0.
+    add_column(c, 'voice_events', 'capture_valid', 'INTEGER DEFAULT 1')
     # Unique per-family code. NULL on legacy/seed rows (parent logs in with PIN only);
     # new families get a generated code so two families sharing a parent PIN can't
     # collide — the parent logs in with code + PIN.
@@ -1162,6 +1507,10 @@ def init_db():
     add_column(c, 'users', 'perm_usage',         'INTEGER DEFAULT NULL')   # Usage Access (game/session detection)
     add_column(c, 'users', 'perm_accessibility', 'INTEGER DEFAULT NULL')   # typed-chat capture
     add_column(c, 'users', 'perm_keyboard',      'INTEGER DEFAULT NULL')   # Wellbeing Keyboard active (canvas-game chat)
+    add_column(c, 'users', 'voice_capture_active', 'INTEGER DEFAULT NULL') # microphone capture actually running
+    # Session provenance lets a late re-score revise one durable risk alert instead of
+    # leaving contradictory High/Some/Low concern rows in the parent's feed.
+    add_column(c, 'alerts', 'session_id', 'INTEGER DEFAULT NULL')
 
     # Which signals actually fed each prediction. NULL on legacy rows ("unknown");
     # new predictions write explicit 1/0 so the UI can distinguish "captured and
@@ -1174,6 +1523,72 @@ def init_db():
     # the child app buffers start/end locally and posts them when the network returns).
     # Unique per real offline session, so a re-sent buffer entry can't duplicate it.
     add_column(c, 'sessions', 'client_key', 'TEXT DEFAULT NULL')
+    # Early deployments had no database constraint behind the SELECT-then-INSERT
+    # de-dupe. Repair any raced legacy duplicates' keys before adding the real invariant;
+    # keep their rows/history rather than deleting family data during a migration.
+    c.execute('''SELECT user_id, client_key FROM sessions
+                 WHERE client_key IS NOT NULL AND client_key<>''
+                 GROUP BY user_id, client_key HAVING COUNT(*)>1''')
+    for _dup in c.fetchall():
+        c.execute('''SELECT session_id FROM sessions
+                     WHERE user_id=? AND client_key=? ORDER BY session_id''',
+                  (_dup['user_id'], _dup['client_key']))
+        _dup_rows = c.fetchall()
+        for _extra in _dup_rows[1:]:
+            # The first row remains the canonical idempotency target. NULL the raced
+            # extras: inventing another textual key can itself collide with a genuine
+            # client key and make the unique-index migration fail at startup.
+            c.execute('UPDATE sessions SET client_key=NULL WHERE session_id=?',
+                      (_extra['session_id'],))
+    # NULL identifies rows created before resumable finalization existed. A legacy row
+    # that is already scored is treated as complete (the old endpoint also alerted in
+    # that success path), avoiding a duplicate parent alert on a later client replay.
+    # New backfills explicitly insert 0 and atomically advance to 1.
+    add_column(c, 'sessions', 'backfill_finalized', 'INTEGER DEFAULT NULL')
+    # Normal and auto-closed sessions use a resumable finalization state:
+    #   0=pending/retryable, -1=claimed, 1=prediction + alert + streak committed.
+    # The category records which result already produced side effects so a late voice
+    # re-score can react to a real category transition without duplicating alerts.
+    _had_finalization_state = _column_exists(c, 'sessions', 'finalization_complete')
+    add_column(c, 'sessions', 'finalization_complete', 'INTEGER DEFAULT 0')
+    add_column(c, 'sessions', 'finalization_started_at', 'TEXT DEFAULT NULL')
+    add_column(c, 'sessions', 'side_effect_risk_category', 'TEXT DEFAULT NULL')
+    # 0=no work, 1=rescore requested, -1=claimed by one worker.
+    add_column(c, 'sessions', 'voice_rescore_pending', 'INTEGER DEFAULT 0')
+    add_column(c, 'sessions', 'voice_rescore_started_at', 'TEXT DEFAULT NULL')
+    if not _had_finalization_state:
+        # ONE-TIME legacy conversion. Running this UPDATE on every boot is unsafe:
+        # run_prediction() persists a score before alert/streak side effects, and a live
+        # prediction also has a score. A restart must not pronounce either row complete.
+        c.execute('''UPDATE sessions SET finalization_complete=1,
+                     side_effect_risk_category=COALESCE(
+                         side_effect_risk_category, risk_category)
+                     WHERE end_time IS NOT NULL AND final_risk_score IS NOT NULL
+                     AND finalization_complete=0
+                     AND (backfill_finalized IS NULL OR backfill_finalized=1)''')
+
+    # Repair pre-constraint duplicate open sessions deterministically.  Keep the newest
+    # row open and close each older row at the next session's start (the strongest known
+    # evidence of when the prior game stopped), capped to the normal six-hour ceiling.
+    c.execute('''SELECT user_id FROM sessions WHERE end_time IS NULL
+                 GROUP BY user_id HAVING COUNT(*)>1''')
+    for _open_user in c.fetchall():
+        c.execute('''SELECT session_id, start_time FROM sessions
+                     WHERE user_id=? AND end_time IS NULL
+                     ORDER BY start_time ASC, session_id ASC''', (_open_user['user_id'],))
+        _opens = c.fetchall()
+        for _idx, _old in enumerate(_opens[:-1]):
+            try:
+                _start = _parse_ts(_old['start_time'])
+                _next = _parse_ts(_opens[_idx + 1]['start_time'])
+                _end = min(max(_next, _start), _start + timedelta(hours=6))
+                _dur = max(0, int((_end - _start).total_seconds()))
+            except Exception:
+                _end, _dur = _old['start_time'], 0
+            c.execute('''UPDATE sessions SET end_time=?, duration_seconds=?,
+                         finalization_complete=0 WHERE session_id=? AND end_time IS NULL''',
+                      (_end.isoformat() if hasattr(_end, 'isoformat') else _end,
+                       _dur, _old['session_id']))
 
     # Last day an unhealthy session spoiled the healthy-day streak, so a later healthy
     # session the same day can't re-credit an already-broken day (see _update_streak).
@@ -1182,13 +1597,28 @@ def init_db():
     # Indexes on the hot query paths (filtering by user/session/time). Keeps the
     # dashboard + feature computation fast as session history grows. IF NOT EXISTS
     # works on both SQLite and Postgres.
+    # Older releases enforced "one verdict per alert" with DELETE then INSERT in the
+    # request handler. Concurrent guardian devices could both insert after the DELETE,
+    # so repair any historical duplicates before adding the database invariant.
+    c.execute('''DELETE FROM feedback WHERE alert_id IS NOT NULL AND id NOT IN
+                 (SELECT MAX(id) FROM feedback WHERE alert_id IS NOT NULL
+                  GROUP BY alert_id)''')
     c.executescript('''
         CREATE INDEX IF NOT EXISTS idx_sessions_user        ON sessions(user_id);
         CREATE INDEX IF NOT EXISTS idx_sessions_start       ON sessions(start_time);
         -- Composite indexes for the hottest query shape (user_id AND a time filter):
         -- dashboards, weekly report, anomaly scan, alert feed all filter on both.
         CREATE INDEX IF NOT EXISTS idx_sessions_user_start  ON sessions(user_id, start_time);
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_sessions_user_client_key
+            ON sessions(user_id, client_key)
+            WHERE client_key IS NOT NULL AND client_key<>'';
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_sessions_one_open_per_user
+            ON sessions(user_id) WHERE end_time IS NULL;
         CREATE INDEX IF NOT EXISTS idx_alerts_user_created  ON alerts(user_id, created_at);
+        CREATE INDEX IF NOT EXISTS idx_alerts_session       ON alerts(session_id);
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_alerts_one_toxicity_streak
+            ON alerts(session_id, type)
+            WHERE session_id IS NOT NULL AND type='toxicity_streak';
         CREATE INDEX IF NOT EXISTS idx_behavioral_session   ON behavioral_data(session_id);
         CREATE INDEX IF NOT EXISTS idx_chat_session         ON chat_messages(session_id);
         CREATE INDEX IF NOT EXISTS idx_voice_session        ON voice_events(session_id);
@@ -1200,6 +1630,8 @@ def init_db():
         CREATE INDEX IF NOT EXISTS idx_reflections_user     ON reflections(user_id);
         CREATE INDEX IF NOT EXISTS idx_counselor_user       ON counselor_messages(user_id);
         CREATE INDEX IF NOT EXISTS idx_feedback_user        ON feedback(user_id);
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_feedback_one_per_alert
+            ON feedback(alert_id) WHERE alert_id IS NOT NULL;
         CREATE INDEX IF NOT EXISTS idx_nudges_user          ON child_nudges(user_id);
     ''')
 
@@ -1225,6 +1657,23 @@ def init_db():
         if new_pin_hash != r['pin_hash'] or new_parent_hash != r['parent_pin_hash']:
             c.execute("UPDATE users SET pin_hash=?, parent_pin_hash=?, pin='', parent_pin='' WHERE user_id=?",
                       (new_pin_hash, new_parent_hash, r['user_id']))
+
+    # The login query selects the first row matching a child PIN, so duplicates are an
+    # authentication ambiguity. App-level "check then write" validation is still racy
+    # under concurrent registration/reset requests; enforce uniqueness in the database.
+    # A legacy database may already contain duplicates from before PIN hashing. Do not
+    # make such a deployment fail to boot: log loudly and leave it available for manual
+    # credential repair, then create the index automatically on the next clean restart.
+    c.execute("""SELECT pin_hash, COUNT(*) AS n FROM users
+                 WHERE pin_hash IS NOT NULL AND pin_hash<>''
+                 GROUP BY pin_hash HAVING COUNT(*)>1 LIMIT 1""")
+    duplicate_pin = c.fetchone()
+    if duplicate_pin:
+        logger.error("SECURITY: duplicate child PIN hashes exist; unique PIN index was not "
+                     "created. Reset the affected child PINs, then restart.")
+    else:
+        c.execute("""CREATE UNIQUE INDEX IF NOT EXISTS idx_users_pin_hash_unique
+                     ON users(pin_hash) WHERE pin_hash IS NOT NULL AND pin_hash<>''""")
     conn.commit()
     conn.close()
     logger.info("Database initialised")
@@ -1444,7 +1893,7 @@ def extract_audio_features(audio_path):
         return None, 0.0
     # Bounded wait: with analyses serialised, an unbounded acquire would let a burst of
     # voice uploads park most worker threads behind the semaphore and starve every other
-    # request. Better to drop ONE segment (degrades to a low-confidence neutral event)
+    # request. Better to drop ONE segment (recorded as missing voice, not neutral evidence)
     # than to stall the whole API.
     if not _AUDIO_SLOTS.acquire(timeout=float(os.environ.get('AUDIO_QUEUE_TIMEOUT_S', '20'))):
         logger.warning("audio analysis queue full — segment skipped (degraded to neutral)")
@@ -1472,9 +1921,13 @@ def _voice_X(features):
 
 
 def analyse_audio(audio_path):
-    """Return (emotion_label, confidence, duration, probs_dict). probs_dict maps
-       each acoustic class → probability (None when the model isn't used), so the
-       caller can do distribution-aware fusion instead of relying on the argmax."""
+    """Return (emotion_label, confidence, duration, probs_dict).
+
+    ``emotion_label`` is None when extraction rejects the clip (silence, too little
+    speech, unreadable audio, etc.). That distinction matters: a rejected capture is
+    *missing voice*, not evidence that the child sounded neutral. ``probs_dict`` maps
+    each acoustic class to its probability when the model ran.
+    """
     features, duration = extract_audio_features(audio_path)
     if features is not None and voice_model is not None:
         X      = _voice_X(features)
@@ -1493,7 +1946,8 @@ def analyse_audio(audio_path):
             return 'frustrated', round(min(e_mean * 10, 0.85), 3), duration, None
         elif e_mean > 0.01:
             return 'neutral',    round(min(e_mean *  6, 0.70), 3), duration, None
-    return 'neutral', 0.2, duration, None
+        return 'neutral', 0.2, duration, None
+    return None, 0.0, duration, None
 
 
 # ── Multimodal emotion fusion (acoustic arousal × text valence) ───────────────
@@ -1516,11 +1970,6 @@ _POS_WORDS = {
     "gg", "awesome", "cool", "thanks", "thank", "yay", "happy", "amazing", "best", "wow",
     "epic", "clutch", "victory", "lets go", "letsgo", "yes", "nice one", "well played", "wp",
 }
-
-def text_valence(text):
-    """Valence in [-1, 1] from a short utterance; 0 when unknown/empty."""
-    return _lexical_valence(text)[0]
-
 
 def _lexical_valence(text):
     """Return (valence in [-1, 1], confidence in [0, 1]).
@@ -1635,113 +2084,125 @@ def fuse_emotion(acoustic_label, valence, probs=None, valence_conf=0.0, toxicity
 # ──────────────────────── PREDICTION ENGINE ──────────────────────
 
 def compute_behavioral_features(session_id: int) -> dict:
-    """Calculate all 20 behavioural features from real session history + current session."""
+    """Calculate all 20 features at the subject session's point in history.
+
+    The reference clock is the session end (or now for a live session), and only rows
+    that began before this session are eligible history.  This makes a backfilled
+    session reproducible and prevents sessions played later from leaking into it.
+    """
     conn = get_db()
-    c    = conn.cursor()
-    c.execute('SELECT user_id, start_time, end_time FROM sessions WHERE session_id=?', (session_id,))
-    srow = c.fetchone()
-    if not srow:
+    c = conn.cursor()
+    c.execute('SELECT user_id, start_time, end_time FROM sessions WHERE session_id=?',
+              (session_id,))
+    row = c.fetchone()
+    if not row:
         conn.close()
         return {}
-
-    user_id  = srow['user_id']
-    start_dt = datetime.fromisoformat(srow['start_time'])
-    # For a CLOSED session use its recorded end (it may have ended in the past — auto-closed
-    # after a lost end-event, or scored late); only a still-live session measures to "now".
-    # Using now-start for an ended session inflates elapsed and the daily/weekly play features.
-    end_dt = datetime.now()
-    if srow['end_time']:
-        try:    end_dt = _parse_ts(srow['end_time'])
-        except Exception: end_dt = datetime.now()
-    elapsed  = max(1, (end_dt - start_dt).total_seconds())
-
-    # Fetch past 30 days of sessions for this user, excluding the current one
-    since_30d = (datetime.now() - timedelta(days=30)).isoformat()
-    c.execute('''SELECT start_time, end_time, duration_seconds
-                 FROM sessions WHERE user_id=? AND start_time>=? AND session_id!=?
+    try:
+        user_id = int(row['user_id'])
+        start_dt = _parse_ts(row['start_time'])
+        reference_dt = (_parse_ts(row['end_time']) if row['end_time'] else datetime.now())
+    except Exception:
+        conn.close()
+        return {}
+    reference_dt = max(start_dt, min(reference_dt, datetime.now()))
+    elapsed = max(1, int((reference_dt - start_dt).total_seconds()))
+    cutoff = reference_dt - timedelta(days=30)
+    c.execute('''SELECT start_time, end_time, duration_seconds FROM sessions
+                 WHERE user_id=? AND session_id<>? AND start_time>=? AND start_time<?
                  ORDER BY start_time DESC LIMIT 200''',
-              (user_id, since_30d, session_id))
+              (user_id, session_id, cutoff.isoformat(), start_dt.isoformat()))
     past = [dict(r) for r in c.fetchall()]
+    shift = _tz_shift_min(c, user_id)
+    conn.close()
 
-    cur_hrs = elapsed / 3600.0
-    today   = datetime.now().date()
+    def started(item):
+        try:
+            return _parse_ts(item['start_time'])
+        except Exception:
+            return None
 
-    # --- Objective time features ---
-    today_secs = sum((s['duration_seconds'] or 0) for s in past
-                     if datetime.fromisoformat(s['start_time']).date() == today)
-    daily_play_time = round(min(today_secs / 3600.0 + cur_hrs, 24), 4)
+    def known_duration(item):
+        sdt = started(item)
+        if sdt is None or sdt >= reference_dt:
+            return 0
+        stored = max(0, int(item.get('duration_seconds') or 0))
+        if item.get('end_time'):
+            try:
+                known_end = min(_parse_ts(item['end_time']), reference_dt)
+                stored = min(stored, max(0, int((known_end - sdt).total_seconds())))
+            except Exception:
+                pass
+        return stored
 
-    week_cutoff = datetime.now() - timedelta(days=7)
-    week_sess   = [s for s in past if datetime.fromisoformat(s['start_time']) >= week_cutoff]
-    week_secs   = sum(s['duration_seconds'] or 0 for s in week_sess)
-    weekly_play_time = round(min(week_secs / 3600.0 + cur_hrs, 168), 4)
+    subject_day = (start_dt + timedelta(minutes=shift)).date()
+    current_hours = elapsed / 3600.0
+    same_day_seconds = sum(
+        known_duration(item) for item in past
+        if started(item) is not None
+        and (started(item) + timedelta(minutes=shift)).date() == subject_day)
+    daily_play = round(min(24.0, same_day_seconds / 3600.0 + current_hours), 4)
 
-    sessions_per_day = round((len(week_sess) + 1) / 7.0, 4)
+    week_cutoff = reference_dt - timedelta(days=7)
+    week = [item for item in past
+            if started(item) is not None and started(item) >= week_cutoff]
+    week_seconds = sum(known_duration(item) for item in week)
+    weekly_play = round(min(168.0, week_seconds / 3600.0 + current_hours), 4)
+    sessions_per_day = round((len(week) + 1) / 7.0, 4)
 
-    all_durs = [s['duration_seconds'] for s in past if s['duration_seconds']] + [int(elapsed)]
-    avg_session_duration_min = round(float(np.mean(all_durs)) / 60.0, 2)
+    durations = [known_duration(item) for item in past if known_duration(item) > 0]
+    durations.append(elapsed)
+    avg_duration = round(float(np.mean(durations)) / 60.0, 2)
 
-    # Judge "late night" on the CHILD's wall clock, not the server's — on a UTC cloud
-    # host an IST child's 23:00 session is stored as 17:30 and would otherwise be missed
-    # (and morning sessions wrongly flagged). This feature also drives the craving /
-    # missed-sleep / fatigue psychometric proxies, so the shift matters for the model.
-    tz_shift   = _tz_shift_min(c, user_id)
-    all_starts = past + [{'start_time': srow['start_time']}]
-    late_cnt   = sum(1 for s in all_starts
-                     if _is_late_night(datetime.fromisoformat(s['start_time']), tz_shift))
-    late_night_play_ratio = round(late_cnt / max(len(all_starts), 1), 4)
+    starts = [started(item) for item in past if started(item) is not None] + [start_dt]
+    late_ratio = round(sum(1 for value in starts if _is_late_night(value, shift)) /
+                       max(1, len(starts)), 4)
 
-    played_dates = {datetime.fromisoformat(s['start_time']).date() for s in week_sess}
-    played_dates.add(today)
-    days_played_per_week = min(len(played_dates), 7)
+    played_dates = {(started(item) + timedelta(minutes=shift)).date()
+                    for item in week if started(item) is not None}
+    played_dates.add(subject_day)
+    days_played = min(7, len(played_dates))
 
-    all_dates = sorted({datetime.fromisoformat(s['start_time']).date() for s in past} | {today})
+    all_dates = sorted({(value + timedelta(minutes=shift)).date() for value in starts})
     max_streak = streak = 1
-    for i in range(1, len(all_dates)):
-        if (all_dates[i] - all_dates[i - 1]).days == 1:
+    for idx in range(1, len(all_dates)):
+        if (all_dates[idx] - all_dates[idx - 1]).days == 1:
             streak += 1
             max_streak = max(max_streak, streak)
         else:
             streak = 1
-    longest_play_streak_days = max_streak
 
-    binge_week = sum(1 for s in week_sess if (s['duration_seconds'] or 0) >= 10800)
-    if elapsed >= 10800:
-        binge_week += 1
-    binge_sessions_per_week = binge_week
+    binge = sum(1 for item in week if known_duration(item) >= 10800)
+    binge += 1 if elapsed >= 10800 else 0
 
-    # Gaps between consecutive completed sessions
-    ended = sorted([s for s in past if s['end_time'] and s['duration_seconds']],
-                   key=lambda x: x['start_time'])
+    ended = sorted((item for item in past
+                    if item.get('end_time') and known_duration(item) > 0),
+                   key=lambda item: started(item) or datetime.min)
     breaks = []
-    for i in range(len(ended) - 1):
-        gap = (datetime.fromisoformat(ended[i + 1]['start_time'])
-               - datetime.fromisoformat(ended[i]['end_time'])).total_seconds() / 60.0
-        if 0 < gap < 1440:
-            breaks.append(gap)
+    for idx in range(len(ended) - 1):
+        try:
+            gap = ((started(ended[idx + 1]) -
+                    min(_parse_ts(ended[idx]['end_time']), reference_dt))
+                   .total_seconds() / 60.0)
+            if 0 < gap < 1440:
+                breaks.append(gap)
+        except Exception:
+            continue
     avg_break = round(float(np.mean(breaks)) if breaks else 120.0, 2)
-    rapid_relogin_ratio = round(
-        min(sum(1 for b in breaks if b < 15) / max(len(breaks), 1), 1.0), 4
-    ) if breaks else 0.0
+    rapid = (round(min(sum(1 for value in breaks if value < 15) /
+                       max(1, len(breaks)), 1.0), 4) if breaks else 0.0)
 
-    conn.close()
-
-    # The 10 psychometric proxies are derived from the 10 objective features by the
-    # SHARED derive_psychometrics() — the identical mapping the model is trained on
-    # (ml/retrain_models.py), so there is NO train/serve skew. (Notification/screen-wake
-    # data is still collected and used elsewhere — sleep-impact + late-night views — it
-    # just no longer feeds the model's psychometric inputs in a way training never saw.)
     objective = {
-        'daily_play_time_hours':          daily_play_time,
-        'weekly_play_time_hours':         weekly_play_time,
-        'sessions_per_day':               sessions_per_day,
-        'avg_session_duration_min':       avg_session_duration_min,
-        'late_night_play_ratio':          late_night_play_ratio,
-        'days_played_per_week':           days_played_per_week,
-        'longest_play_streak_days':       longest_play_streak_days,
-        'binge_sessions_per_week':        binge_sessions_per_week,
+        'daily_play_time_hours': daily_play,
+        'weekly_play_time_hours': weekly_play,
+        'sessions_per_day': sessions_per_day,
+        'avg_session_duration_min': avg_duration,
+        'late_night_play_ratio': late_ratio,
+        'days_played_per_week': days_played,
+        'longest_play_streak_days': max_streak,
+        'binge_sessions_per_week': binge,
         'avg_break_between_sessions_min': avg_break,
-        'rapid_relogin_ratio':            rapid_relogin_ratio,
+        'rapid_relogin_ratio': rapid,
     }
     return {**objective, **derive_psychometrics(**objective)}
 
@@ -1756,17 +2217,26 @@ def run_prediction(session_id: int, explain: bool = True) -> dict:
     conn = get_db()
     c    = conn.cursor()
 
-    # Count user sessions for observation-mode flag
-    c.execute('SELECT user_id FROM sessions WHERE session_id=?', (session_id,))
+    # Count only prior completed sessions that produced a meaningful score.
+    c.execute('SELECT user_id, end_time, duration_seconds FROM sessions WHERE session_id=?',
+              (session_id,))
     _sr  = c.fetchone()
     _uid = _sr['user_id'] if _sr else 1
-    c.execute('SELECT COUNT(*) AS n FROM sessions WHERE user_id=?', (_uid,))
-    total_sessions   = c.fetchone()['n']
-    observation_mode = total_sessions < 3
+    c.execute('''SELECT COUNT(*) AS n FROM sessions WHERE user_id=? AND session_id<>?
+                 AND end_time IS NOT NULL AND final_risk_score IS NOT NULL
+                 AND risk_category IN ('casual','at_risk','addicted')''',
+              (_uid, session_id))
+    prior_meaningful = int(c.fetchone()['n'] or 0)
 
     # Fetch latest behavioural row
     c.execute('SELECT * FROM behavioral_data WHERE session_id=? ORDER BY id DESC LIMIT 1', (session_id,))
     brow = c.fetchone()
+    # An immediately closed zero-second row contains no behavioural observation.
+    # Treating the synthetic all-zero feature vector as real evidence credited a
+    # healthy streak and advanced the three-session baseline.
+    if (_sr and _sr['end_time'] is not None
+            and int(_sr['duration_seconds'] or 0) <= 0):
+        brow = None
 
     # Typed chat only for the chat-toxicity channel. Spoken words (source='voice_stt')
     # already feed the voice channel via valence fusion, so excluding them here avoids
@@ -1779,7 +2249,8 @@ def run_prediction(session_id: int, explain: bool = True) -> dict:
     chat_text = ' '.join(r['message'] for r in chat_rows if r['message'])
 
     # Fetch voice events
-    c.execute('SELECT emotion, intensity, duration_s, audio_file FROM voice_events WHERE session_id=?', (session_id,))
+    c.execute('''SELECT emotion, intensity, duration_s, audio_file FROM voice_events
+                 WHERE session_id=? AND COALESCE(capture_valid, 1)=1''', (session_id,))
     vrows = c.fetchall()
     conn.close()
 
@@ -1855,7 +2326,11 @@ def run_prediction(session_id: int, explain: bool = True) -> dict:
             else:
                 # Fallback: stored (fused) emotions × intensity — the normal path in
                 # production, where raw audio is deleted after feature extraction.
-                scores  = [VOICE_RISK.get(vr['emotion'], 0.5) * float(vr['intensity'] or 0.5) for vr in vrows]
+                # `is None` (not `or`): a genuine 0.0 intensity is data, and `or`
+                # silently promoted it to the 0.5 unknown-default.
+                scores  = [VOICE_RISK.get(vr['emotion'], 0.5) *
+                           (0.5 if vr['intensity'] is None else float(vr['intensity']))
+                           for vr in vrows]
                 if scores:
                     v_score = float(np.clip(np.mean(scores), 0, 1))
                     v_present = True
@@ -1890,15 +2365,18 @@ def run_prediction(session_id: int, explain: bool = True) -> dict:
     if b_present: components.append((0.40, b_score, b_conf))
     if c_present: components.append((0.30, c_score, c_conf))
     if v_present: components.append((0.30, v_score, v_conf))
+    total_sessions = prior_meaningful + (1 if components else 0)
+    observation_mode = total_sessions < 3
     if components:
         tw        = sum(w for w, _, _ in components)
         raw_final = sum(w * s for w, s, _ in components) / tw
         conf      = round(sum(w * cf for w, _, cf in components) / tw, 4)
+        final     = float(np.clip(raw_final * genre_weight, 0, 1))
+        cat       = risk_category(final)
     else:
-        raw_final = 0.5   # no modality produced data
-        conf      = 0.3
-    final = float(np.clip(raw_final * genre_weight, 0, 1))
-    cat   = risk_category(final)
+        final = None
+        conf  = 0.0
+        cat   = 'unknown'
     # Don't assert the highest-concern band on sparse data — a few sessions are
     # needed before a confident screening signal. Caps at "Some concern" early on.
     if observation_mode and cat == 'addicted':
@@ -1908,7 +2386,7 @@ def run_prediction(session_id: int, explain: bool = True) -> dict:
         'behavior_score':    round(b_score, 4),
         'chat_score':        round(c_score, 4),
         'voice_score':       round(v_score, 4),
-        'final_risk_score':  round(final,   4),
+        'final_risk_score':  round(final, 4) if final is not None else None,
         'risk_category':     cat,
         'risk_label':        RISK_DISPLAY.get(cat, cat),
         'disclaimer':        SCREENING_DISCLAIMER,
@@ -1940,38 +2418,93 @@ def run_prediction(session_id: int, explain: bool = True) -> dict:
               (result['final_risk_score'], result['risk_category'], result['confidence'], session_id))
     conn.commit()
     conn.close()
-    logger.info(f"[Session {session_id}] Prediction: {cat} ({final:.3f})")
+    logger.info("[Session %s] Prediction: %s (%s)", session_id, cat,
+                f"{final:.3f}" if final is not None else "no evidence")
     return result
 
 # ──────────────────────── ALERT HELPERS ──────────────────────────
 
-def _insert_alert(cursor, user_id, atype, message, severity):
+def _insert_alert(cursor, user_id, atype, message, severity, session_id=None):
     """Insert an alert with an EXPLICIT local timestamp. The created_at column DEFAULT
     differs by engine (SQLite's CURRENT_TIMESTAMP is UTC, Postgres' now() is
     server-local), which skewed alert ages/ordering against every other timestamp the
     app writes via datetime.now()."""
-    cursor.execute('INSERT INTO alerts (user_id, type, message, severity, created_at) '
-                   'VALUES (?,?,?,?,?)',
-                   (user_id, atype, message, severity, datetime.now().isoformat()))
+    sql = ('INSERT INTO alerts '
+           '(user_id, type, message, severity, created_at, session_id) '
+           'VALUES (?,?,?,?,?,?)')
+    params = (user_id, atype, message, severity, datetime.now().isoformat(), session_id)
+    if USE_POSTGRES:
+        cursor.execute(sql + ' RETURNING id', params)
+        row = cursor.fetchone()
+        return int(row['id']) if row else None
+    cursor.execute(sql, params)
+    return int(cursor.lastrowid) if cursor.lastrowid is not None else None
 
 
-def _maybe_create_alert(cursor, user_id: int, prediction: dict):
-    """Insert an alert row when risk is elevated or changes."""
+def _insert_toxicity_streak_once(cursor, user_id, session_id, message):
+    """Durably emit at most one aggregate toxicity alert for a session."""
+    sql = ('''INSERT INTO alerts
+              (user_id, type, message, severity, created_at, session_id)
+              VALUES (?,?,?,?,?,?) ON CONFLICT DO NOTHING''')
+    params = (user_id, 'toxicity_streak', message, 'high',
+              datetime.now().isoformat(), session_id)
+    if USE_POSTGRES:
+        cursor.execute(sql + ' RETURNING id', params)
+        row = cursor.fetchone()
+        return int(row['id']) if row else None
+    cursor.execute(sql, params)
+    return int(cursor.lastrowid) if cursor.rowcount else None
+
+
+def _maybe_create_alert(cursor, user_id: int, prediction: dict,
+                        session_id: int | None = None, revise: bool = False):
+    """Create or reconcile the durable risk alert for one session."""
     risk = prediction.get('risk_category', 'casual')
-    score = prediction.get('final_risk_score', 0.0)
+    score = prediction.get('final_risk_score')
+    try:
+        score_text = f'{float(score):.0%}' if score is not None else 'unavailable'
+    except (TypeError, ValueError):
+        score_text = 'unavailable'
+
+    existing = None
+    if session_id is not None:
+        cursor.execute('''SELECT id FROM alerts WHERE user_id=? AND session_id=?
+                          AND type IN ('risk','risk_revision')
+                          ORDER BY id DESC LIMIT 1''', (user_id, session_id))
+        existing = cursor.fetchone()
+
     if risk == 'addicted':
-        _insert_alert(cursor, user_id, 'risk',
-                      f'Gaming pattern reached High concern — score {score:.0%}. '
-                      'Immediate attention recommended.',
-                      'high')
+        message = (f'Gaming pattern reached High concern — score {score_text}. '
+                   'Immediate attention recommended.')
+        severity = 'high'
     elif risk == 'at_risk':
-        _insert_alert(cursor, user_id, 'risk',
-                      f'Gaming pattern reached Some concern — score {score:.0%}. '
-                      'Monitor gaming time.',
-                      'medium')
+        message = (f'Gaming pattern reached Some concern — score {score_text}. '
+                   'Monitor gaming time.')
+        severity = 'medium'
+    else:
+        # Ordinary low/unknown results do not need an alert. A late downward revision
+        # does need to correct the warning already shown to the parent.
+        if not revise or not existing:
+            return None
+        label = RISK_DISPLAY.get(risk, 'Not enough data')
+        message = f'Late evidence revised this session to {label} — score {score_text}.'
+        cursor.execute('''UPDATE alerts SET type='risk_revision', message=?,
+                          severity='info', read=0, created_at=? WHERE id=?''',
+                       (message, datetime.now().isoformat(), existing['id']))
+        return int(existing['id'])
+
+    if existing:
+        cursor.execute('''UPDATE alerts SET type='risk', message=?, severity=?,
+                          read=0, created_at=? WHERE id=?''',
+                       (message, severity, datetime.now().isoformat(), existing['id']))
+        return int(existing['id'])
+    return _insert_alert(cursor, user_id, 'risk', message, severity,
+                         session_id=session_id)
 
 
 def _build_recommendations(risk_level: str) -> list:
+    if risk_level not in ('casual', 'at_risk', 'addicted'):
+        return []
     if risk_level == 'addicted':
         return [
             'Set strict daily limits (max 1 hour per day).',
@@ -1996,8 +2529,10 @@ def _build_recommendations(risk_level: str) -> list:
             'Periodic check-ins to ensure continued balance.',
         ]
 
-def _suggest_time_limit(weekly_hours: float, risk_level: str, age: int = 15) -> dict:
+def _suggest_time_limit(weekly_hours: float, risk_level: str, age: int = 15):
     """Suggest a personalised daily time limit based on child's baseline and risk level."""
+    if risk_level not in ('casual', 'at_risk', 'addicted'):
+        return None
     avg_daily = weekly_hours / 7.0
     # Round/clamp to the nearest 0.5h (min 0.5) FIRST, then build the explanation from the
     # final value — otherwise the at-risk reason quoted the pre-clamp number and could
@@ -2155,75 +2690,193 @@ def _sleep_impact_analysis(user_id: int, conn) -> dict:
     }
 
 
-def _update_streak(user_id: int, weekly_hours: float, risk_level: str) -> dict:
-    """Increment or reset child's healthy-day streak after each session end."""
-    avg_daily  = weekly_hours / 7.0
-    is_healthy = avg_daily <= 2.0 and risk_level == 'casual'
-    today      = datetime.now().date().isoformat()
-    yesterday  = (datetime.now().date() - timedelta(days=1)).isoformat()
-    conn = get_db()
-    c    = conn.cursor()
-    c.execute('SELECT * FROM streaks WHERE user_id=?', (user_id,))
-    row  = c.fetchone()
-    if not row:
-        c.execute('INSERT INTO streaks (user_id) VALUES (?)', (user_id,))
-        current = longest = total = 0
-        last_date = None
-    else:
-        row = dict(row)
-        current   = row['current_streak']
-        longest   = row['longest_streak']
-        total     = row['total_healthy_days']
-        last_date = row['last_healthy_date']
+def _update_streak(user_id: int, weekly_hours: float, risk_level: str,
+                   conn=None, reference_dt=None) -> dict:
+    """Idempotently update a streak on the child's local calendar day.
 
-    # A day counts as healthy only if NO unhealthy session happened that day. spoiled_date
-    # records the last day an unhealthy session broke the streak, so a healthy session
-    # LATER the same day can't re-credit an already-spoiled day — making the outcome
-    # independent of the order sessions arrive within a day (previously healthy-then-risky
-    # kept the streak, risky-then-healthy reset it: same day, different result).
-    spoiled = (row.get('spoiled_date') if isinstance(row, dict) else None)
+    Supplying ``conn`` lets session finalization commit prediction side effects and its
+    completion flag atomically.  Historical days are intentionally ignored: receiving
+    an old offline event must not rewrite today's streak.
+    """
+    owns_conn = conn is None
+    if owns_conn:
+        conn = get_db()
+    c = conn.cursor()
+    shift = _tz_shift_min(c, user_id)
+    local_now = datetime.now() + timedelta(minutes=shift)
+    ref = reference_dt or datetime.now()
+    local_ref = ref + timedelta(minutes=shift)
+    if local_ref.date() != local_now.date():
+        if owns_conn:
+            conn.close()
+        return {'updated': False, 'historical': True}
+
+    avg_daily = weekly_hours / 7.0
+    is_healthy = avg_daily <= 2.0 and risk_level == 'casual'
+    today = local_now.date().isoformat()
+    yesterday = (local_now.date() - timedelta(days=1)).isoformat()
+    c.execute('SELECT * FROM streaks WHERE user_id=?', (user_id,))
+    found = c.fetchone()
+    if not found:
+        c.execute('INSERT INTO streaks (user_id) VALUES (?)', (user_id,))
+        row = {}
+        current = longest = total = 0
+        last_date = spoiled = None
+    else:
+        row = dict(found)
+        current = int(row.get('current_streak') or 0)
+        longest = int(row.get('longest_streak') or 0)
+        total = int(row.get('total_healthy_days') or 0)
+        last_date = row.get('last_healthy_date')
+        spoiled = row.get('spoiled_date')
 
     if is_healthy and spoiled == today:
-        # Earlier today was unhealthy → the day is spoiled. Leave the broken streak as-is.
         pass
     elif is_healthy:
         if last_date == yesterday:
             current += 1
         elif last_date != today:
             current = 1
-        total  += 1 if last_date != today else 0
+        if last_date != today:
+            total += 1
         longest = max(longest, current)
         c.execute('''UPDATE streaks SET current_streak=?, longest_streak=?,
                      last_healthy_date=?, total_healthy_days=? WHERE user_id=?''',
                   (current, longest, today, total, user_id))
     else:
-        # Unhealthy session → break the streak and spoil today. If an earlier healthy
-        # session today had already credited the day, roll that credit back so one bad
-        # session spoils the whole day regardless of within-day order.
         if last_date == today:
-            total     = max(0, total - 1)
-            last_date = yesterday          # un-mark today as the last healthy day
+            total = max(0, total - 1)
+            last_date = yesterday
         current = 0
         c.execute('''UPDATE streaks SET current_streak=0, total_healthy_days=?,
                      last_healthy_date=?, spoiled_date=? WHERE user_id=?''',
                   (total, last_date, today, user_id))
-    conn.commit()
-    conn.close()
-    return {'current_streak': current, 'longest_streak': longest,
+
+    if owns_conn:
+        conn.commit()
+        conn.close()
+    return {'updated': True, 'current_streak': current, 'longest_streak': longest,
             'total_healthy_days': total, 'is_healthy_today': is_healthy}
 
 
-def _send_fcm_push(token: str, title: str, body: str) -> str:
+def _recompute_streak(user_id: int, conn=None) -> dict:
+    """Rebuild streak state after a finalized session is revised.
+
+    Incremental updates cannot undo a same-day ``spoiled_date`` when late evidence
+    lowers a category. Replaying distinct child-local days from durable finalized
+    sessions makes both upward and downward transitions deterministic.
+    """
+    owns_conn = conn is None
+    if owns_conn:
+        conn = get_db()
+    c = conn.cursor()
+    shift = _tz_shift_min(c, user_id)
+    c.execute('''SELECT start_time, end_time, COALESCE(duration_seconds,0) AS duration,
+                        final_risk_score, risk_category
+                 FROM sessions WHERE user_id=? AND end_time IS NOT NULL
+                 AND finalization_complete=1
+                 ORDER BY start_time ASC, session_id ASC''', (user_id,))
+
+    all_rows, meaningful = [], {}
+    for raw in c.fetchall():
+        try:
+            start = _parse_ts(raw['start_time'])
+            end = _parse_ts(raw['end_time'])
+            duration = max(0, int(raw['duration'] or 0))
+        except Exception:
+            continue
+        item = {'start': start, 'end': end, 'duration': duration,
+                'category': raw['risk_category'], 'score': raw['final_risk_score']}
+        all_rows.append(item)
+        if (raw['final_risk_score'] is None
+                or raw['risk_category'] not in ('casual', 'at_risk', 'addicted')):
+            continue
+        day = (start + timedelta(minutes=shift)).date()
+        meaningful.setdefault(day, []).append(item)
+
+    current = longest = total = 0
+    last_healthy = None
+    spoiled = None
+    latest_healthy = False
+    for day in sorted(meaningful):
+        day_rows = meaningful[day]
+        reference = max(item['end'] for item in day_rows)
+        cutoff = reference - timedelta(days=7)
+        weekly_hours = sum(
+            item['duration'] for item in all_rows
+            if cutoff <= item['start'] <= reference
+        ) / 3600.0
+        healthy = (all(item['category'] == 'casual' for item in day_rows)
+                   and weekly_hours / 7.0 <= 2.0)
+        latest_healthy = healthy
+        if healthy:
+            if last_healthy == day - timedelta(days=1):
+                current += 1
+            else:
+                current = 1
+            total += 1
+            longest = max(longest, current)
+            last_healthy = day
+        else:
+            current = 0
+            spoiled = day
+
+    c.execute('''INSERT INTO streaks
+                 (user_id, current_streak, longest_streak, last_healthy_date,
+                  total_healthy_days, spoiled_date)
+                 VALUES (?,?,?,?,?,?)
+                 ON CONFLICT(user_id) DO UPDATE SET
+                   current_streak=excluded.current_streak,
+                   longest_streak=excluded.longest_streak,
+                   last_healthy_date=excluded.last_healthy_date,
+                   total_healthy_days=excluded.total_healthy_days,
+                   spoiled_date=excluded.spoiled_date''',
+              (user_id, current, longest,
+               last_healthy.isoformat() if last_healthy else None,
+               total, spoiled.isoformat() if spoiled else None))
+    if owns_conn:
+        conn.commit()
+        conn.close()
+    return {'updated': True, 'current_streak': current, 'longest_streak': longest,
+            'total_healthy_days': total, 'is_healthy_today': latest_healthy}
+
+
+def _send_fcm_push(token: str, title: str, body: str, event_type='risk_alert',
+                   child_id=None, child_name=None, alert_id=None,
+                   severity='info', family_code=None) -> str:
     """Send a Firebase Cloud Messaging push to a single device token.
     Returns: 'ok' | 'invalid' (token dead → caller should prune) | 'skip' | 'error'."""
     if not token or not _ensure_firebase():     # lazily imports/inits Firebase on first push
         return 'skip'
     try:
-        msg = _firebase_msg.Message(
-            notification=_firebase_msg.Notification(title=title, body=body),
-            data={'type': 'risk_alert'},
-            token=token,
-        )
+        # Data-only delivery lets the Parent app use one foreground/background path.
+        # FCM data values must all be strings.
+        message_args = {
+            'data': {
+                'title': str(title),
+                'body': str(body),
+                'type': str(event_type),
+                'severity': str(severity),
+                'child_id': '' if child_id is None else str(child_id),
+                'child_name': '' if child_name is None else str(child_name),
+                # Parent clients reject pushes not bound to their currently signed-in
+                # family. This prevents an old server/account whose unregister failed
+                # from displaying another family's alert after the device is re-used.
+                'family_code': '' if family_code is None else str(family_code),
+                # Lets Android use the same notification id as its alert poller and
+                # advance the per-child high-water mark, avoiding two cards for one row.
+                'alert_id': '' if alert_id is None else str(alert_id),
+            },
+            'token': token,
+        }
+        urgent = (str(severity) in {'medium', 'high'}
+                  or str(event_type) in {'risk', 'offline', 'permission', 'tamper'})
+        # Keep lightweight unit-test fakes working while asking Android for timely
+        # delivery of genuinely urgent data-only notifications under Doze.
+        if urgent and hasattr(_firebase_msg, 'AndroidConfig'):
+            message_args['android'] = _firebase_msg.AndroidConfig(
+                priority='high', ttl=timedelta(hours=1))
+        msg = _firebase_msg.Message(**message_args)
         _firebase_msg.send(msg)
         logger.info("FCM push sent")
         return 'ok'
@@ -2235,7 +2888,9 @@ def _send_fcm_push(token: str, title: str, body: str) -> str:
         return 'invalid' if name in ('UnregisteredError', 'SenderIdMismatchError') else 'error'
 
 
-def _push_to_family(family_code: str, title: str, body: str):
+def _push_to_family(family_code: str, title: str, body: str, event_type='risk_alert',
+                    child_id=None, child_name=None, alert_id=None,
+                    severity='info'):
     """Push to EVERY guardian device registered for a family (both parents' phones, etc.),
     pruning any dead tokens as we go. Falls back to legacy per-user tokens too."""
     if not family_code:
@@ -2248,25 +2903,39 @@ def _push_to_family(family_code: str, title: str, body: str):
     c.execute("SELECT fcm_token FROM users WHERE family_code=? "
               "AND fcm_token IS NOT NULL AND fcm_token != ''", (family_code,))
     tokens.update(r['fcm_token'] for r in c.fetchall() if r['fcm_token'])
-    stale = [t for t in tokens if _send_fcm_push(t, title, body) == 'invalid']
-    for t in stale:
-        c.execute('DELETE FROM guardian_devices WHERE fcm_token=?', (t,))
-    if stale:
-        conn.commit()
     conn.close()
+    stale = [t for t in tokens
+             if _send_fcm_push(t, title, body, event_type, child_id, child_name,
+                               alert_id, severity, family_code) == 'invalid']
+    if stale:
+        cleanup = get_db()
+        cc = cleanup.cursor()
+        for t in stale:
+            cc.execute('DELETE FROM guardian_devices WHERE fcm_token=?', (t,))
+            # The legacy compatibility column participates in the token union above;
+            # leaving a dead token there makes every later alert retry it forever.
+            cc.execute('UPDATE users SET fcm_token=NULL WHERE fcm_token=?', (t,))
+        cleanup.commit()
+        cleanup.close()
 
 
-def _push_to_user_family(c, user_id: int, title: str, body: str):
+def _push_to_user_family(user_id: int, title: str, body: str,
+                         event_type='monitoring_alert', alert_id=None,
+                         severity='info'):
     """Resolve a child's family and FCM-push to every guardian device. Best-effort and
     used for the most time-critical alerts (tamper / monitoring-went-silent), so they
     reach a parent whose app isn't actively polling rather than waiting for the next poll.
     No-op when push isn't configured — polling still delivers."""
     try:
-        c.execute('SELECT family_code FROM users WHERE user_id=?', (user_id,))
+        conn = get_db()
+        c = conn.cursor()
+        c.execute('SELECT family_code, name FROM users WHERE user_id=?', (user_id,))
         row = c.fetchone()
+        conn.close()
         fam = row['family_code'] if row else None
         if fam:
-            _push_to_family(fam, title, body)
+            _push_to_family(fam, title, body, event_type, user_id,
+                            row['name'] if row else None, alert_id, severity)
     except Exception as exc:
         logger.warning(f"push_to_user_family skipped: {exc}")
 
@@ -2352,6 +3021,7 @@ def model_card():
 # ─────────────── USER AUTH ───────────────────────────────────────
 
 _FAMILY_ALPHABET = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789'  # no easily-confused 0/O/1/I/L
+PROFILE_NAME_MAX = 40
 
 
 def _generate_family_code(c) -> str:
@@ -2365,6 +3035,22 @@ def _generate_family_code(c) -> str:
     return ''.join(secrets.choice(_FAMILY_ALPHABET) for _ in range(8))  # rare-miss widen
 
 
+def _pin_unique_violation(exc) -> bool:
+    """True only when a write failed on the UNIQUE child-PIN index.
+
+    Postgres reports EVERY unique violation as SQLSTATE 23505 — including a
+    users_pkey collision (e.g. after a seed script inserted explicit ids without
+    advancing the SERIAL sequence) — so matching the bare code turned unrelated
+    conflicts into a misleading 'PIN already taken'. Match the violated
+    constraint itself; anything else re-raises as a real server error."""
+    if isinstance(exc, sqlite3.IntegrityError):
+        return 'pin_hash' in str(exc)
+    if getattr(exc, 'pgcode', None) == '23505':
+        constraint = getattr(getattr(exc, 'diag', None), 'constraint_name', None)
+        return 'pin_hash' in (constraint or '')
+    return False
+
+
 @app.route('/api/register', methods=['POST'])
 @limiter.limit("5 per minute")
 def register_user():
@@ -2373,18 +3059,30 @@ def register_user():
     FAMILY PIN groups siblings under one parent — the parent logs into the Parent app
     with that family PIN to see every child who shares it. Returns a token so the child
     is signed in immediately."""
-    data       = request.get_json() or {}
-    name        = str(data.get('name', '')).strip()
+    data = request.get_json(silent=True)
+    if not isinstance(data, dict):
+        return jsonify({'error': 'A JSON object is required'}), 400
+    raw_name    = data.get('name')
+    name        = raw_name.strip() if isinstance(raw_name, str) else ''
     pin         = str(data.get('pin', '')).strip()          # child's own login PIN
     parent_pin  = str(data.get('parent_pin', '')).strip()   # shared family PIN
     family_code = str(data.get('family_code', '')).strip().upper()  # blank => new family
     try:
-        age = int(data.get('age', 0))
+        raw_age = data.get('age', 0)
+        if isinstance(raw_age, bool):
+            raise ValueError()
+        # Match profile editing: age is a whole-number field. ``int(15.9)`` silently
+        # truncated registrations to 15, while the edit endpoint correctly rejected
+        # the same payload.
+        age = int(str(raw_age).strip())
     except (TypeError, ValueError):
         age = 0
 
     if not name:
         return jsonify({'success': False, 'message': 'Name is required'}), 400
+    if len(name) > PROFILE_NAME_MAX:
+        return jsonify({'success': False,
+                        'message': f'Name must be at most {PROFILE_NAME_MAX} characters'}), 400
     if not (1 <= age <= 100):
         return jsonify({'success': False, 'message': 'Enter a valid age'}), 400
     if not (pin.isdigit() and 4 <= len(pin) <= 6):
@@ -2409,7 +3107,8 @@ def register_user():
     # provided code JOINS that existing family, but only when the family PIN matches it
     # (so you can't attach a child to someone else's family).
     if family_code:
-        c.execute('SELECT parent_pin_hash FROM users WHERE family_code=? LIMIT 1', (family_code,))
+        c.execute('''SELECT parent_pin_hash, family_auth_version FROM users
+                     WHERE family_code=? LIMIT 1''', (family_code,))
         frow = c.fetchone()
         if not frow:
             conn.close()
@@ -2418,17 +3117,32 @@ def register_user():
             conn.close()
             return jsonify({'success': False, 'message': 'Family PIN does not match this family code'}), 403
         code = family_code
+        family_auth_version = int(frow['family_auth_version'] or 0)
     else:
         code = _generate_family_code(c)
+        family_auth_version = 0
 
     now = datetime.now().isoformat()
     # Store only the hashes; the plaintext pin/parent_pin columns are kept empty.
-    uid = insert_returning_id(
-        conn,
-        "INSERT INTO users (name, age, pin, parent_pin, pin_hash, parent_pin_hash, family_code, created_at) "
-        "VALUES (?,?,?,?,?,?,?,?)",
-        (name, age, '', '', pin_h, ppin_h, code, now),
-        pk='user_id')
+    try:
+        uid = insert_returning_id(
+            conn,
+            "INSERT INTO users (name, age, pin, parent_pin, pin_hash, parent_pin_hash, "
+            "family_code, family_auth_version, created_at) VALUES (?,?,?,?,?,?,?,?,?)",
+            (name, age, '', '', pin_h, ppin_h, code, family_auth_version, now),
+            pk='user_id')
+    except Exception as e:
+        # The unique index closes the race between the lookup above and this INSERT.
+        # Only a genuine child-PIN collision gets the 409; any other integrity error
+        # (e.g. a users_pkey clash from a broken id sequence) is a real server fault
+        # and must surface as one, not as a bogus "PIN already taken".
+        unique_violation = _pin_unique_violation(e)
+        conn.rollback()
+        conn.close()
+        if unique_violation:
+            return jsonify({'success': False,
+                            'message': 'That child PIN is already taken — pick another'}), 409
+        raise
     conn.commit()
     conn.close()
 
@@ -2464,14 +3178,16 @@ def user_login():
         if not family_code:
             conn.close()
             return jsonify({'success': False, 'message': 'Family code is required'}), 400
-        c.execute('SELECT user_id, name, age FROM users WHERE family_code=? AND parent_pin_hash=?',
+        c.execute('''SELECT user_id, name, age, family_auth_version
+                     FROM users WHERE family_code=? AND parent_pin_hash=?''',
                   (family_code, pin_h))
     else:
         # family_code included so the Child app can keep showing it in Settings —
         # otherwise the code is seen exactly once (registration dialog) and easily
         # forgotten. It's an identifier, not a credential: parent login and sibling
         # joins both still require the family PIN alongside it.
-        c.execute('SELECT user_id, name, age, family_code FROM users WHERE pin_hash=?', (pin_h,))
+        c.execute('''SELECT user_id, name, age, family_code, auth_version
+                     FROM users WHERE pin_hash=?''', (pin_h,))
     rows = c.fetchall()
     if not rows:
         conn.close()
@@ -2488,10 +3204,12 @@ def user_login():
         resp['children'] = children
         resp['child_user_id'] = children[0]['user_id']
         allowed = [r['user_id'] for r in rows]
+        authenticated_version = int(row['family_auth_version'] or 0)
     else:
         if row['family_code']:
             resp['family_code'] = row['family_code']
         allowed = [row['user_id']]
+        authenticated_version = int(row['auth_version'] or 0)
         # Parent-awareness symmetry: logging OUT raises an alert, so signing back IN
         # does too — confirming monitoring resumed. Also stamp last_seen immediately,
         # so the dashboard's monitoring strip turns green now rather than when the
@@ -2506,7 +3224,14 @@ def user_login():
         except Exception as e:
             logger.warning(f"login alert skipped: {e}")
     # Signed bearer token the client sends on every subsequent request
-    resp['token'] = mint_token(role, row['user_id'], allowed)
+    resp['token'] = mint_token(
+        role, row['user_id'], allowed,
+        family_code=family_code if role == 'parent' else None,
+        # Bind the token to the credential version observed by the authentication
+        # SELECT. Re-reading it inside mint_token would both borrow a second database
+        # connection and create a race where an old PIN login could acquire the new
+        # version if a rotation happened between the two reads.
+        credential_version=authenticated_version)
     conn.close()
     return jsonify(resp)
 
@@ -2514,10 +3239,16 @@ def user_login():
 @app.route('/api/user/fcm_token', methods=['POST'])
 def update_fcm_token():
     """Store or update a device's FCM registration token."""
-    data  = request.get_json() or {}
-    uid   = data.get('user_id')
-    token = str(data.get('fcm_token', '')).strip()
-    if not uid or not token:
+    data = request.get_json(silent=True)
+    if not isinstance(data, dict):
+        return jsonify({'error': 'A JSON object is required'}), 400
+    try:
+        uid = _positive_int(data.get('user_id'), 'user_id')
+    except (TypeError, ValueError):
+        return jsonify({'error': 'valid user_id required'}), 400
+    raw_token = data.get('fcm_token')
+    token = raw_token.strip() if isinstance(raw_token, str) else ''
+    if not token or len(token) > 4096:
         return jsonify({'error': 'user_id and fcm_token required'}), 400
     deny = guard(uid)
     if deny: return deny
@@ -2530,11 +3261,11 @@ def update_fcm_token():
     # fcm_token first, or _push_to_family's legacy union would keep pushing this device
     # for the old family (a cross-family leak of one child's alerts to another family).
     c.execute('UPDATE users SET fcm_token=NULL WHERE fcm_token=? AND user_id<>?',
-              (token, int(uid)))
-    c.execute('UPDATE users SET fcm_token=? WHERE user_id=?', (token, int(uid)))   # legacy/compat
+              (token, uid))
+    c.execute('UPDATE users SET fcm_token=? WHERE user_id=?', (token, uid))   # legacy/compat
     # Register this DEVICE under its family so every guardian's phone gets pushes — not just
     # whoever logged in last. Keyed by the unique token (re-register just refreshes the row).
-    c.execute('SELECT family_code FROM users WHERE user_id=?', (int(uid),))
+    c.execute('SELECT family_code FROM users WHERE user_id=?', (uid,))
     frow = c.fetchone()
     fam  = frow['family_code'] if frow else None
     if fam:
@@ -2554,9 +3285,12 @@ def unregister_fcm_token():
     pushes. Without this, a logged-out (or re-used) parent phone kept getting the
     child's alerts until the token was reassigned. Idempotent; token-only (no user
     ownership needed — a device can always retire its OWN token)."""
-    data  = request.get_json() or {}
-    token = str(data.get('fcm_token', '')).strip()
-    if not token:
+    data = request.get_json(silent=True)
+    if not isinstance(data, dict):
+        return jsonify({'error': 'A JSON object is required'}), 400
+    raw_token = data.get('fcm_token')
+    token = raw_token.strip() if isinstance(raw_token, str) else ''
+    if not token or len(token) > 4096:
         return jsonify({'error': 'fcm_token required'}), 400
     conn = get_db()
     c    = conn.cursor()
@@ -2569,7 +3303,7 @@ def unregister_fcm_token():
 
 @app.route('/api/user/profile', methods=['GET'])
 def get_profile():
-    user_id = request.args.get('user_id', 1, type=int)
+    user_id = _positive_int(request.args.get('user_id'), 'user_id')
     deny = guard(user_id)
     if deny: return deny
     conn = get_db()
@@ -2590,8 +3324,19 @@ def _valid_pin(p) -> bool:
 
 @app.route('/api/user/update', methods=['POST'])
 def update_profile():
-    data = request.get_json() or {}
-    user_id = data.get('user_id', 1)
+    data = request.get_json(silent=True)
+    if not isinstance(data, dict):
+        return jsonify({'success': False, 'message': 'A JSON object is required'}), 400
+    user_id = data.get('user_id')
+    try:
+        if isinstance(user_id, bool):
+            raise ValueError()
+        user_id = int(str(user_id).strip())
+        if user_id <= 0:
+            raise ValueError()
+    except (TypeError, ValueError):
+        return jsonify({'success': False,
+                        'message': 'user_id must be a positive integer'}), 400
     deny = guard(user_id)
     if deny: return deny
     # Profile edits are PARENT-controlled, like data export/deletion and limits. Age in
@@ -2601,53 +3346,133 @@ def update_profile():
     # (passes guard) but must not rewrite the profile.
     deny = deny_non_parent()
     if deny: return deny
+
+    editable = {'name', 'age', 'pin', 'parent_pin'}
+    if not editable.intersection(data):
+        return jsonify({'success': False, 'message': 'No profile fields supplied'}), 400
+
+    # Validate the complete request before issuing any UPDATE. The old handler silently
+    # ignored an invalid age and still returned success, and accepted a blank name from
+    # any non-Android client, leaving the parent UI believing a profile edit had worked.
+    name = None
+    if 'name' in data:
+        if not isinstance(data['name'], str):
+            return jsonify({'success': False, 'message': 'Name is required'}), 400
+        name = data['name'].strip()
+        if not name:
+            return jsonify({'success': False, 'message': 'Name is required'}), 400
+        if len(name) > PROFILE_NAME_MAX:
+            return jsonify({'success': False,
+                            'message': f'Name must be at most {PROFILE_NAME_MAX} characters'}), 400
+
+    age = None
+    if 'age' in data:
+        raw_age = data['age']
+        try:
+            # Reject booleans and fractional JSON numbers rather than quietly coercing
+            # true -> 1 or 15.9 -> 15.
+            if isinstance(raw_age, bool):
+                raise ValueError()
+            age = int(str(raw_age).strip())
+        except (TypeError, ValueError):
+            return jsonify({'success': False,
+                            'message': 'Age must be a whole number between 1 and 100'}), 400
+        if not 1 <= age <= 100:
+            return jsonify({'success': False,
+                            'message': 'Age must be between 1 and 100'}), 400
+
+    new_h = None
+    if 'pin' in data:
+        if not _valid_pin(data['pin']):
+            return jsonify({'success': False,
+                            'message': 'Child PIN must be 4–6 digits'}), 400
+        new_h = hash_pin(str(data['pin']).strip())
+
+    new_pp = None
+    if 'parent_pin' in data:
+        if not _valid_pin(data['parent_pin']):
+            return jsonify({'success': False,
+                            'message': 'Family PIN must be 4–6 digits'}), 400
+        new_pp = hash_pin(str(data['parent_pin']).strip())
+
     conn = get_db()
     c    = conn.cursor()
-    if 'name' in data:
-        c.execute('UPDATE users SET name=? WHERE user_id=?', (str(data['name']).strip(), user_id))
-    if 'age' in data:
-        try:
-            age = int(data['age'])
-            if 1 <= age <= 100:
-                c.execute('UPDATE users SET age=? WHERE user_id=?', (age, user_id))
-        except (TypeError, ValueError):
-            pass
-    if 'pin' in data:
+    c.execute('SELECT pin_hash, parent_pin_hash, family_code FROM users WHERE user_id=?',
+              (user_id,))
+    target = c.fetchone()
+    if not target:
+        conn.close()
+        return jsonify({'success': False, 'message': 'User not found'}), 404
+
+    if new_h is not None:
         # Mirror registration's rules: 4–6 digits, and globally unique (child login
         # matches on pin_hash and takes the first row, so a duplicate would collide).
-        if not _valid_pin(data['pin']):
+        # Registration requires the child and family PIN to differ. Enforce the same
+        # invariant on reset; otherwise the edit screen could collapse the two roles
+        # onto one secret even though onboarding correctly refuses that setup.
+        final_parent_hash = new_pp if new_pp is not None else target['parent_pin_hash']
+        if final_parent_hash and hmac.compare_digest(new_h, final_parent_hash):
             conn.close()
-            return jsonify({'success': False, 'message': 'Child PIN must be 4–6 digits'}), 400
-        new_h = hash_pin(str(data['pin']).strip())
+            return jsonify({'success': False,
+                            'message': 'Child PIN and Family PIN must be different'}), 400
         c.execute('SELECT user_id FROM users WHERE pin_hash=? AND user_id<>?', (new_h, int(user_id)))
         if c.fetchone():
             conn.close()
             return jsonify({'success': False, 'message': 'That child PIN is already taken'}), 409
-        c.execute("UPDATE users SET pin_hash=?, pin='' WHERE user_id=?", (new_h, user_id))
-    if 'parent_pin' in data:
-        # Only a PARENT may change the family PIN. A child's own token passes the
-        # ownership guard above (it's their row), but letting them rewrite parent_pin
-        # would defeat the parent-PIN gate on logout/settings — the exact tamper
-        # protection it exists for.
-        deny = deny_non_parent()
-        if deny:
+
+    if new_pp is not None:
+        # Evaluate the FINAL PIN state, including a child + family PIN changed together
+        # in one request. Querying before the child update otherwise either misses an
+        # equal pair or rejects a family PIN that the child is simultaneously leaving.
+        fam = target['family_code']
+        if fam:
+            c.execute('SELECT user_id, pin_hash FROM users WHERE family_code=?', (fam,))
+            family_children = c.fetchall()
+        else:
+            family_children = [{'user_id': user_id, 'pin_hash': target['pin_hash']}]
+        same_as_child = False
+        for child in family_children:
+            final_child_hash = (new_h if int(child['user_id']) == user_id and new_h is not None
+                                else child['pin_hash'])
+            if final_child_hash and hmac.compare_digest(new_pp, final_child_hash):
+                same_as_child = True
+                break
+        if same_as_child:
             conn.close()
-            return deny
-        if not _valid_pin(data['parent_pin']):
+            return jsonify({'success': False,
+                            'message': 'Family PIN must differ from every child PIN'}), 400
+
+    if name is not None:
+        c.execute('UPDATE users SET name=? WHERE user_id=?', (name, user_id))
+    if age is not None:
+        c.execute('UPDATE users SET age=? WHERE user_id=?', (age, user_id))
+    if new_h is not None:
+        try:
+            c.execute("""UPDATE users SET pin_hash=?, pin='',
+                         auth_version=COALESCE(auth_version,0)+1 WHERE user_id=?""",
+                      (new_h, user_id))
+        except Exception as e:
+            unique_violation = _pin_unique_violation(e)
+            conn.rollback()
             conn.close()
-            return jsonify({'success': False, 'message': 'Family PIN must be 4–6 digits'}), 400
+            if unique_violation:
+                return jsonify({'success': False,
+                                'message': 'That child PIN is already taken'}), 409
+            raise
+    if new_pp is not None:
         # Change it for the WHOLE family. Parent login matches family_code + parent_pin_hash
         # across all siblings, so updating one child's row would split the family — the new
         # PIN would see only that child and the old PIN might still reach the others.
-        new_pp = hash_pin(str(data['parent_pin']).strip())
-        c.execute('SELECT family_code FROM users WHERE user_id=?', (int(user_id),))
-        frow = c.fetchone()
-        fam  = frow['family_code'] if frow else None
+        fam = target['family_code']
         if fam:
-            c.execute("UPDATE users SET parent_pin_hash=?, parent_pin='' WHERE family_code=?",
+            c.execute("""UPDATE users SET parent_pin_hash=?, parent_pin='',
+                         family_auth_version=COALESCE(family_auth_version,0)+1
+                         WHERE family_code=?""",
                       (new_pp, fam))
         else:
-            c.execute("UPDATE users SET parent_pin_hash=?, parent_pin='' WHERE user_id=?",
+            c.execute("""UPDATE users SET parent_pin_hash=?, parent_pin='',
+                         family_auth_version=COALESCE(family_auth_version,0)+1
+                         WHERE user_id=?""",
                       (new_pp, int(user_id)))
     conn.commit()
     conn.close()
@@ -2656,9 +3481,61 @@ def update_profile():
 
 # ─────────────── PRIVACY: CONSENT + DATA DELETION + RETENTION ──────────────
 
-CONSENT_VERSION = os.environ.get('CONSENT_VERSION', '2026-06-01')
+CONSENT_VERSION = os.environ.get('CONSENT_VERSION', '2026-07-30').strip()
+if not CONSENT_VERSION or len(CONSENT_VERSION) > 64:
+    raise RuntimeError('CONSENT_VERSION must be a non-empty string of at most 64 characters')
 # Raw event data older than this many days is purged on startup (0 = keep forever).
-DATA_RETENTION_DAYS = int(os.environ.get('DATA_RETENTION_DAYS', '0'))
+DATA_RETENTION_DAYS = _env_int('DATA_RETENTION_DAYS', 0, minimum=0)
+
+
+def require_current_consent(user_id: int, collected_at=None):
+    """Reject new monitoring data unless the current policy was accepted first.
+
+    ``collected_at`` closes the offline/retry loophole: accepting today's policy must
+    not authorize uploading a session or event collected before that acceptance.
+    Returns a Flask response tuple to short-circuit, or None.
+    """
+    conn = get_db()
+    row = conn.execute(
+        'SELECT consent_given_at, consent_version FROM users WHERE user_id=?',
+        (user_id,),
+    ).fetchone()
+    conn.close()
+    if (not row or not row['consent_given_at']
+            or row['consent_version'] != CONSENT_VERSION):
+        return jsonify({
+            'success': False,
+            'message': 'Current parent consent is required before monitoring',
+            'consent_required': True,
+            'current_version': CONSENT_VERSION,
+        }), 403
+    if collected_at is not None:
+        try:
+            if _parse_ts(collected_at) < _parse_ts(row['consent_given_at']):
+                return jsonify({
+                    'success': False,
+                    'message': 'Data collected before current consent cannot be uploaded',
+                    'consent_required': True,
+                    'current_version': CONSENT_VERSION,
+                }), 403
+        except Exception:
+            return jsonify({'success': False,
+                            'message': 'Invalid collection timestamp'}), 400
+    return None
+
+
+def require_session_current_consent(session_id: int):
+    """Apply current-consent and acceptance-time checks to session-scoped ingestion."""
+    conn = get_db()
+    row = conn.execute(
+        'SELECT user_id, start_time FROM sessions WHERE session_id=?',
+        (session_id,),
+    ).fetchone()
+    conn.close()
+    if not row:
+        return jsonify({'success': False, 'message': 'Session not found'}), 404
+    return require_current_consent(int(row['user_id']), row['start_time'])
+
 
 # Every table holding a child's collected data, so "delete my data" is complete.
 # (feedback + child_nudges were previously missed — they hold per-child rows and so
@@ -2712,36 +3589,58 @@ def purge_old_data(force: bool = False):
 
 
 @app.route('/api/consent', methods=['POST'])
+@limiter.limit("6 per minute")
 def record_consent():
-    """Record parental consent to monitoring for a child account."""
-    data    = request.get_json() or {}
-    user_id = data.get('user_id')
+    """Record current-version consent, authorized by a parent token or family PIN."""
+    data = request.get_json() or {}
+    try:
+        user_id = _positive_int(data.get('user_id'), 'user_id')
+    except (TypeError, ValueError):
+        return jsonify({'success': False, 'message': 'user_id required'}), 400
     deny = guard(user_id)
     if deny: return deny
-    if not user_id:
-        return jsonify({'success': False, 'message': 'user_id required'}), 400
-    version = str(data.get('version', CONSENT_VERSION))
+    version = data.get('version')
+    if not isinstance(version, str) or version.strip() != CONSENT_VERSION:
+        return jsonify({'success': False,
+                        'message': f'version must be {CONSENT_VERSION}'}), 400
+
     conn = get_db()
-    conn.cursor().execute("UPDATE users SET consent_given_at=?, consent_version=? WHERE user_id=?",
-                          (datetime.now().isoformat(), version, int(user_id)))
+    c = conn.cursor()
+    c.execute('SELECT parent_pin_hash FROM users WHERE user_id=?', (user_id,))
+    target = c.fetchone()
+    if not target:
+        conn.close()
+        return jsonify({'success': False, 'message': 'User not found'}), 404
+    parent_authorized = bool(g.auth and g.auth.get('role') == 'parent')
+    if not parent_authorized:
+        supplied = data.get('parent_pin')
+        if not isinstance(supplied, str) or not verify_pin(
+                supplied.strip(), target['parent_pin_hash']):
+            conn.close()
+            return jsonify({'success': False,
+                            'message': 'Valid Family PIN required'}), 403
+    c.execute("UPDATE users SET consent_given_at=?, consent_version=? WHERE user_id=?",
+              (datetime.now().isoformat(), CONSENT_VERSION, user_id))
     conn.commit()
     conn.close()
-    return jsonify({'success': True, 'consent_version': version})
+    return jsonify({'success': True, 'consent_version': CONSENT_VERSION})
 
 
 @app.route('/api/consent', methods=['GET'])
 def get_consent():
-    user_id = request.args.get('user_id', type=int)
+    try:
+        user_id = _positive_int(request.args.get('user_id'), 'user_id')
+    except (TypeError, ValueError):
+        return jsonify({'success': False, 'message': 'user_id required'}), 400
     deny = guard(user_id)
     if deny: return deny
-    if not user_id:
-        return jsonify({'success': False, 'message': 'user_id required'}), 400
     conn = get_db()
     row = conn.execute("SELECT consent_given_at, consent_version FROM users WHERE user_id=?",
                        (user_id,)).fetchone()
     conn.close()
     given = bool(row and row['consent_given_at'])
-    stale = bool(row and row['consent_version'] and row['consent_version'] != CONSENT_VERSION)
+    stale = bool(given and (not row['consent_version']
+                           or row['consent_version'] != CONSENT_VERSION))
     return jsonify({
         'success': True,
         'consent_given':    given,
@@ -2766,7 +3665,7 @@ def export_user_data():
     the sessions themselves) — 'show me my data' and 'erase my data' are two views of
     one inventory, so neither can quietly drift from the other. Rate-limited: this is
     the heaviest read in the API."""
-    user_id = request.args.get('user_id', type=int)
+    user_id = _positive_int(request.args.get('user_id'), 'user_id')
     if not user_id:
         return jsonify({'success': False, 'message': 'user_id required'}), 400
     deny = guard(user_id)
@@ -2824,14 +3723,22 @@ def delete_user_data():
        to wipe the monitoring history — that would be a quiet-tamper loophole. Role is
        unknown only for token-less shadow-mode callers, which production rejects."""
     data    = request.get_json() or {}
-    user_id = data.get('user_id')
+    try:
+        user_id = _positive_int(data.get('user_id'), 'user_id')
+    except (TypeError, ValueError):
+        return jsonify({'success': False, 'message': 'user_id required'}), 400
     deny = guard(user_id)
     if deny: return deny
     deny = deny_non_parent()           # deletion is parent-controlled (anti-tamper)
     if deny: return deny
-    if not user_id:
-        return jsonify({'success': False, 'message': 'user_id required'}), 400
-    scope = str(data.get('scope', 'data')).lower()
+    raw_scope = data.get('scope', 'data')
+    if not isinstance(raw_scope, str):
+        return jsonify({'success': False,
+                        'message': 'scope must be data or account'}), 400
+    scope = raw_scope.strip().lower()
+    if scope not in {'data', 'account'}:
+        return jsonify({'success': False,
+                        'message': 'scope must be data or account'}), 400
     conn = get_db()
     _delete_user_data(conn, int(user_id))
     if scope == 'account':
@@ -2863,6 +3770,11 @@ def delete_user_data():
 # this, ending it at its last recorded activity so the duration stays realistic. This is
 # the server-side safety net for best-effort uploads (there is no offline retry queue).
 STALE_SESSION_HOURS = 6
+# An orphaned live session is conservatively closed after six hours, but a client that
+# supplies an explicit, internally consistent stop time may legitimately report a much
+# longer bout. Keeping these limits separate avoids hiding the highest-risk behaviour.
+EXPLICIT_SESSION_MAX_HOURS = 24
+END_RETRY_MAX_AGE = timedelta(days=7)
 # A live, playing app heartbeats every ~5 min. If heartbeats STOP while a session is
 # open, the monitoring app was killed/swiped/uninstalled — so the session's end-event is
 # never coming and the child is no longer being tracked as "playing". Close it promptly
@@ -2886,12 +3798,15 @@ def _close_stale_sessions(c, user_id):
         # that case.
         c.execute('SELECT last_seen FROM users WHERE user_id=?', (user_id,))
         _hb = c.fetchone()
+        heartbeat_last = None
         hb_silent = False
         if _hb and _hb['last_seen']:
             try:
-                silent_min = (datetime.now() - _parse_ts(_hb['last_seen'])).total_seconds() / 60.0
+                heartbeat_last = _parse_ts(_hb['last_seen'])
+                silent_min = (datetime.now() - heartbeat_last).total_seconds() / 60.0
                 hb_silent = silent_min >= SESSION_SILENT_MIN
             except Exception:
+                heartbeat_last = None
                 hb_silent = False
         if hb_silent:
             c.execute("SELECT session_id, start_time FROM sessions "
@@ -2911,10 +3826,22 @@ def _close_stale_sessions(c, user_id):
                       "  UNION ALL SELECT MAX(timestamp) FROM predictions     WHERE session_id=? "
                       ") q", (sid, sid, sid, sid))
             last   = c.fetchone()
-            end_ts = last['t'] if (last and last['t']) else r['start_time']
+            end_ts = last['t'] if (last and last['t']) else None
             try:
-                sdt = datetime.fromisoformat(str(r['start_time']).replace(' ', 'T'))
-                edt = datetime.fromisoformat(str(end_ts).replace(' ', 'T').split('+')[0].split('Z')[0])
+                sdt = _parse_ts(r['start_time'])
+                if end_ts:
+                    edt = _parse_ts(end_ts)
+                elif heartbeat_last is not None and heartbeat_last >= sdt:
+                    edt = heartbeat_last
+                elif sdt < datetime.now() - timedelta(hours=STALE_SESSION_HOURS):
+                    # A six-hour timeout with no event rows used to be collapsed to
+                    # zero seconds. The timeout boundary is the best bounded endpoint.
+                    edt = sdt + timedelta(hours=STALE_SESSION_HOURS)
+                else:
+                    edt = sdt
+                edt = min(max(edt, sdt), sdt + timedelta(hours=STALE_SESSION_HOURS),
+                          datetime.now())
+                end_ts = edt.isoformat()
                 dur = max(0, int((edt - sdt).total_seconds()))
             except Exception:
                 end_ts, dur = r['start_time'], 0
@@ -2923,51 +3850,468 @@ def _close_stale_sessions(c, user_id):
                       (end_ts, dur, sid))
             closed.append(sid)
             logger.info("Auto-closed stale session %s (offline end-event presumed lost)", sid)
+
+        # Recover a worker crash that happened after end_time committed but before the
+        # prediction/alert/streak state machine completed. Closed rows are otherwise
+        # invisible to an open-session sweep and would remain partially finalized.
+        stale_claim = (datetime.now() - _FINALIZE_LEASE).isoformat()
+        c.execute('''SELECT session_id FROM sessions
+                     WHERE user_id=? AND end_time IS NOT NULL
+                     AND (client_key IS NULL OR client_key='')
+                     AND ((COALESCE(finalization_complete,0)=0
+                           AND final_risk_score IS NULL) OR
+                          (finalization_complete=-1 AND
+                           COALESCE(finalization_started_at,'')<?) OR
+                          (finalization_complete=1 AND
+                           COALESCE(voice_rescore_pending,0)<>0))''',
+                   (user_id, stale_claim))
+        closed.extend(r['session_id'] for r in c.fetchall())
     except Exception as e:
         logger.warning("Stale-session sweep failed for user %s: %s", user_id, e)
     return closed
 
 
-def _finalize_closed_sessions(sids):
-    """Give each auto-closed session a final risk score so it isn't invisible in the
-    risk history/trend (which filter on final_risk_score). Uses run_prediction ONLY —
-    NOT _save_behavioral_snapshot — because the snapshot recomputes features from
-    now−start and would inflate a session dated in the past; run_prediction instead
-    scores from the snapshots captured live during play. Call AFTER the caller commits
-    the end_time. Best-effort.
+_session_finalize_lock = threading.RLock()
+_session_start_lock = threading.RLock()
+_FINALIZE_LEASE = timedelta(minutes=2)
 
-    Also raises the parent's risk alert + updates the healthy-day streak — the same
-    things end_session does for a normal end. A session whose end-event never arrived
-    (app killed / swiped / offline) can still be high-risk, and the parent must not miss
-    that alert just because the normal end path didn't run."""
-    for sid in dict.fromkeys(sids or []):          # de-dup: never score one session twice
+
+def _latest_prediction(session_id: int):
+    conn = get_db()
+    c = conn.cursor()
+    c.execute('''SELECT p.risk_category, p.final_risk_score, p.behavior_score,
+                        p.chat_score, p.voice_score, p.confidence, p.behavior_present,
+                        p.chat_present, p.voice_present, s.user_id
+                 FROM predictions p JOIN sessions s ON s.session_id=p.session_id
+                 WHERE p.session_id=?
+                 ORDER BY p.id DESC LIMIT 1''', (session_id,))
+    row = c.fetchone()
+    if not row:
+        conn.close()
+        return None
+    value = dict(row)
+    user_id = value.pop('user_id', None)
+    value['risk_label'] = value.get('risk_category') or 'unknown'
+    value['risk_score'] = value.get('final_risk_score')
+    value['modalities'] = {
+        'behavior': bool(value.get('behavior_present')),
+        'chat': bool(value.get('chat_present')),
+        'voice': bool(value.get('voice_present')),
+    }
+    # A replayed /end serves this stored row instead of re-running the model, so it
+    # must carry the same context the original response had — without these fields the
+    # retry rendered an empty "why" list and a "0 of 3 sessions" baseline banner for a
+    # session that was already fully scored.
+    meaningful = 0
+    try:
+        if user_id is not None:
+            c.execute('''SELECT COUNT(*) AS n FROM sessions
+                         WHERE user_id=? AND end_time IS NOT NULL
+                         AND final_risk_score IS NOT NULL
+                         AND risk_category IN ('casual','at_risk','addicted')''',
+                      (user_id,))
+            meaningful = int(c.fetchone()['n'] or 0)
+    except Exception:
+        meaningful = 0
+    value['sessions_analyzed'] = meaningful
+    value['observation_mode'] = meaningful < 3
+    top_factors = []
+    if value['modalities']['behavior']:
         try:
-            pred = run_prediction(sid, explain=False)
-        except Exception as e:
-            logger.warning("finalize closed session %s skipped: %s", sid, e)
-            continue
+            c.execute('SELECT * FROM behavioral_data WHERE session_id=? '
+                      'ORDER BY id DESC LIMIT 1', (session_id,))
+            brow = c.fetchone()
+            if brow:
+                # Memoised SHAP (see _shap_explain_behavior) — a repeat of the same
+                # feature vector is a cache hit, so the retry path stays cheap.
+                top_factors = _shap_explain_behavior(
+                    {f: float(brow[f] or 0) for f in BEHAVIORAL_FEATURES})
+        except Exception:
+            top_factors = []
+    value['top_factors'] = top_factors
+    conn.close()
+    return value
+
+
+def _weekly_hours_as_of(c, user_id: int, reference_dt: datetime) -> float:
+    c.execute('''SELECT COALESCE(SUM(duration_seconds)/3600.0,0) AS wh
+                 FROM sessions WHERE user_id=? AND end_time IS NOT NULL
+                 AND start_time>=? AND start_time<=?''',
+              (user_id, (reference_dt - timedelta(days=7)).isoformat(),
+               reference_dt.isoformat()))
+    row = c.fetchone()
+    return float((row['wh'] if row else 0) or 0)
+
+
+def _push_high_risk(user_id: int, child_name: str, family_code: str,
+                    prediction: dict, alert_id=None):
+    if not family_code or prediction.get('risk_category') != 'addicted':
+        return
+    score = prediction.get('final_risk_score')
+    if score is None:
+        return
+    _push_to_family(
+        family_code, "High Gaming Risk Alert",
+        f"{child_name or 'Your child'}'s gaming risk reached {int(float(score) * 100)}% - check the app now.",
+        'risk', user_id, child_name, alert_id, 'high')
+
+
+def _finalize_session_once(sid: int, explain: bool = False):
+    """Resumable finalization for normal, handoff and watchdog closes.
+
+    A DB claim prevents duplicate cross-worker side effects; the in-process lock also
+    prevents duplicate predictions.  Any exception rolls the claim back to pending and
+    removes rows created by that attempt, so the client's ordinary retry can finish it.
+    """
+    consent_check = get_db()
+    consent_row = consent_check.execute(
+        '''SELECT s.start_time, u.consent_given_at, u.consent_version
+           FROM sessions s LEFT JOIN users u ON u.user_id=s.user_id
+           WHERE s.session_id=?''',
+        (sid,),
+    ).fetchone()
+    consent_valid = False
+    if (consent_row and consent_row['consent_given_at']
+            and consent_row['consent_version'] == CONSENT_VERSION):
         try:
-            conn = get_db()
-            c    = conn.cursor()
-            c.execute('SELECT user_id FROM sessions WHERE session_id=?', (sid,))
-            r   = c.fetchone()
-            uid = r['user_id'] if r else None
-            if uid is not None:
-                _maybe_create_alert(c, uid, pred)          # parent risk alert (poller notifies)
-                conn.commit()
+            consent_valid = (
+                _parse_ts(consent_row['start_time'])
+                >= _parse_ts(consent_row['consent_given_at'])
+            )
+        except Exception:
+            consent_valid = False
+    if consent_row and not consent_valid:
+        # Handoff/watchdog closes do not pass through /end's cleanup branch. Prevent
+        # those paths from deriving a new behavioural snapshot/prediction for a session
+        # that predates the currently accepted policy.
+        consent_check.execute(
+            '''UPDATE sessions SET finalization_complete=1,
+               finalization_started_at=NULL, voice_rescore_pending=0,
+               voice_rescore_started_at=NULL WHERE session_id=?''',
+            (sid,),
+        )
+        consent_check.commit()
+        consent_check.close()
+        return None
+    consent_check.close()
+
+    with _session_finalize_lock:
+        conn = get_db()
+        c = conn.cursor()
+        c.execute('''SELECT s.user_id, s.start_time, s.end_time, s.duration_seconds,
+                            s.finalization_complete, s.finalization_started_at,
+                            s.side_effect_risk_category, u.name, u.family_code
+                     FROM sessions s LEFT JOIN users u ON u.user_id=s.user_id
+                     WHERE s.session_id=?''', (sid,))
+        row = c.fetchone()
+        if not row or not row['end_time']:
             conn.close()
-            if uid is not None:
-                conn = get_db()
-                c    = conn.cursor()
-                c.execute('SELECT COALESCE(ROUND(SUM(duration_seconds)/3600.0,2),0) AS wh '
-                          'FROM sessions WHERE user_id=? AND start_time>=?',
-                          (uid, (datetime.now() - timedelta(days=7)).isoformat()))
-                whr      = c.fetchone()
-                weekly_h = float(whr['wh'] or 0) if whr else 0.0
-                conn.close()
-                _update_streak(uid, weekly_h, pred.get('risk_category', 'casual'))
-        except Exception as e:
-            logger.warning("finalize alert/streak for %s skipped: %s", sid, e)
+            return None
+        state = int(row['finalization_complete'] or 0)
+        if state == 1:
+            conn.close()
+            latest = _drain_pending_voice_rescore(sid) or _latest_prediction(sid)
+            if latest and row['side_effect_risk_category'] != latest.get('risk_category'):
+                _apply_late_prediction_side_effects(sid, latest)
+            return latest
+        now = datetime.now()
+        claim_stamp = now.isoformat()
+        stale_before = (now - _FINALIZE_LEASE).isoformat()
+        c.execute('''UPDATE sessions SET finalization_complete=-1,
+                     finalization_started_at=? WHERE session_id=? AND end_time IS NOT NULL
+                     AND (COALESCE(finalization_complete,0)=0 OR
+                          (finalization_complete=-1 AND
+                           COALESCE(finalization_started_at,'')<?))''',
+                  (claim_stamp, sid, stale_before))
+        claimed = c.rowcount
+        conn.commit()
+        if not claimed:
+            conn.close()
+            # Another process owns a fresh claim.  Wait briefly for its committed result.
+            for _ in range(100):
+                time.sleep(0.05)
+                check = get_db()
+                done = check.execute('SELECT finalization_complete FROM sessions '
+                                     'WHERE session_id=?', (sid,)).fetchone()
+                check.close()
+                if done and int(done['finalization_complete'] or 0) == 1:
+                    return _drain_pending_voice_rescore(sid) or _latest_prediction(sid)
+            # An intermediate/live prediction is not proof that alerts + streak +
+            # completion committed. Let /end return a retryable 503 instead.
+            return None
+
+        # Remember exactly which derived rows this attempt owns for clean rollback.
+        c.execute('SELECT COALESCE(MAX(id),0) AS n FROM behavioral_data WHERE session_id=?',
+                  (sid,))
+        behavior_before = int(c.fetchone()['n'] or 0)
+        c.execute('SELECT COALESCE(MAX(id),0) AS n FROM predictions WHERE session_id=?',
+                  (sid,))
+        prediction_before = int(c.fetchone()['n'] or 0)
+        conn.close()
+
+        alert_id = None
+        try:
+            _save_behavioral_snapshot(sid)
+            prediction = run_prediction(sid, explain=explain)
+
+            finish = get_db()
+            try:
+                fc = finish.cursor()
+                fc.execute('''SELECT finalization_complete, finalization_started_at
+                              FROM sessions WHERE session_id=?''', (sid,))
+                current = fc.fetchone()
+                if (not current
+                        or int(current['finalization_complete'] or 0) != -1
+                        or current['finalization_started_at'] != claim_stamp):
+                    finish.rollback()
+                    finish.close()
+                    # This worker lost its lease. Never return an intermediate prediction
+                    # as though alert/streak/completion had committed.
+                    return None
+                category = prediction.get('risk_category', 'unknown')
+                if category in ('casual', 'at_risk', 'addicted'):
+                    alert_id = _maybe_create_alert(
+                        fc, row['user_id'], prediction, session_id=sid)
+                    reference = _parse_ts(row['end_time'])
+                    weekly = _weekly_hours_as_of(fc, row['user_id'], reference)
+                    _update_streak(row['user_id'], weekly, category,
+                                   conn=finish, reference_dt=reference)
+                fc.execute('''UPDATE sessions SET finalization_complete=1,
+                              finalization_started_at=NULL,
+                              side_effect_risk_category=? WHERE session_id=?
+                              AND finalization_complete=-1
+                              AND finalization_started_at=?''',
+                           (category, sid, claim_stamp))
+                if fc.rowcount != 1:
+                    finish.rollback()
+                    finish.close()
+                    return None
+                finish.commit()
+                finish.close()
+            except Exception:
+                try:
+                    finish.rollback()
+                    finish.close()
+                except Exception:
+                    pass
+                raise
+        except Exception:
+            cleanup = get_db()
+            cc = cleanup.cursor()
+            cc.execute('''SELECT finalization_complete, finalization_started_at
+                          FROM sessions WHERE session_id=?''', (sid,))
+            owned = cc.fetchone()
+            # Never delete a successor worker's rows after losing a stale lease.
+            if (owned and int(owned['finalization_complete'] or 0) == -1
+                    and owned['finalization_started_at'] == claim_stamp):
+                cc.execute('DELETE FROM behavioral_data WHERE session_id=? AND id>?',
+                           (sid, behavior_before))
+                cc.execute('DELETE FROM predictions WHERE session_id=? AND id>?',
+                           (sid, prediction_before))
+                cc.execute('''UPDATE sessions SET final_risk_score=NULL, risk_category=NULL,
+                              confidence=NULL, finalization_complete=0,
+                              finalization_started_at=NULL WHERE session_id=?
+                              AND finalization_complete=-1
+                              AND finalization_started_at=?''', (sid, claim_stamp))
+            cleanup.commit()
+            cleanup.close()
+            raise
+
+        # Database state is already durable. Push delivery and a queued late-voice rescore
+        # are best-effort follow-up work and must never roll completion back.
+        try:
+            _push_high_risk(row['user_id'], row['name'], row['family_code'],
+                            prediction, alert_id=alert_id)
+        except Exception as exc:
+            logger.warning("High-risk push for session %s deferred/skipped: %s", sid, exc)
+        try:
+            prediction = _drain_pending_voice_rescore(sid) or prediction
+        except Exception as exc:
+            logger.warning("Late voice rescore for session %s remains queued: %s", sid, exc)
+        return prediction
+
+
+def _apply_late_prediction_side_effects(sid: int, prediction: dict):
+    """Apply one side-effect transition when late voice changes a closed session."""
+    with _session_finalize_lock:
+        conn = get_db()
+        c = conn.cursor()
+        c.execute('''SELECT s.user_id, s.end_time, s.side_effect_risk_category,
+                            s.finalization_complete, u.name, u.family_code
+                     FROM sessions s LEFT JOIN users u ON u.user_id=s.user_id
+                     WHERE s.session_id=?''', (sid,))
+        row = c.fetchone()
+        new_category = prediction.get('risk_category', 'unknown')
+        if (not row or not row['end_time'] or int(row['finalization_complete'] or 0) != 1
+                or row['side_effect_risk_category'] == new_category):
+            conn.close()
+            return False
+        c.execute('''UPDATE sessions SET side_effect_risk_category=?
+                     WHERE session_id=? AND finalization_complete=1 AND
+                     (side_effect_risk_category<>? OR side_effect_risk_category IS NULL)''',
+                  (new_category, sid, new_category))
+        if c.rowcount != 1:
+            conn.rollback()
+            conn.close()
+            return False
+        alert_id = _maybe_create_alert(
+            c, row['user_id'], prediction, session_id=sid, revise=True)
+        # A late downward transition must be able to undo a previously spoiled day;
+        # replaying durable days handles both directions deterministically.
+        _recompute_streak(row['user_id'], conn=conn)
+        conn.commit()
+        conn.close()
+        try:
+            _push_high_risk(row['user_id'], row['name'], row['family_code'],
+                            prediction, alert_id=alert_id)
+        except Exception as exc:
+            logger.warning("Late-risk push for session %s skipped: %s", sid, exc)
+        return True
+
+
+def _drain_pending_voice_rescore(sid: int):
+    """Claim and apply every durable late-voice rescore request for a closed session.
+
+    A voice event arriving while a rescore is running writes pending=1 again. The
+    conditional clear then fails and this loop performs one more pass, so no segment is
+    silently omitted and a crashed worker's -1 claim can be reclaimed after the lease.
+    """
+    latest = None
+    for _ in range(4):
+        conn = get_db()
+        c = conn.cursor()
+        now = datetime.now()
+        stale_before = (now - _FINALIZE_LEASE).isoformat()
+        claim_stamp = now.isoformat()
+        c.execute('''UPDATE sessions SET voice_rescore_pending=-1,
+                     voice_rescore_started_at=?
+                     WHERE session_id=? AND end_time IS NOT NULL
+                     AND finalization_complete=1
+                     AND (voice_rescore_pending=1 OR
+                          (voice_rescore_pending=-1 AND
+                           COALESCE(voice_rescore_started_at,'')<?))''',
+                  (claim_stamp, sid, stale_before))
+        claimed = c.rowcount
+        conn.commit()
+        conn.close()
+        if not claimed:
+            return latest
+        try:
+            latest = run_prediction(sid, explain=False)
+            _apply_late_prediction_side_effects(sid, latest)
+        except Exception:
+            retry = get_db()
+            retry.execute('''UPDATE sessions SET voice_rescore_pending=1,
+                             voice_rescore_started_at=NULL WHERE session_id=?
+                             AND voice_rescore_pending=-1
+                             AND voice_rescore_started_at=?''', (sid, claim_stamp))
+            retry.commit()
+            retry.close()
+            raise
+        done = get_db()
+        dc = done.cursor()
+        dc.execute('''UPDATE sessions SET voice_rescore_pending=0,
+                      voice_rescore_started_at=NULL WHERE session_id=?
+                      AND voice_rescore_pending=-1
+                      AND voice_rescore_started_at=?''', (sid, claim_stamp))
+        cleared = dc.rowcount
+        done.commit()
+        done.close()
+        if cleared:
+            return latest
+    return latest
+
+
+def _finalize_closed_sessions(sids):
+    for sid in dict.fromkeys(sids or []):
+        try:
+            _finalize_session_once(int(sid), explain=False)
+        except Exception as exc:
+            logger.warning("finalize closed session %s deferred for retry: %s", sid, exc)
+
+
+def _start_session_state(user_id: int, game_name: str, now: str):
+    """Enforce one open session and make a repeated same-game start idempotent."""
+    with _session_start_lock:
+        conn = get_db()
+        c = conn.cursor()
+        # The Python lock covers the threaded production worker. This transaction lock
+        # also serializes the state machine if WEB_CONCURRENCY is raised later.
+        if USE_POSTGRES:
+            c.execute('SELECT pg_advisory_xact_lock(?)', (int(user_id),))
+
+        # A fresh start request is itself proof that the Child app is alive. Stamp it
+        # before the orphan sweep so an old heartbeat cannot immediately close the new
+        # or retried session as "silent".
+        c.execute('UPDATE users SET last_seen=?, offline_alerted=0 WHERE user_id=?',
+                  (now, user_id))
+        auto_closed = list(_close_stale_sessions(c, user_id) or [])
+        c.execute('''SELECT session_id, game_name, start_time
+                     FROM sessions WHERE user_id=? AND end_time IS NULL
+                     ORDER BY session_id DESC''', (user_id,))
+        open_rows = c.fetchall()
+
+        # The server may create a session and lose the HTTP response. Returning the same
+        # id on retry prevents one play bout being split into two rows.
+        same = next((r for r in open_rows if r['game_name'] == game_name), None)
+        if same:
+            conn.commit()
+            conn.close()
+            return int(same['session_id']), same['start_time'], True, auto_closed
+
+        # A different game's start proves the previous game stopped no later than now.
+        # If it emitted no event rows, using its own start_time erased all its duration.
+        for old in open_rows:
+            osid = old['session_id']
+            c.execute("SELECT MAX(t) AS t FROM ("
+                      "  SELECT MAX(timestamp) AS t FROM chat_messages WHERE session_id=? "
+                      "  UNION ALL SELECT MAX(timestamp) FROM voice_events WHERE session_id=? "
+                      "  UNION ALL SELECT MAX(timestamp) FROM behavioral_data WHERE session_id=? "
+                      "  UNION ALL SELECT MAX(timestamp) FROM predictions WHERE session_id=? "
+                      ") q", (osid, osid, osid, osid))
+            activity = c.fetchone()
+            try:
+                start_dt = _parse_ts(old['start_time'])
+                end_dt = (_parse_ts(activity['t']) if activity and activity['t']
+                          else _parse_ts(now))
+                end_dt = min(max(end_dt, start_dt),
+                             start_dt + timedelta(hours=STALE_SESSION_HOURS))
+                end_value = end_dt.isoformat()
+                duration = max(0, int((end_dt - start_dt).total_seconds()))
+            except Exception:
+                end_value, duration = old['start_time'], 0
+            c.execute('''UPDATE sessions SET end_time=?, duration_seconds=?,
+                         finalization_complete=0
+                         WHERE session_id=? AND end_time IS NULL''',
+                      (end_value, duration, osid))
+            if c.rowcount:
+                auto_closed.append(osid)
+
+        sid = insert_returning_id(
+            conn,
+            'INSERT INTO sessions (user_id, game_name, start_time) VALUES (?,?,?)',
+            (user_id, game_name, now),
+            pk='session_id')
+
+        # Real-time awareness for the parent, without spamming rapid app hand-offs.
+        c.execute('SELECT start_time FROM sessions WHERE user_id=? AND session_id<>? '
+                  'ORDER BY session_id DESC LIMIT 1', (user_id, sid))
+        prev = c.fetchone()
+        recent = False
+        if prev and prev['start_time']:
+            try:
+                recent = (datetime.now() - _parse_ts(prev['start_time'])).total_seconds() < 600
+            except Exception:
+                pass
+        if not recent:
+            c.execute('SELECT name FROM users WHERE user_id=?', (user_id,))
+            urow = c.fetchone()
+            cname = urow['name'] if (urow and urow['name']) else 'Your child'
+            _insert_alert(c, user_id, 'session_start',
+                          f'{cname} just started playing {game_name}.', 'info')
+        conn.commit()
+        conn.close()
+        return int(sid), now, False, auto_closed
 
 
 @app.route('/api/session/start', methods=['POST'])
@@ -2979,83 +4323,23 @@ def start_session():
     if not game_name:
         return jsonify({'error': 'game_name is required'}), 400
     try:
-        user_id = int(user_id)
+        user_id = int(str(user_id).strip())
         if user_id <= 0:
             raise ValueError()
     except (TypeError, ValueError):
         return jsonify({'error': 'user_id must be a positive integer'}), 400
     deny = guard(user_id)
     if deny: return deny
-    now       = datetime.now().isoformat()
-    conn = get_db()
-    # Self-heal any session orphaned by a lost end-event before opening a new one. Collect the
-    # ids it (and the close-prior block below) closes so they get scored + alerted after commit
-    # — otherwise an auto-closed high-risk session would be invisible AND raise no parent alert.
-    _auto_closed = list(_close_stale_sessions(conn.cursor(), user_id) or [])
-    # Invariant: at most ONE open session per user. Starting a new one means any session
-    # still open is definitively over (you can't play two games at once) — close it at its
-    # last activity. This clears a duplicate left when the app was killed mid-play and a
-    # later detection opened a fresh session on top of the orphan (which then showed
-    # "running" forever). Best-effort.
-    try:
-        cc = conn.cursor()
-        cc.execute("SELECT session_id, start_time FROM sessions "
-                   "WHERE user_id=? AND end_time IS NULL", (user_id,))
-        for orow in cc.fetchall():
-            osid = orow['session_id']
-            cc.execute("SELECT MAX(t) AS t FROM ("
-                       "  SELECT MAX(timestamp) AS t FROM chat_messages   WHERE session_id=? "
-                       "  UNION ALL SELECT MAX(timestamp) FROM voice_events    WHERE session_id=? "
-                       "  UNION ALL SELECT MAX(timestamp) FROM behavioral_data WHERE session_id=? "
-                       ") q", (osid, osid, osid))
-            lt = cc.fetchone()
-            oend = lt['t'] if (lt and lt['t']) else orow['start_time']
-            try:
-                sdt = _parse_ts(orow['start_time']); edt = _parse_ts(oend)
-                odur = min(max(0, int((edt - sdt).total_seconds())), STALE_SESSION_HOURS * 3600)
-            except Exception:
-                oend, odur = orow['start_time'], 0
-            cc.execute("UPDATE sessions SET end_time=?, duration_seconds=? WHERE session_id=?",
-                       (oend, odur, osid))
-            _auto_closed.append(osid)
-    except Exception as e:
-        logger.warning("close-prior-open-session skipped for user %s: %s", user_id, e)
-    sid  = insert_returning_id(
-        conn,
-        'INSERT INTO sessions (user_id, game_name, start_time) VALUES (?,?,?)',
-        (user_id, game_name, now),
-        pk='session_id')
-    # Real-time awareness for the parent: raise a low-priority alert the moment gaming
-    # starts. The parent app's AlertPollingService picks it up (~60 s) and notifies.
-    # De-dupe: if the previous session began within the last 10 min (rapid app-switching
-    # / quick reopen of the same play bout) we skip it so the parent isn't spammed.
-    try:
-        c = conn.cursor()
-        c.execute('SELECT start_time FROM sessions WHERE user_id=? AND session_id<>? '
-                  'ORDER BY session_id DESC LIMIT 1', (user_id, sid))
-        prev   = c.fetchone()
-        recent = False
-        if prev and prev['start_time']:
-            try:
-                pdt    = datetime.fromisoformat(str(prev['start_time']).replace(' ', 'T')
-                                                .split('+')[0].split('Z')[0])
-                recent = (datetime.now() - pdt).total_seconds() < 600
-            except Exception:
-                recent = False
-        if not recent:
-            c.execute('SELECT name FROM users WHERE user_id=?', (user_id,))
-            urow  = c.fetchone()
-            cname = urow['name'] if (urow and urow['name']) else 'Your child'
-            _insert_alert(c, user_id, 'session_start',
-                          f'{cname} just started playing {game_name}.', 'info')
-    except Exception as e:
-        logger.warning(f"session_start alert skipped: {e}")
-    conn.commit()
-    conn.close()
+    deny = require_current_consent(user_id)
+    if deny: return deny
+    now = datetime.now().isoformat()
+    sid, start_time, reused, _auto_closed = _start_session_state(
+        user_id, game_name, now)
     # Score + alert any sessions closed above (now that end_time is committed). Best-effort.
     _finalize_closed_sessions(_auto_closed)
-    logger.info(f"Session {sid} started: {game_name}")
-    return jsonify({'success': True, 'session_id': sid, 'start_time': now, 'game_name': game_name})
+    logger.info("Session %s %s: %s", sid, "reused" if reused else "started", game_name)
+    return jsonify({'success': True, 'session_id': sid, 'start_time': start_time,
+                    'game_name': game_name, 'reused': reused})
 
 
 @app.route('/api/session/<int:sid>/end', methods=['POST'])
@@ -3063,137 +4347,108 @@ def end_session(sid):
     deny = guard_session(sid)
     if deny: return deny
     conn = get_db()
-    c    = conn.cursor()
+    c = conn.cursor()
     c.execute('SELECT start_time, end_time, duration_seconds FROM sessions WHERE session_id=?', (sid,))
-    row  = c.fetchone()
+    row = c.fetchone()
     if not row:
         conn.close()
         return jsonify({'error': 'Session not found'}), 404
-    # Idempotent: a session can be ended twice (manual "End" + the passive auto-end, or a
-    # client retry). Re-ending would rewrite the duration, create a second prediction, and
-    # raise duplicate alerts. If it's already closed, return the EXISTING result unchanged.
-    if row['end_time']:
-        dur = int(row['duration_seconds'] or 0)
-        c.execute('SELECT risk_category, final_risk_score, behavior_score, chat_score, '
-                  'voice_score FROM predictions WHERE session_id=? ORDER BY id DESC LIMIT 1', (sid,))
-        prow = c.fetchone()
-        conn.close()
-        # Return the FULL stored sub-scores (not just label/score) so a duplicate-end — the
-        # passive auto-end racing the manual "End" — renders the same result screen as the
-        # first end, rather than showing Behavior/Chat/Voice as 0% (missing-field default).
-        return jsonify({
-            'success': True, 'session_id': sid, 'duration_seconds': dur,
-            'short_session': dur < 60, 'already_ended': True,
-            'prediction': {
-                'risk_label':     (prow['risk_category'] if prow else 'casual'),
-                'risk_score':     (prow['final_risk_score'] if prow else 0.0),
-                'behavior_score': (prow['behavior_score'] if prow else 0.0),
-                'chat_score':     (prow['chat_score'] if prow else 0.0),
-                'voice_score':    (prow['voice_score'] if prow else 0.0),
-            } if prow else None,
-        })
-    # How many seconds before "now" the player actually stopped — the grace / ancillary
-    # tail the auto-monitor waited out before ending. Sent as a delta (not an absolute
-    # timestamp) so device/server clock skew is irrelevant. Clamped so a session can
-    # never end before it started or in the future. 0 for an explicit "end now".
-    try:
-        ago = max(0, int(request.args.get('ended_seconds_ago')
-                          or (request.get_json(silent=True) or {}).get('ended_seconds_ago', 0)))
-    except (TypeError, ValueError):
-        ago = 0
-    start    = datetime.fromisoformat(row['start_time'])
-    end_time = datetime.now() - timedelta(seconds=ago)
-    if end_time < start:
-        end_time = start
-    duration = max(0, int((end_time - start).total_seconds()))
-    # Claim the finalization ATOMICALLY: only the request that flips end_time from NULL
-    # proceeds to predict/alert/streak. The `AND end_time IS NULL` + rowcount check makes
-    # the manual "End" racing the passive auto-end (or a client retry) safe across workers
-    # — the SELECT-then-UPDATE above had a window where both saw NULL and both ran the
-    # full prediction/alert/streak twice.
-    c.execute('UPDATE sessions SET end_time=?, duration_seconds=? '
-              'WHERE session_id=? AND end_time IS NULL',
-              (end_time.isoformat(), duration, sid))
-    claimed = c.rowcount
-    conn.commit()
+    already_ended = bool(row['end_time'])
+    duration = int(row['duration_seconds'] or 0)
+    if not already_ended:
+        # Delta, rather than a device timestamp, avoids phone/server clock skew. Clamp
+        # it to the same maximum interval accepted everywhere else.
+        try:
+            raw_ago = (request.args.get('ended_seconds_ago')
+                       or (request.get_json(silent=True) or {}).get('ended_seconds_ago', 0))
+            ago = int(_finite_number(
+                raw_ago, 'ended_seconds_ago', minimum=0,
+                maximum=END_RETRY_MAX_AGE.total_seconds()))
+        except (TypeError, ValueError):
+            conn.close()
+            return jsonify({'success': False,
+                            'message': 'ended_seconds_ago must be between 0 and 7 days'}), 400
+        start = _parse_ts(row['start_time'])
+        end_time = max(start, datetime.now() - timedelta(seconds=ago))
+        end_time = min(end_time, start + timedelta(hours=EXPLICIT_SESSION_MAX_HOURS),
+                       datetime.now())
+        duration = max(0, int((end_time - start).total_seconds()))
+        c.execute('''UPDATE sessions SET end_time=?, duration_seconds=?,
+                     finalization_complete=0
+                     WHERE session_id=? AND end_time IS NULL''',
+                  (end_time.isoformat(), duration, sid))
+        if not c.rowcount:
+            already_ended = True
+        conn.commit()
     conn.close()
 
-    if not claimed:
-        # Lost the race — another end already finalized this session. Return its stored
-        # result rather than re-running (and duplicating) the whole prediction pipeline.
-        conn = get_db()
-        c    = conn.cursor()
-        c.execute('SELECT duration_seconds FROM sessions WHERE session_id=?', (sid,))
-        drow = c.fetchone()
-        dur  = int((drow['duration_seconds'] if drow else 0) or 0)
-        c.execute('SELECT risk_category, final_risk_score, behavior_score, chat_score, '
-                  'voice_score FROM predictions WHERE session_id=? ORDER BY id DESC LIMIT 1', (sid,))
-        prow = c.fetchone()
-        conn.close()
+    # Cleanup remains available after consent expires or is re-accepted, but it must not
+    # become a back door that computes/stores a new behavioural snapshot and prediction
+    # for a pre-consent session. Mark cleanup complete and return an explicit unknown.
+    consent_denial = require_session_current_consent(sid)
+    if consent_denial:
+        cleanup = get_db()
+        cleanup.execute(
+            '''UPDATE sessions SET finalization_complete=1,
+               finalization_started_at=NULL, voice_rescore_pending=0,
+               voice_rescore_started_at=NULL WHERE session_id=?''',
+            (sid,),
+        )
+        cleanup.commit()
+        cleanup.close()
         return jsonify({
-            'success': True, 'session_id': sid, 'duration_seconds': dur,
-            'short_session': dur < 60, 'already_ended': True,
+            'success': True,
+            'session_id': sid,
+            'duration_seconds': duration,
+            'short_session': duration < 60,
+            'already_ended': already_ended,
+            'consent_required': True,
             'prediction': {
-                'risk_label':     (prow['risk_category'] if prow else 'casual'),
-                'risk_score':     (prow['final_risk_score'] if prow else 0.0),
-                'behavior_score': (prow['behavior_score'] if prow else 0.0),
-                'chat_score':     (prow['chat_score'] if prow else 0.0),
-                'voice_score':    (prow['voice_score'] if prow else 0.0),
-            } if prow else None,
+                'risk_label': 'unknown',
+                'risk_score': None,
+                'behavior_score': 0.0,
+                'chat_score': 0.0,
+                'voice_score': 0.0,
+                'modalities': {
+                    'behavior': False, 'chat': False, 'voice': False,
+                },
+                'recommendations': [],
+                'top_factors': [],
+                'observation_mode': True,
+                'sessions_analyzed': 0,
+            },
         })
 
-    # Save final behavioural snapshot before predicting
-    _save_behavioral_snapshot(sid)
+    # Every close path now enters the same resumable state machine. If another worker
+    # still owns the lease and has not produced a prediction yet, return retryable 503;
+    # the Child app keeps the local session instead of falsely considering it finished.
+    try:
+        prediction = _finalize_session_once(sid, explain=True)
+    except Exception as exc:
+        logger.warning("Session %s finalization failed; retry remains possible: %s", sid, exc)
+        return jsonify({'success': False,
+                        'message': 'Session saved; finalization pending'}), 503
+    if prediction is None:
+        return jsonify({'success': False,
+                        'message': 'Session finalization in progress'}), 503
 
-    prediction = run_prediction(sid)
-    logger.info(f"Session {sid} ended ({duration}s)")
-
-    # Create alert if risk is elevated
-    conn2 = get_db()
-    c2    = conn2.cursor()
-    c2.execute('SELECT user_id FROM sessions WHERE session_id=?', (sid,))
-    srow  = c2.fetchone()
-    if srow:
-        _maybe_create_alert(c2, srow['user_id'], prediction)
-        conn2.commit()
-        # Update healthy-day streak
-        conn2.close()
-        conn2 = get_db()
-        c2    = conn2.cursor()
-        c2.execute('''SELECT COALESCE(ROUND(SUM(duration_seconds)/3600.0,2),0) AS wh
-                      FROM sessions WHERE user_id=? AND start_time>=?''',
-                   (srow['user_id'], (datetime.now()-timedelta(days=7)).isoformat()))
-        wh_row = c2.fetchone()
-        weekly_h = float(wh_row['wh'] or 0) if wh_row else 0.0
-        _update_streak(srow['user_id'], weekly_h, prediction.get('risk_category','casual'))
-
-        # FCM push to EVERY guardian device when a child session is high-risk (both
-        # parents' phones, etc.) — not just whoever registered last.
-        if prediction.get('risk_category') == 'addicted':
-            conn2b = get_db()
-            c2b    = conn2b.cursor()
-            c2b.execute('SELECT family_code FROM users WHERE user_id=?', (srow['user_id'],))
-            _fc  = c2b.fetchone()
-            conn2b.close()
-            fam  = _fc['family_code'] if _fc else None
-            if fam:
-                score_pct = int(prediction['final_risk_score'] * 100)
-                _push_to_family(
-                    fam,
-                    "High Gaming Risk Alert",
-                    f"Your child's gaming risk reached {score_pct}% — check the app now."
-                )
-    conn2.close()
-
+    check = get_db()
+    drow = check.execute('SELECT duration_seconds FROM sessions WHERE session_id=?',
+                         (sid,)).fetchone()
+    check.close()
+    duration = int((drow['duration_seconds'] if drow else 0) or 0)
+    logger.info("Session %s ended (%ss%s)", sid, duration,
+                ", retry" if already_ended else "")
     short_session = duration < 60
+    category = prediction.get('risk_category', 'unknown')
     pred_response = {
-        'risk_label':        prediction['risk_category'],
-        'risk_score':        prediction['final_risk_score'],
-        'behavior_score':    prediction['behavior_score'],
-        'chat_score':        prediction['chat_score'],
-        'voice_score':       prediction['voice_score'],
+        'risk_label':        category,
+        'risk_score':        prediction.get('final_risk_score'),
+        'behavior_score':    prediction.get('behavior_score', 0.0),
+        'chat_score':        prediction.get('chat_score', 0.0),
+        'voice_score':       prediction.get('voice_score', 0.0),
         'modalities':        prediction.get('modalities'),
-        'recommendations':   _build_recommendations(prediction['risk_category']),
+        'recommendations':   _build_recommendations(category),
         'top_factors':       prediction.get('top_factors', []),
         'observation_mode':  prediction.get('observation_mode', False),
         'sessions_analyzed': prediction.get('sessions_analyzed', 0),
@@ -3203,7 +4458,222 @@ def end_session(sid):
     return jsonify({'success': True, 'session_id': sid,
                     'duration_seconds': duration,
                     'short_session': short_session,
+                    'already_ended': already_ended,
                     'prediction': pred_response})
+
+
+_BACKFILL_MAX_AGE = timedelta(days=7)
+_BACKFILL_FUTURE_SKEW = timedelta(minutes=5)
+# Production uses one threaded gunicorn worker. Serialize this state machine inside it;
+# the database unique index remains the cross-worker duplicate-session invariant.
+_backfill_lock = threading.Lock()
+
+
+class _FinalizationBusy(RuntimeError):
+    """Another worker owns an unexpired durable finalization claim."""
+
+
+def _backfill_time(data, stem):
+    """Read epoch millis (the current Android contract), with legacy ISO fallback."""
+    ms_key = f'{stem}_time_ms'
+    if ms_key in data:
+        raw = data[ms_key]
+        if isinstance(raw, bool):
+            raise ValueError()
+        ms = float(raw)
+        if not math.isfinite(ms):
+            raise ValueError()
+        return datetime.fromtimestamp(ms / 1000.0)
+    raw = data[f'{stem}_time']
+    if not isinstance(raw, str) or not raw.strip():
+        raise ValueError()
+    value = raw.strip().replace(' ', 'T')
+    if value.endswith('Z'):
+        value = value[:-1] + '+00:00'
+    parsed = datetime.fromisoformat(value)
+    if parsed.tzinfo is not None:
+        # Sessions are stored as naive SERVER-local timestamps. Preserve the instant
+        # from an offset-aware legacy client before dropping tzinfo.
+        parsed = parsed.astimezone().replace(tzinfo=None)
+    return parsed
+
+
+def _same_backfill_payload(row, game_name, start, end):
+    """An idempotency key may only identify one logical offline session."""
+    try:
+        stored_start = _parse_ts(row['start_time'])
+        stored_end = _parse_ts(row['end_time'])
+        return (row['game_name'] == game_name
+                and abs((stored_start - start).total_seconds()) < 1
+                and abs((stored_end - end).total_seconds()) < 1)
+    except Exception:
+        return False
+
+
+def _finalize_backfilled_session(sid, user_id):
+    """Finish one offline row under a durable cross-worker claim."""
+    conn = get_db()
+    c = conn.cursor()
+    c.execute('''SELECT s.start_time, s.end_time, s.duration_seconds,
+                        s.final_risk_score, s.risk_category, s.backfill_finalized,
+                        s.finalization_started_at, u.name, u.family_code
+                 FROM sessions s LEFT JOIN users u ON u.user_id=s.user_id
+                 WHERE s.session_id=? AND s.user_id=?''', (sid, user_id))
+    raw = c.fetchone()
+    if not raw:
+        conn.close()
+        raise ValueError('backfilled session disappeared')
+    row = dict(raw)
+    duration = int(row['duration_seconds'] or 0)
+
+    def existing_prediction():
+        latest = _latest_prediction(sid)
+        if latest:
+            return latest
+        if row['final_risk_score'] is None:
+            return None
+        score = float(row['final_risk_score'])
+        return {
+            'risk_category': row['risk_category'] or risk_category(score),
+            'final_risk_score': score,
+        }
+
+    state = row['backfill_finalized']
+    if state == 1:
+        conn.close()
+        prediction = existing_prediction()
+        if prediction is None:
+            raise ValueError('completed backfill has no prediction')
+        return prediction, duration
+    # Legacy rows with a score predate the backfill state machine and already ran the
+    # old side-effect path. Mark them complete without duplicating a parent alert.
+    if state is None and row['final_risk_score'] is not None:
+        c.execute('''UPDATE sessions SET backfill_finalized=1,
+                     finalization_complete=1, finalization_started_at=NULL,
+                     side_effect_risk_category=COALESCE(
+                         side_effect_risk_category, risk_category)
+                     WHERE session_id=? AND backfill_finalized IS NULL''', (sid,))
+        conn.commit()
+        conn.close()
+        return existing_prediction(), duration
+
+    now = datetime.now()
+    claim_stamp = now.isoformat()
+    stale_before = (now - _FINALIZE_LEASE).isoformat()
+    c.execute('''UPDATE sessions SET backfill_finalized=-1,
+                 finalization_started_at=? WHERE session_id=? AND user_id=?
+                 AND (COALESCE(backfill_finalized,0)=0 OR
+                      (backfill_finalized=-1 AND
+                       COALESCE(finalization_started_at,'')<?))''',
+              (claim_stamp, sid, user_id, stale_before))
+    claimed = c.rowcount
+    conn.commit()
+    conn.close()
+    if not claimed:
+        for _ in range(100):
+            time.sleep(0.05)
+            check = get_db()
+            done = check.execute(
+                'SELECT backfill_finalized FROM sessions WHERE session_id=?',
+                (sid,)).fetchone()
+            check.close()
+            if done and int(done['backfill_finalized'] or 0) == 1:
+                prediction = _latest_prediction(sid)
+                if prediction:
+                    return prediction, duration
+        raise _FinalizationBusy('offline-session finalization is already in progress')
+
+    # Repair any rows left by a crashed pre-claim implementation before deriving again.
+    work = get_db()
+    wc = work.cursor()
+    if row['final_risk_score'] is None:
+        wc.execute('DELETE FROM behavioral_data WHERE session_id=?', (sid,))
+        wc.execute('DELETE FROM predictions WHERE session_id=?', (sid,))
+        wc.execute('''UPDATE sessions SET final_risk_score=NULL, risk_category=NULL,
+                      confidence=NULL WHERE session_id=? AND backfill_finalized=-1
+                      AND finalization_started_at=?''', (sid, claim_stamp))
+        work.commit()
+    wc.execute('SELECT COALESCE(MAX(id),0) AS n FROM behavioral_data WHERE session_id=?',
+               (sid,))
+    behavior_before = int(wc.fetchone()['n'] or 0)
+    wc.execute('SELECT COALESCE(MAX(id),0) AS n FROM predictions WHERE session_id=?',
+               (sid,))
+    prediction_before = int(wc.fetchone()['n'] or 0)
+    work.close()
+
+    alert_id = None
+    finish = None
+    try:
+        if row['final_risk_score'] is None:
+            _save_behavioral_snapshot(sid)
+            prediction = run_prediction(sid, explain=False)
+        else:
+            prediction = existing_prediction()
+
+        finish = get_db()
+        fc = finish.cursor()
+        category = prediction.get('risk_category', 'unknown')
+        fc.execute('''UPDATE sessions SET backfill_finalized=1,
+                     finalization_complete=1, finalization_started_at=NULL,
+                     side_effect_risk_category=?
+                     WHERE session_id=? AND backfill_finalized=-1
+                     AND finalization_started_at=?''',
+                   (category, sid, claim_stamp))
+        if fc.rowcount != 1:
+            finish.rollback()
+            finish.close()
+            raise _FinalizationBusy('offline-session finalization lease was lost')
+        if category in ('casual', 'at_risk', 'addicted'):
+            alert_id = _maybe_create_alert(
+                fc, user_id, prediction, session_id=sid)
+            # Historical uploads are ignored by the incremental helper; a same-day
+            # upload is incorporated atomically with completion.
+            reference = _parse_ts(row['end_time'])
+            weekly = _weekly_hours_as_of(fc, user_id, reference)
+            _update_streak(user_id, weekly, category,
+                           conn=finish, reference_dt=reference)
+        finish.commit()
+        finish.close()
+    except Exception:
+        if finish is not None:
+            try:
+                finish.rollback()
+                finish.close()
+            except Exception:
+                pass
+        cleanup = get_db()
+        cc = cleanup.cursor()
+        cc.execute('''SELECT backfill_finalized, finalization_started_at
+                      FROM sessions WHERE session_id=?''', (sid,))
+        owned = cc.fetchone()
+        if (owned and int(owned['backfill_finalized'] or 0) == -1
+                and owned['finalization_started_at'] == claim_stamp):
+            cc.execute('DELETE FROM behavioral_data WHERE session_id=? AND id>?',
+                       (sid, behavior_before))
+            cc.execute('DELETE FROM predictions WHERE session_id=? AND id>?',
+                       (sid, prediction_before))
+            if row['final_risk_score'] is None:
+                cc.execute('''UPDATE sessions SET final_risk_score=NULL,
+                              risk_category=NULL, confidence=NULL,
+                              backfill_finalized=0, finalization_complete=0,
+                              finalization_started_at=NULL WHERE session_id=?
+                              AND backfill_finalized=-1
+                              AND finalization_started_at=?''', (sid, claim_stamp))
+            else:
+                cc.execute('''UPDATE sessions SET backfill_finalized=0,
+                              finalization_complete=0, finalization_started_at=NULL
+                              WHERE session_id=? AND backfill_finalized=-1
+                              AND finalization_started_at=?''', (sid, claim_stamp))
+        cleanup.commit()
+        cleanup.close()
+        raise
+
+    try:
+        _push_high_risk(user_id, row['name'], row['family_code'],
+                        prediction, alert_id=alert_id)
+    except Exception as exc:
+        logger.warning("Backfill risk push for session %s skipped: %s", sid, exc)
+    return prediction, duration
 
 
 @app.route('/api/session/backfill', methods=['POST'])
@@ -3216,12 +4686,20 @@ def backfill_session():
     normal pipeline — it has no live chat/voice (those are captured only online), so the
     prediction is behaviour-driven and availability-weighted fusion handles the absent
     channels. Idempotent on client_key so a re-sent buffer entry cannot duplicate it."""
-    data       = request.get_json() or {}
+    data = request.get_json(silent=True)
+    if not isinstance(data, dict):
+        return jsonify({'error': 'A JSON object is required'}), 400
     user_id    = data.get('user_id')
-    game_name  = str(data.get('game_name', '')).strip()[:64]
-    client_key = str(data.get('client_key', '')).strip()[:64]
+    raw_game   = data.get('game_name')
+    raw_key    = data.get('client_key')
+    if not isinstance(raw_game, str) or not isinstance(raw_key, str):
+        return jsonify({'error': 'game_name and client_key required'}), 400
+    game_name  = raw_game.strip()
+    client_key = raw_key.strip()
     try:
-        user_id = int(user_id)
+        if isinstance(user_id, bool):
+            raise ValueError()
+        user_id = int(str(user_id).strip())
         if user_id <= 0:
             raise ValueError()
     except (TypeError, ValueError):
@@ -3230,56 +4708,95 @@ def backfill_session():
     if deny: return deny
     if not game_name or not client_key:
         return jsonify({'error': 'game_name and client_key required'}), 400
+    if len(game_name) > 64 or len(client_key) > 64:
+        return jsonify({'error': 'game_name and client_key must be at most 64 characters'}), 400
     try:
-        start = _parse_ts(data['start_time'])
-        end   = _parse_ts(data['end_time'])
+        start = _backfill_time(data, 'start')
+        end = _backfill_time(data, 'end')
     except Exception:
         return jsonify({'error': 'valid start_time and end_time required'}), 400
-    if end < start:
-        end = start
-    # Clamp an absurd interval (client clock nonsense) to the same stale ceiling the
-    # server-side self-healer uses, so one bad buffer entry can't inject a 40-hour session.
-    duration = min(max(0, int((end - start).total_seconds())), STALE_SESSION_HOURS * 3600)
+    now = datetime.now()
+    if end <= start:
+        return jsonify({'error': 'end_time must be after start_time'}), 400
+    if start < now - _BACKFILL_MAX_AGE:
+        return jsonify({'error': 'offline session is too old to backfill'}), 400
+    if start > now + _BACKFILL_FUTURE_SKEW or end > now + _BACKFILL_FUTURE_SKEW:
+        return jsonify({'error': 'offline session timestamp is in the future'}), 400
+    if (end - start).total_seconds() < 1:
+        return jsonify({'error': 'offline session must last at least one second'}), 400
+    # Keep the stored interval internally consistent: the previous implementation capped
+    # duration to 6h while leaving end_time as the original 40h endpoint.
+    max_end = start + timedelta(hours=EXPLICIT_SESSION_MAX_HOURS)
+    if end > max_end:
+        end = max_end
+    duration = int((end - start).total_seconds())
+    deny = require_current_consent(user_id, start)
+    if deny: return deny
 
-    conn = get_db()
-    c    = conn.cursor()
-    c.execute('SELECT session_id FROM sessions WHERE user_id=? AND client_key=?',
-              (user_id, client_key))
-    existing = c.fetchone()
-    if existing:                                   # already back-filled — return unchanged
-        conn.close()
-        return jsonify({'success': True, 'session_id': existing['session_id'],
-                        'duration_seconds': duration, 'deduped': True})
-    sid = insert_returning_id(
-        conn,
-        'INSERT INTO sessions (user_id, game_name, start_time, end_time, '
-        'duration_seconds, client_key) VALUES (?,?,?,?,?,?)',
-        (user_id, game_name, start.isoformat(), end.isoformat(), duration, client_key),
-        pk='session_id')
-    conn.commit()
-    conn.close()
+    with _backfill_lock:
+        deduped = False
+        conn = get_db()
+        c = conn.cursor()
+        c.execute('''SELECT session_id, game_name, start_time, end_time
+                     FROM sessions WHERE user_id=? AND client_key=?''',
+                  (user_id, client_key))
+        existing = c.fetchone()
+        if existing:
+            if not _same_backfill_payload(existing, game_name, start, end):
+                conn.close()
+                return jsonify({'error': 'client_key is already used by another session'}), 409
+            sid = existing['session_id']
+            deduped = True
+            conn.close()
+        else:
+            try:
+                sid = insert_returning_id(
+                    conn,
+                    'INSERT INTO sessions (user_id, game_name, start_time, end_time, '
+                    'duration_seconds, client_key, backfill_finalized) '
+                    'VALUES (?,?,?,?,?,?,0)',
+                    (user_id, game_name, start.isoformat(), end.isoformat(),
+                     duration, client_key),
+                    pk='session_id')
+                conn.commit()
+                conn.close()
+            except Exception:
+                # Another worker may have won the database unique-key race. Roll back
+                # and resolve its canonical row; re-raise a real DB failure.
+                conn.rollback()
+                c = conn.cursor()
+                c.execute('''SELECT session_id, game_name, start_time, end_time
+                             FROM sessions WHERE user_id=? AND client_key=?''',
+                          (user_id, client_key))
+                won = c.fetchone()
+                conn.close()
+                if not won:
+                    raise
+                if not _same_backfill_payload(won, game_name, start, end):
+                    return jsonify({'error':
+                                    'client_key is already used by another session'}), 409
+                sid = won['session_id']
+                deduped = True
 
-    _save_behavioral_snapshot(sid)
-    prediction = run_prediction(sid)
+        try:
+            prediction, stored_duration = _finalize_backfilled_session(sid, user_id)
+        except _FinalizationBusy:
+            return jsonify({'success': False,
+                            'message': 'Offline session saved; finalization in progress'}), 503
 
-    conn2 = get_db()
-    c2    = conn2.cursor()
-    _maybe_create_alert(c2, user_id, prediction)
-    conn2.commit()
-    c2.execute('''SELECT COALESCE(ROUND(SUM(duration_seconds)/3600.0,2),0) AS wh
-                  FROM sessions WHERE user_id=? AND start_time>=?''',
-               (user_id, (datetime.now() - timedelta(days=7)).isoformat()))
-    wh = c2.fetchone()
-    conn2.close()
-    _update_streak(user_id, float((wh['wh'] if wh else 0) or 0),
-                   prediction.get('risk_category', 'casual'))
-
-    logger.info(f"Backfilled offline session {sid}: {game_name} ({duration}s)")
-    return jsonify({'success': True, 'session_id': sid, 'duration_seconds': duration,
-                    'backfilled': True, 'prediction': {
-                        'risk_label':  prediction['risk_category'],
-                        'risk_score':  prediction['final_risk_score'],
-                    }})
+    logger.info("%s offline session %s: %s (%ss)",
+                "Deduped" if deduped else "Backfilled", sid, game_name, stored_duration)
+    result = {'success': True, 'session_id': sid,
+              'duration_seconds': stored_duration,
+              'prediction': {
+                  'risk_label': prediction['risk_category'],
+                  'risk_score': prediction['final_risk_score'],
+              }}
+    if deduped:
+        result['deduped'] = True
+    else:
+        result['backfilled'] = True
+    return jsonify(result)
 
 
 @app.route('/api/session/<int:sid>', methods=['GET'])
@@ -3300,7 +4817,8 @@ def get_session(sid):
     pred = c.fetchone()
     c.execute('SELECT COUNT(*) AS n FROM chat_messages WHERE session_id=?', (sid,))
     n_chat = c.fetchone()['n']
-    c.execute('SELECT COUNT(*) AS n FROM voice_events WHERE session_id=?', (sid,))
+    c.execute('''SELECT COUNT(*) AS n FROM voice_events
+                 WHERE session_id=? AND COALESCE(capture_valid, 1)=1''', (sid,))
     n_voice = c.fetchone()['n']
     conn.close()
     return jsonify({
@@ -3313,15 +4831,20 @@ def get_session(sid):
 
 @app.route('/api/sessions', methods=['GET'])
 def list_sessions():
-    user_id = request.args.get('user_id', 1, type=int)
+    try:
+        user_id = _positive_int(request.args.get('user_id'), 'user_id')
+    except (TypeError, ValueError):
+        return jsonify({'success': False,
+                        'message': 'user_id must be a positive integer'}), 400
     deny = guard(user_id)
     if deny: return deny
-    limit   = request.args.get('limit', 50, type=int)
+    limit = _bounded_query_int('limit', 50, 1, 200)
     conn = get_db()
     c    = conn.cursor()
     c.execute('''SELECT s.*,
                  (SELECT COUNT(*) FROM chat_messages  WHERE session_id=s.session_id) AS chat_count,
-                 (SELECT COUNT(*) FROM voice_events   WHERE session_id=s.session_id) AS voice_count
+                 (SELECT COUNT(*) FROM voice_events WHERE session_id=s.session_id
+                  AND COALESCE(capture_valid, 1)=1) AS voice_count
                  FROM sessions s WHERE s.user_id=? ORDER BY s.start_time DESC LIMIT ?''',
               (user_id, limit))
     rows = [dict(r) for r in c.fetchall()]
@@ -3330,12 +4853,22 @@ def list_sessions():
 
 # ─────────────── DATA INGESTION ──────────────────────────────────
 
-def _save_behavioral_snapshot(session_id: int):
+def _save_behavioral_snapshot(session_id: int, replace: bool = False):
+    check = get_db()
+    session = check.execute(
+        'SELECT end_time, duration_seconds FROM sessions WHERE session_id=?',
+        (session_id,)).fetchone()
+    check.close()
+    if (session and session['end_time'] is not None
+            and int(session['duration_seconds'] or 0) <= 0):
+        return
     data = compute_behavioral_features(session_id)
     if not data:
         return
     conn = get_db()
     c    = conn.cursor()
+    if replace:
+        c.execute('DELETE FROM behavioral_data WHERE session_id=?', (session_id,))
     cols = ', '.join(BEHAVIORAL_FEATURES)
     ph   = ', '.join(['?'] * len(BEHAVIORAL_FEATURES))
     vals = [data[f] for f in BEHAVIORAL_FEATURES]
@@ -3350,14 +4883,36 @@ def save_behavioral(sid):
     """Accept manual behavioural data from Android app (or auto-compute if empty)."""
     deny = guard_session(sid)
     if deny: return deny
+    deny = require_session_current_consent(sid)
+    if deny: return deny
     data = request.get_json() or {}
     if not data:
         _save_behavioral_snapshot(sid)
         return jsonify({'success': True, 'computed': True})
 
+    bounds = {
+        'daily_play_time_hours': (0, 24),
+        'weekly_play_time_hours': (0, 168),
+        'sessions_per_day': (0, 100),
+        'avg_session_duration_min': (0, 1440),
+        'late_night_play_ratio': (0, 1),
+        'days_played_per_week': (0, 7),
+        'longest_play_streak_days': (0, 3650),
+        'binge_sessions_per_week': (0, 1000),
+        'avg_break_between_sessions_min': (0, 10080),
+        'rapid_relogin_ratio': (0, 1),
+        'missed_sleep_days_per_week': (0, 7),
+    }
+    try:
+        vals = []
+        for feature in BEHAVIORAL_FEATURES:
+            minimum, maximum = bounds.get(feature, (0, 10))
+            vals.append(_finite_number(data.get(feature, 0), feature,
+                                       minimum=minimum, maximum=maximum))
+    except (TypeError, ValueError) as exc:
+        return jsonify({'success': False, 'message': str(exc)}), 400
     conn = get_db()
     c    = conn.cursor()
-    vals = [float(data.get(f, 0)) for f in BEHAVIORAL_FEATURES]
     cols = ', '.join(BEHAVIORAL_FEATURES)
     ph   = ', '.join(['?'] * len(BEHAVIORAL_FEATURES))
     c.execute(f'INSERT INTO behavioral_data (session_id, {cols}, timestamp) VALUES (?,{ph},?)',
@@ -3371,13 +4926,26 @@ def save_behavioral(sid):
 def save_chat(sid):
     deny = guard_session(sid)
     if deny: return deny
+    deny = require_session_current_consent(sid)
+    if deny: return deny
     data    = request.get_json() or {}
     # str() coercion: a non-string JSON value (e.g. a number) crashed .strip() into a 500.
     # The cap bounds a runaway/abusive body — real chat lines are short, and an unbounded
     # message bloats the DB and skews the TF-IDF features.
-    message = str(data.get('message') or '').strip()[:2000]
+    raw_message = data.get('message')
+    if not isinstance(raw_message, str):
+        return jsonify({'error': 'message must be a string'}), 400
+    message = raw_message.strip()
     if not message:
         return jsonify({'error': 'Empty message'}), 400
+    if len(message) > 2000:
+        return jsonify({'error': 'message must be at most 2000 characters'}), 400
+    raw_source = data.get('source', 'ocr')
+    if not isinstance(raw_source, str):
+        return jsonify({'error': 'source must be a string'}), 400
+    source = raw_source.strip().lower()
+    if source not in {'keyboard', 'ime_keystroke', 'ocr', 'voice_stt'}:
+        return jsonify({'error': 'unsupported chat source'}), 400
 
     # Real-time toxicity scoring for alert generation
     kw_score  = keyword_toxicity(message)
@@ -3395,7 +4963,7 @@ def save_chat(sid):
         conn.close()
         return jsonify({'success': True, 'duplicate': True, 'toxicity_score': round(tox_score, 3)})
     c.execute('INSERT INTO chat_messages (session_id, message, source, confidence, timestamp) VALUES (?,?,?,?,?)',
-              (sid, message, data.get('source', 'ocr'), round(tox_score, 3),
+              (sid, message, source, round(tox_score, 3),
                datetime.now().isoformat()))
 
     # Raise social toxicity alert only when a single message is confidently toxic
@@ -3407,7 +4975,8 @@ def save_chat(sid):
             snippet = message[:60] + ('…' if len(message) > 60 else '')
             _insert_alert(c, srow['user_id'], 'toxicity',
                           f'Toxic language detected during gaming: "{snippet}"',
-                          'high' if tox_score >= CHAT_ALERT_HIGH_T else 'medium')
+                          'high' if tox_score >= CHAT_ALERT_HIGH_T else 'medium',
+                          session_id=sid)
             # Gentle self-correction nudge to the CHILD too — but at most one pending at a
             # time so a toxic streak doesn't spam them.
             c.execute("SELECT 1 FROM child_nudges WHERE user_id=? AND kind='language' AND delivered=0 LIMIT 1",
@@ -3421,20 +4990,18 @@ def save_chat(sid):
     # in ONE session earn one aggregate alert, recovering recall the precision-first
     # per-message threshold gives up. De-duped per session via an in-memory marker
     # (worker restart mid-session could at worst repeat one alert — acceptable).
-    if tox_score >= CHAT_STREAK_BAR and sid not in _streak_alerted:
+    if tox_score >= CHAT_STREAK_BAR:
         c.execute('SELECT COUNT(*) AS n FROM chat_messages WHERE session_id=? AND confidence>=?',
                   (sid, CHAT_STREAK_BAR))
         n_flagged = c.fetchone()['n']
         if n_flagged >= CHAT_STREAK_N:
-            _prune_mono_cache(_streak_alerted, max_age_s=24 * 3600)   # bound long-run growth
-            _streak_alerted[sid] = time.monotonic()
             c.execute('SELECT user_id FROM sessions WHERE session_id=?', (sid,))
             srow = c.fetchone()
             if srow:
-                _insert_alert(c, srow['user_id'], 'toxicity_streak',
-                              f'Repeated concerning language this gaming session — '
-                              f'{n_flagged} messages flagged. A pattern, not a one-off.',
-                              'high')
+                _insert_toxicity_streak_once(
+                    c, srow['user_id'], sid,
+                    f'Repeated concerning language this gaming session — '
+                    f'{n_flagged} messages flagged. A pattern, not a one-off.')
 
     conn.commit()
     conn.close()
@@ -3444,7 +5011,6 @@ def save_chat(sid):
 # Last voice-driven re-score per session (monotonic seconds) — see save_voice.
 _voice_rescore_last: dict = {}
 # Sessions whose toxicity-streak alert has already fired (sid → monotonic seconds).
-_streak_alerted: dict = {}
 
 
 def _prune_mono_cache(cache: dict, max_age_s: float, cap: int = 2000):
@@ -3460,10 +5026,19 @@ def _prune_mono_cache(cache: dict, max_age_s: float, cap: int = 2000):
 
 
 @app.route('/api/session/<int:sid>/voice', methods=['POST'])
+@limiter.limit("12 per minute")
 def save_voice(sid):
     """Accept audio file or pre-computed emotion from Android."""
     deny = guard_session(sid)
     if deny: return deny
+    deny = require_session_current_consent(sid)
+    if deny: return deny
+    max_audio_bytes = 2 * 1024 * 1024
+    if (request.mimetype or '').startswith('multipart/') \
+            and request.content_length is not None \
+            and request.content_length > max_audio_bytes:
+        return jsonify({'success': False,
+                        'message': 'Audio upload must be at most 2 MB'}), 413
     audio_file = request.files.get('audio')
     if audio_file:
         # time_ns + a short random suffix: two segments for the same session in the same
@@ -3472,33 +5047,46 @@ def save_voice(sid):
         fpath  = os.path.join(AUDIO_DIR, fname)
         audio_file.save(fpath)
         try:
+            if os.path.getsize(fpath) > max_audio_bytes:
+                os.remove(fpath)
+                return jsonify({'success': False,
+                                'message': 'Audio upload must be at most 2 MB'}), 413
+        except OSError:
+            try:
+                os.remove(fpath)
+            except OSError:
+                pass
+            return jsonify({'success': False, 'message': 'Audio upload failed'}), 400
+        try:
             acoustic, intensity, duration, probs = analyse_audio(fpath)
         except Exception as e:
             # A malformed clip or model hiccup must not 500 the upload (the app would
             # lose the segment) or leak the temp WAV on the small ephemeral disk.
             logger.warning(f"analyse_audio failed for session {sid}: {e}")
-            acoustic, intensity, duration, probs = 'neutral', 0.2, 0.0, None
+            acoustic, intensity, duration, probs = None, 0.0, 0.0, None
+        capture_valid = acoustic is not None
         # Multimodal fusion: pull the words spoken in this segment (Vosk STT, uploaded
         # as voice_stt chat in the last ~20s) and fuse their valence with the acoustic
         # distribution (valence–arousal). Falls back to the acoustic label when no
         # transcript is available.
-        emotion = acoustic
-        try:
-            conn0 = get_db()
-            rows = conn0.execute(
-                "SELECT message FROM chat_messages WHERE session_id=? AND source='voice_stt' "
-                "AND timestamp >= ? ORDER BY id DESC LIMIT 5",
-                (sid, (datetime.now() - timedelta(seconds=20)).isoformat())
-            ).fetchall()
-            conn0.close()
-            recent_text = " ".join(r["message"] for r in rows if r["message"])
-            v_text, v_conf = _lexical_valence(recent_text)
-            tox = _chat_toxicity(recent_text)   # trained model: robust hostility signal
-            # Even without words, the acoustic distribution still gives a steady label.
-            emotion = fuse_emotion(acoustic, v_text, probs=probs,
-                                   valence_conf=v_conf, toxicity=tox)
-        except Exception:
-            pass
+        emotion = acoustic or 'neutral'
+        if capture_valid:
+            try:
+                conn0 = get_db()
+                rows = conn0.execute(
+                    "SELECT message FROM chat_messages WHERE session_id=? AND source='voice_stt' "
+                    "AND timestamp >= ? ORDER BY id DESC LIMIT 5",
+                    (sid, (datetime.now() - timedelta(seconds=20)).isoformat())
+                ).fetchall()
+                conn0.close()
+                recent_text = " ".join(r["message"] for r in rows if r["message"])
+                v_text, v_conf = _lexical_valence(recent_text)
+                tox = _chat_toxicity(recent_text)   # trained model: robust hostility signal
+                # Even without words, the acoustic distribution still gives a steady label.
+                emotion = fuse_emotion(acoustic, v_text, probs=probs,
+                                       valence_conf=v_conf, toxicity=tox)
+            except Exception:
+                pass
         # Privacy default: delete raw audio after feature extraction.
         # For local testing, set KEEP_AUDIO=1 in the environment to retain WAVs
         # under backend/audio_uploads/ so you can listen back via verify_captures.py.
@@ -3511,20 +5099,31 @@ def save_voice(sid):
             except Exception:
                 pass
     else:
-        body    = request.get_json() or {}
-        emotion = str(body.get('emotion') or 'neutral')[:32]
+        if not request.is_json:
+            return jsonify({'success': False,
+                            'message': 'audio file or JSON emotion required'}), 400
+        body = request.get_json() or {}
+        raw_emotion = body.get('emotion')
+        if not isinstance(raw_emotion, str):
+            return jsonify({'success': False,
+                            'message': 'emotion must be a string'}), 400
+        emotion = raw_emotion.strip().lower()
+        if emotion not in VOICE_RISK:
+            return jsonify({'success': False,
+                            'message': f'emotion must be one of {sorted(VOICE_RISK)}'}), 400
         # Defensive coercion: garbage values 500'd the upload; clamp intensity to the
         # 0..1 range every consumer (VOICE_RISK weighting, dashboards) assumes.
         try:
-            intensity = float(np.clip(float(body.get('intensity', 0.5)), 0.0, 1.0))
-        except (TypeError, ValueError):
-            intensity = 0.5
-        try:
-            duration = max(0.0, float(body.get('duration_seconds', 0.0)))
-        except (TypeError, ValueError):
-            duration = 0.0
+            intensity = _finite_number(
+                body.get('intensity', 0.5), 'intensity', minimum=0, maximum=1)
+            duration = _finite_number(
+                body.get('duration_seconds', 0.0), 'duration_seconds',
+                minimum=0, maximum=30)
+        except (TypeError, ValueError) as exc:
+            return jsonify({'success': False, 'message': str(exc)}), 400
         fname = None
         probs = None   # client-supplied emotion — no model distribution to log
+        capture_valid = True
 
     conn = get_db()
     c    = conn.cursor()
@@ -3532,8 +5131,18 @@ def save_voice(sid):
     # (fallback heuristic / client-JSON path). Rounded — this is evidence, not state.
     probs_json = (json.dumps({k: round(v, 4) for k, v in probs.items()})
                   if isinstance(probs, dict) else None)
-    c.execute('INSERT INTO voice_events (session_id, emotion, intensity, duration_s, audio_file, timestamp, probs) VALUES (?,?,?,?,?,?,?)',
-              (sid, emotion, intensity, duration, fname, datetime.now().isoformat(), probs_json))
+    c.execute('''INSERT INTO voice_events
+                 (session_id, emotion, intensity, duration_s, audio_file, timestamp,
+                   probs, capture_valid) VALUES (?,?,?,?,?,?,?,?)''',
+              (sid, emotion, intensity, duration, fname, datetime.now().isoformat(),
+               probs_json, 1 if capture_valid else 0))
+    c.execute('''SELECT end_time, finalization_complete FROM sessions
+                 WHERE session_id=?''', (sid,))
+    session_state = c.fetchone()
+    is_closed = bool(session_state and session_state['end_time'])
+    if capture_valid and is_closed:
+        c.execute('''UPDATE sessions SET voice_rescore_pending=1,
+                     voice_rescore_started_at=NULL WHERE session_id=?''', (sid,))
     conn.commit()
     conn.close()
     # Re-score so a freshly-arrived voice emotion actually counts. The voice pipeline
@@ -3546,19 +5155,34 @@ def save_voice(sid):
     # CPU/DB work on the free tier.
     now_mono = time.monotonic()
     _prune_mono_cache(_voice_rescore_last, max_age_s=3600)   # bound long-run growth
-    if now_mono - _voice_rescore_last.get(sid, 0) >= 8:
+    if capture_valid and is_closed:
+        try:
+            state = int((session_state['finalization_complete']
+                         if session_state else 0) or 0)
+            if state == 1:
+                _drain_pending_voice_rescore(sid)
+            else:
+                # If /end is still finalizing, this waits briefly for its result; the
+                # durable pending flag remains available to a later retry on failure.
+                _finalize_session_once(sid, explain=False)
+        except Exception as e:
+            logger.warning(f"closed-session voice rescore remains queued: {e}")
+    elif capture_valid and now_mono - _voice_rescore_last.get(sid, 0) >= 8:
         _voice_rescore_last[sid] = now_mono
         try:
             run_prediction(sid, explain=False)
         except Exception as e:
             logger.warning(f"voice re-prediction skipped: {e}")
-    return jsonify({'success': True, 'emotion': emotion, 'intensity': intensity, 'duration': duration})
+    return jsonify({'success': True, 'captured': capture_valid, 'emotion': emotion,
+                    'intensity': intensity, 'duration': duration})
 
 
 @app.route('/api/session/<int:sid>/predict', methods=['POST'])
 def predict_now(sid):
     """Trigger intermediate prediction (live during session)."""
     deny = guard_session(sid)
+    if deny: return deny
+    deny = require_session_current_consent(sid)
     if deny: return deny
     _save_behavioral_snapshot(sid)
     result = run_prediction(sid, explain=False)   # skip SHAP on frequent live predicts (memory)
@@ -3584,8 +5208,13 @@ def analyse_chat():
     if deny: return deny
     data = request.get_json() or {}
     msg  = data.get('message', '')
+    if not isinstance(msg, str):
+        return jsonify({'error': 'message must be a string'}), 400
+    msg = msg.strip()
     if not msg:
         return jsonify({'error': 'No message'}), 400
+    if len(msg) > 2000:
+        return jsonify({'error': 'message must be at most 2000 characters'}), 400
 
     # P(toxic) from the trained pipeline (calibrated layer when available), fused with
     # the keyword lexicon via noisy-OR — the same scoring the alert path and ensemble use.
@@ -3604,10 +5233,10 @@ def analyse_chat():
 
 @app.route('/api/dashboard/user', methods=['GET'])
 def user_dashboard():
-    user_id = request.args.get('user_id', 1, type=int)
+    user_id = _positive_int(request.args.get('user_id'), 'user_id')
     deny = guard(user_id)
     if deny: return deny
-    days    = request.args.get('days', 30, type=int)
+    days = _bounded_query_int('days', 30, 1, 365)
     since   = (datetime.now() - timedelta(days=days)).isoformat()
     conn    = get_db()
     c       = conn.cursor()
@@ -3676,6 +5305,10 @@ def user_dashboard():
         'risk_label':   risk_summary['risk_label'],
         'risk_score':   risk_summary['risk_score'],
         'risk_period':  risk_summary['risk_period'],
+        'risk_thresholds': {
+            'some_concern': RISK_T1,
+            'high_concern': RISK_T2,
+        },
         'disclaimer':   SCREENING_DISCLAIMER,
         'stats': {
             'total_sessions':  stats.get('n_sessions', 0),
@@ -3695,7 +5328,7 @@ def user_dashboard():
 
 @app.route('/api/dashboard/parent', methods=['GET'])
 def parent_dashboard():
-    user_id = request.args.get('user_id', 1, type=int)
+    user_id = _positive_int(request.args.get('user_id'), 'user_id')
     deny = guard(user_id)
     if deny: return deny
     deny = deny_non_parent()           # parent-only view
@@ -3719,7 +5352,7 @@ def parent_dashboard():
     # beyond that the app is likely killed/offline (the watchdog alert follows later).
     monitoring = None
     c.execute('SELECT last_seen, device_admin_active, perm_usage, perm_accessibility, '
-              'perm_keyboard FROM users WHERE user_id=?', (user_id,))
+              'perm_keyboard, voice_capture_active FROM users WHERE user_id=?', (user_id,))
     lsrow = c.fetchone()
     if lsrow and lsrow['last_seen']:
         try:
@@ -3734,7 +5367,8 @@ def parent_dashboard():
                           # if the child revoked one of these. None = old app (unknown).
                           'perm_usage':         _b(lsrow['perm_usage']),
                           'perm_accessibility': _b(lsrow['perm_accessibility']),
-                          'perm_keyboard':      _b(lsrow['perm_keyboard'])}
+                          'perm_keyboard':      _b(lsrow['perm_keyboard']),
+                          'voice_capture':      _b(lsrow['voice_capture_active'])}
         except Exception:
             monitoring = None
     c.execute('''SELECT game_name, start_time FROM sessions
@@ -3785,7 +5419,10 @@ def parent_dashboard():
     recent_games = [dict(r) for r in c.fetchall()]
 
     # Weekly total hours
-    since7 = (datetime.now() - timedelta(days=7)).isoformat()
+    # Seven child-local calendar days (today plus the previous six), not a rolling
+    # 168-hour server-time window. This keeps every weekly card, chart and PDF on
+    # the same period even when the server and phone use different time zones.
+    since7 = _stored_recent_local_days(c, user_id, 7).isoformat()
     c.execute('''SELECT ROUND(SUM(duration_seconds)/3600.0,2) AS h
                  FROM sessions WHERE user_id=? AND start_time>=?''', (user_id, since7))
     weekly_row  = c.fetchone()
@@ -3817,19 +5454,20 @@ def parent_dashboard():
         except Exception:
             pass
 
-    # Observation mode: has the child played enough sessions?
-    c.execute('SELECT COUNT(*) AS n FROM sessions WHERE user_id=?', (user_id,))
-    total_sessions   = c.fetchone()['n']
-    observation_mode = total_sessions < 3
+    # Use the canonical meaningful/scored count. Empty starts and unknown zero-evidence
+    # rows must not advance the baseline shown to the family.
+    total_sessions = risk_summary['sessions_analyzed']
+    observation_mode = risk_summary['observation_mode']
 
     # Hours per day for last 7 days (bar chart)
-    today      = datetime.now().date()
+    today      = _local_now(c, user_id).date()
     daily_hours_week = []
     for i in range(6, -1, -1):
         day = today - timedelta(days=i)
+        day_start, day_end = _stored_local_day_bounds(c, user_id, day)
         c.execute('''SELECT COALESCE(ROUND(SUM(duration_seconds)/3600.0, 2), 0.0) AS hours
-                     FROM sessions WHERE user_id=? AND SUBSTR(start_time,1,10)=?''',
-                  (user_id, day.isoformat()))
+                     FROM sessions WHERE user_id=? AND start_time>=? AND start_time<?''',
+                  (user_id, day_start.isoformat(), day_end.isoformat()))
         row = c.fetchone()
         daily_hours_week.append({
             'date':  day.isoformat(),
@@ -3845,6 +5483,10 @@ def parent_dashboard():
                                       if a['type'] == 'risk' else a['message']),
                           'severity': a['severity'], 'created_at': a['created_at'],
                           'read': bool(a['read'])} for a in alert_rows]
+    c.execute('SELECT COUNT(*) AS n FROM alerts WHERE user_id=? AND read=0',
+              (user_id,))
+    unread_row = c.fetchone()
+    unread_alert_count = int((unread_row['n'] if unread_row else 0) or 0)
 
     # Streak data
     c.execute('SELECT * FROM streaks WHERE user_id=?', (user_id,))
@@ -3874,8 +5516,11 @@ def parent_dashboard():
     sleep_impact = _sleep_impact_analysis(user_id, conn)
 
     # Time limit suggestion + peer comparison
-    time_limit   = _suggest_time_limit(total_hours_week, risk_level, child_age)
-    peer_comp    = _peer_comparison(total_hours_week, child_age)
+    time_limit = _suggest_time_limit(total_hours_week, risk_level, child_age)
+    # Zero telemetry is not evidence of below-average healthy play. Only compare with
+    # peers once at least one session exists in the same seven-day window.
+    peer_comp = (_peer_comparison(total_hours_week, child_age)
+                 if int(week_session_count or 0) > 0 else None)
 
     # Saved parent-set limit
     c.execute('SELECT daily_limit_hours FROM time_limits WHERE user_id=?', (user_id,))
@@ -3906,7 +5551,12 @@ def parent_dashboard():
         'risk_label':          risk_summary['risk_label'],
         'disclaimer':          SCREENING_DISCLAIMER,
         'risk_score':          risk_summary['risk_score'],
+        'risk_thresholds': {
+            'some_concern': RISK_T1,
+            'high_concern': RISK_T2,
+        },
         'alerts':              formatted_alerts,
+        'unread_alert_count':  unread_alert_count,
         'trend_data':          trend,
         'top_games':           top_games,
         'top_games_week':      top_games_week,
@@ -3936,7 +5586,7 @@ def parent_dashboard():
 @app.route('/api/dashboard/emotions', methods=['GET'])
 def emotion_dashboard():
     """Emotion analytics for parental insight screen."""
-    user_id = request.args.get('user_id', 1, type=int)
+    user_id = _positive_int(request.args.get('user_id'), 'user_id')
     deny = guard(user_id)
     if deny: return deny
     deny = deny_non_parent()           # parent-only view
@@ -3949,14 +5599,16 @@ def emotion_dashboard():
     c.execute('''SELECT ve.emotion, COUNT(*) AS n, ROUND(AVG(ve.intensity),3) AS avg_intensity
                  FROM voice_events ve JOIN sessions s ON s.session_id=ve.session_id
                  WHERE s.user_id=? AND s.start_time>=?
+                   AND COALESCE(ve.capture_valid, 1)=1
                  GROUP BY ve.emotion ORDER BY n DESC''', (user_id, since))
     dist = [dict(r) for r in c.fetchall()]
 
     # Dominant emotion per session
     c.execute('''SELECT s.game_name, s.start_time,
-                 (SELECT ve2.emotion FROM voice_events ve2
-                  WHERE ve2.session_id=s.session_id
-                  GROUP BY ve2.emotion ORDER BY COUNT(*) DESC LIMIT 1) AS dominant_emotion
+                  (SELECT ve2.emotion FROM voice_events ve2
+                   WHERE ve2.session_id=s.session_id
+                     AND COALESCE(ve2.capture_valid, 1)=1
+                   GROUP BY ve2.emotion ORDER BY COUNT(*) DESC LIMIT 1) AS dominant_emotion
                  FROM sessions s WHERE s.user_id=? AND s.start_time>=?
                  ORDER BY s.start_time DESC LIMIT 10''', (user_id, since))
     recent = [dict(r) for r in c.fetchall()]
@@ -3967,6 +5619,7 @@ def emotion_dashboard():
                  COUNT(ve.id) AS total_events
                  FROM sessions s JOIN voice_events ve ON ve.session_id=s.session_id
                  WHERE s.user_id=? AND s.final_risk_score IS NOT NULL
+                   AND COALESCE(ve.capture_valid, 1)=1
                  GROUP BY s.session_id ORDER BY s.start_time DESC LIMIT 20''', (user_id,))
     correlation = [dict(r) for r in c.fetchall()]
 
@@ -3982,7 +5635,7 @@ def emotion_dashboard():
 @app.route('/api/dashboard/chat_analysis', methods=['GET'])
 def chat_analysis_dashboard():
     """Chat analytics for parental insight screen."""
-    user_id = request.args.get('user_id', 1, type=int)
+    user_id = _positive_int(request.args.get('user_id'), 'user_id')
     deny = guard(user_id)
     if deny: return deny
     deny = deny_non_parent()           # parent-only view
@@ -4041,7 +5694,10 @@ def _check_heartbeat(c, user_id):
         row = c.fetchone()
         if not row or not row['last_seen']:
             return                  # never heartbeated (old app / not set up yet) — nothing to judge
-        last = datetime.fromisoformat(str(row['last_seen']).replace(' ', 'T').split('+')[0].split('Z')[0])
+        # _parse_ts, not a hand-rolled split('+'): the split misses NEGATIVE offsets,
+        # yielding a tz-aware datetime whose subtraction raises — and this function's
+        # broad except would then silently disable the offline watchdog for that child.
+        last = _parse_ts(row['last_seen'])
         silent_min = (datetime.now() - last).total_seconds() / 60.0
         if silent_min < HEARTBEAT_SILENT_MIN or row['offline_alerted']:
             return
@@ -4057,12 +5713,14 @@ def _check_heartbeat(c, user_id):
         dur = f"{int(silent_min // 60)} hours" if silent_min >= 120 else f"{int(silent_min)} min"
         msg = (f"{nm}'s monitoring app hasn't checked in for {dur} — it may be offline, "
                f"powered off, or have been closed/uninstalled.")
-        _insert_alert(c, user_id, 'offline', msg, 'high')
+        alert_id = _insert_alert(c, user_id, 'offline', msg, 'high')
         c.execute("UPDATE users SET offline_alerted=1 WHERE user_id=?", (user_id,))
         # Push instantly — "monitoring went silent" (incl. a plain uninstall, where there
         # is no client callback) is exactly the alert a parent must not have to be polling
         # to receive.
-        _push_to_user_family(c, user_id, "Monitoring went silent", msg)
+        return {'user_id': user_id, 'title': 'Monitoring went silent',
+                'body': msg, 'event_type': 'offline',
+                'alert_id': alert_id, 'severity': 'high'}
     except Exception as e:
         logger.warning(f"heartbeat check skipped: {e}")
 
@@ -4073,27 +5731,47 @@ def child_heartbeat():
     records the device's UTC offset so the watchdog can apply child-local quiet hours."""
     data = request.get_json() or {}
     try:
-        uid = int(data.get('user_id'))
+        uid = _positive_int(data.get('user_id'), 'user_id')
     except (TypeError, ValueError):
-        return jsonify({'success': False, 'message': 'user_id required'}), 400
+        return jsonify({'success': False,
+                        'message': 'user_id must be a positive integer'}), 400
     deny = guard(uid)
     if deny: return deny
-    try:
-        tz = int(data.get('tz_offset_min'))
-    except (TypeError, ValueError):
+    deny = require_current_consent(uid)
+    if deny: return deny
+    raw_tz = data.get('tz_offset_min')
+    if raw_tz is None:
         tz = None
+    else:
+        try:
+            if isinstance(raw_tz, bool) or (
+                    isinstance(raw_tz, float) and not raw_tz.is_integer()):
+                raise ValueError()
+            tz = int(str(raw_tz).strip())
+            if not -840 <= tz <= 840:
+                raise ValueError()
+        except (TypeError, ValueError):
+            return jsonify({'success': False,
+                            'message': 'tz_offset_min must be an integer from -840 to 840'}), 400
     # Whether the child has enabled Device Admin (instant uninstall-attempt alert). Lets
     # the parent see their actual protection level rather than assuming it's on.
     def _flag(key):
-        try:
-            v = data.get(key)
-            return (1 if int(v) else 0) if v is not None else None
-        except (TypeError, ValueError):
+        v = data.get(key)
+        if v is None:
             return None
-    da   = _flag('device_admin')
-    pu   = _flag('perm_usage')          # capture-permission health (see init_db columns)
-    pacc = _flag('perm_accessibility')
-    pkb  = _flag('perm_keyboard')
+        if isinstance(v, bool):
+            return int(v)
+        if isinstance(v, int) and v in (0, 1):
+            return v
+        raise ValueError(f'{key} must be boolean or 0/1')
+    try:
+        da   = _flag('device_admin')
+        pu   = _flag('perm_usage')          # capture-permission health (see init_db columns)
+        pacc = _flag('perm_accessibility')
+        pkb  = _flag('perm_keyboard')
+        pvoice = _flag('voice_capture')
+    except ValueError as exc:
+        return jsonify({'success': False, 'message': str(exc)}), 400
     conn = get_db()
     c    = conn.cursor()
     # Detect capture permissions the child just *revoked* (granted->revoked) so the parent is
@@ -4118,9 +5796,11 @@ def child_heartbeat():
               "device_admin_active=COALESCE(?, device_admin_active), "
               "perm_usage=COALESCE(?, perm_usage), "
               "perm_accessibility=COALESCE(?, perm_accessibility), "
-              "perm_keyboard=COALESCE(?, perm_keyboard) "
+              "perm_keyboard=COALESCE(?, perm_keyboard), "
+              "voice_capture_active=COALESCE(?, voice_capture_active) "
               "WHERE user_id=?",
-              (datetime.now().isoformat(), tz, da, pu, pacc, pkb, int(uid)))
+              (datetime.now().isoformat(), tz, da, pu, pacc, pkb, pvoice, int(uid)))
+    pending_push = None
     if revoked:
         nm  = prev['name'] if prev['name'] else 'Your child'
         cap = ', '.join(revoked)
@@ -4128,13 +5808,19 @@ def child_heartbeat():
         # alone is a softer degradation. Fires once per revocation: the next heartbeats
         # report 0 with the stored value now 0, so the 1->0 edge can't repeat (no spam).
         sev = 'medium' if revoked == ['Wellbeing Keyboard'] else 'high'
-        _insert_alert(c, int(uid), 'permission',
-                      f"{nm} turned off {cap} — monitoring is now degraded.", sev)
+        alert_id = _insert_alert(
+            c, int(uid), 'permission',
+            f"{nm} turned off {cap} — monitoring is now degraded.", sev)
         # Tamper-like: push instantly rather than waiting for the parent's next poll.
-        _push_to_user_family(c, int(uid),
-                             "Monitoring degraded", f"{nm} turned off {cap}.")
+        pending_push = {
+            'user_id': int(uid), 'title': 'Monitoring degraded',
+            'body': f'{nm} turned off {cap}.', 'event_type': 'permission',
+            'alert_id': alert_id, 'severity': sev,
+        }
     conn.commit()
     conn.close()
+    if pending_push:
+        _push_to_user_family(**pending_push)
     return jsonify({'success': True})
 
 
@@ -4143,9 +5829,10 @@ def child_tamper():
     """A child-initiated event the parent should know about (currently: logout)."""
     data  = request.get_json() or {}
     try:
-        uid = int(data.get('user_id'))
+        uid = _positive_int(data.get('user_id'), 'user_id')
     except (TypeError, ValueError):
-        return jsonify({'success': False, 'message': 'user_id required'}), 400
+        return jsonify({'success': False,
+                        'message': 'user_id must be a positive integer'}), 400
     event = str(data.get('event', '')).strip()
     deny  = guard(uid)
     if deny: return deny
@@ -4160,10 +5847,10 @@ def child_tamper():
     c.execute("SELECT name FROM users WHERE user_id=?", (int(uid),))
     r  = c.fetchone()
     nm = r['name'] if (r and r['name']) else 'Your child'
-    _insert_alert(c, int(uid), 'tamper', f"{nm} {messages[event]}.", 'high')
+    alert_id = _insert_alert(
+        c, int(uid), 'tamper', f"{nm} {messages[event]}.", 'high')
     # Tamper is time-critical (the child may be uninstalling now) — push instantly so the
     # parent doesn't have to wait for the next poll.
-    _push_to_user_family(c, int(uid), "Monitoring alert", f"{nm} {messages[event]}.")
     if event == 'logout':
         # The silence that follows is EXPLAINED, so: clear last_seen so the parent
         # dashboard stops claiming "monitoring active" off a heartbeat that would
@@ -4178,6 +5865,9 @@ def child_tamper():
         c.execute("UPDATE users SET device_admin_active=0 WHERE user_id=?", (int(uid),))
     conn.commit()
     conn.close()
+    _push_to_user_family(
+        int(uid), "Monitoring alert", f"{nm} {messages[event]}.",
+        event_type='tamper', alert_id=alert_id, severity='high')
     return jsonify({'success': True})
 
 
@@ -4187,14 +5877,14 @@ def verify_parent_pin():
     """Verify the family parent PIN so the child app can gate logout/settings behind it —
     without the child ever knowing the PIN (checked server-side against the stored hash)."""
     data = request.get_json() or {}
-    uid  = data.get('user_id')
     pin  = str(data.get('pin', '')).strip()
+    try:
+        uid = _positive_int(data.get('user_id'), 'user_id')
+    except (TypeError, ValueError):
+        return jsonify({'success': False,
+                        'message': 'user_id must be a positive integer'}), 400
     deny = guard(uid)
     if deny: return deny
-    try:
-        uid = int(uid)
-    except (TypeError, ValueError):
-        return jsonify({'success': False, 'message': 'user_id required'}), 400
     conn = get_db()
     c    = conn.cursor()
     c.execute("SELECT parent_pin_hash FROM users WHERE user_id=?", (uid,))
@@ -4206,23 +5896,33 @@ def verify_parent_pin():
 
 @app.route('/api/alerts', methods=['GET'])
 def get_alerts():
-    user_id = request.args.get('user_id', 1, type=int)
+    try:
+        user_id = _positive_int(request.args.get('user_id'), 'user_id')
+    except (TypeError, ValueError):
+        return jsonify({'success': False,
+                        'message': 'user_id must be a positive integer'}), 400
     deny = guard(user_id)
     if deny: return deny
     deny = deny_non_parent()           # the alerts feed is the parent's (incl. tamper alerts)
     if deny: return deny
     conn    = get_db()
     c       = conn.cursor()
-    _check_heartbeat(c, user_id)   # raise an 'offline' alert if the child app went silent
+    pending_push = _check_heartbeat(
+        c, user_id)   # raise an 'offline' alert if the child app went silent
     conn.commit()
     purge_old_data()               # time-gated retention enforcement on a long-running worker
     c.execute('''SELECT a.*, f.label AS feedback_label
                  FROM alerts a
                  LEFT JOIN feedback f ON f.alert_id = a.id
-                 WHERE a.user_id=? ORDER BY a.created_at DESC LIMIT 50''', (user_id,))
+                 WHERE a.user_id=? ORDER BY a.id DESC LIMIT 50''', (user_id,))
     rows    = [dict(r) for r in c.fetchall()]
+    c.execute('SELECT COUNT(*) AS n FROM alerts WHERE user_id=? AND read=0',
+              (user_id,))
+    unread_row = c.fetchone()
+    unread = int((unread_row['n'] if unread_row else 0) or 0)
     conn.close()
-    unread  = sum(1 for r in rows if not r['read'])
+    if pending_push:
+        _push_to_user_family(**pending_push)
 
     def _age_min(ts):
         """Alert age in minutes, computed server-side so the phone can render an
@@ -4252,39 +5952,81 @@ def mark_alerts_read():
     # hide them from the parent (e.g. the "logged out" alert).
     deny = deny_non_parent()
     if deny: return deny
+    if not isinstance(alert_ids, list):
+        return jsonify({'success': False,
+                        'message': 'alert_ids must be an array'}), 400
+    if len(alert_ids) > 100:
+        return jsonify({'success': False,
+                        'message': 'at most 100 alert_ids may be marked at once'}), 400
+    try:
+        alert_ids = sorted({_positive_int(value, 'alert_id') for value in alert_ids})
+    except (TypeError, ValueError):
+        return jsonify({'success': False,
+                        'message': 'alert_ids must contain positive integers'}), 400
     if not alert_ids:
         return jsonify({'success': True, 'message': 'Nothing to mark'})
     conn = get_db()
     c    = conn.cursor()
     ph   = ','.join(['?'] * len(alert_ids))
-    allowed = (g.auth or {}).get('allowed')
+    allowed = _authorized_user_ids()
     if allowed:
         # Only mark alerts owned by a user this caller is allowed to access.
         aph = ','.join(['?'] * len(allowed))
         c.execute(f'UPDATE alerts SET read=1 WHERE id IN ({ph}) AND user_id IN ({aph})',
                   list(alert_ids) + list(allowed))
     else:
-        c.execute(f'UPDATE alerts SET read=1 WHERE id IN ({ph})', alert_ids)
+        # Token-less shadow mode preserves the local-development path. An authenticated
+        # parent with no authorized children must never gain a mark-all escape hatch.
+        if g.auth is None:
+            c.execute(f'UPDATE alerts SET read=1 WHERE id IN ({ph})', alert_ids)
+        else:
+            c.execute('UPDATE alerts SET read=1 WHERE 1=0')
+    changed = max(0, int(c.rowcount or 0))
     conn.commit()
     conn.close()
-    return jsonify({'success': True, 'message': f'Marked {len(alert_ids)} alerts read'})
+    return jsonify({'success': True, 'marked_count': changed,
+                    'message': f'Marked {changed} alerts read'})
 
 
 # Parent verdicts the model can learn from. accurate/false_alarm are the calibration
 # signal; too_sensitive/too_late capture timing complaints.
 FEEDBACK_LABELS = {'accurate', 'false_alarm', 'too_sensitive', 'too_late'}
 
+# Alert types that carry a model/heuristic assessment a parent can rate. Mirrors
+# AlertTriage.isFeedbackEligible in the Parent app: late risk REVISIONS and aggregate
+# toxicity STREAKS are model verdicts too — the app already shows verdict buttons on
+# them, and rejecting those types here silently lost exactly those labels.
+RISK_FEEDBACK_TYPES = ('risk', 'risk_revision')
+CHAT_FEEDBACK_TYPES = ('toxicity', 'toxicity_streak')
+
 
 @app.route('/api/feedback', methods=['POST'])
 def submit_feedback():
     """A parent's verdict on the model's output ('was this right?'). The only source of
     REAL labels in the system — everything else is synthetic — so this is what a future
-    retrain or threshold-tune should learn from. We snapshot the child's latest model
-    category + score so each label stays interpretable even after the model changes."""
-    data     = request.get_json() or {}
-    label    = (data.get('label') or '').strip().lower()
+    retrain or threshold-tune should learn from. Risk feedback snapshots the prediction
+    that produced that alert; toxicity feedback intentionally has no fused-risk snapshot
+    because it labels the chat alert itself."""
+    data = request.get_json() or {}
+    raw_label = data.get('label')
+    if not isinstance(raw_label, str):
+        return jsonify({'success': False, 'message': 'label must be a string'}), 400
+    label = raw_label.strip().lower()
+    raw_note = data.get('note')
+    if raw_note is not None and not isinstance(raw_note, str):
+        return jsonify({'success': False, 'message': 'note must be a string'}), 400
+    note = raw_note.strip() if isinstance(raw_note, str) else None
+    if note and len(note) > 500:
+        return jsonify({'success': False,
+                        'message': 'note must be at most 500 characters'}), 400
+    note = note or None
     alert_id = data.get('alert_id')
-    note     = ((data.get('note') or '').strip()[:500]) or None
+    if alert_id is not None:
+        try:
+            alert_id = _positive_int(alert_id, 'alert_id')
+        except (TypeError, ValueError):
+            return jsonify({'success': False,
+                            'message': 'alert_id must be a positive integer'}), 400
     if label not in FEEDBACK_LABELS:
         return jsonify({'success': False,
                         'message': f'label must be one of {sorted(FEEDBACK_LABELS)}'}), 400
@@ -4300,12 +6042,15 @@ def submit_feedback():
     user_id = data.get('user_id')
     if user_id is not None:
         try:
-            user_id = int(user_id)
+            user_id = _positive_int(user_id, 'user_id')
         except (TypeError, ValueError):
             conn.close()
-            return jsonify({'success': False, 'message': 'user_id must be an integer'}), 400
+            return jsonify({'success': False,
+                            'message': 'user_id must be a positive integer'}), 400
+    arow = None
     if alert_id is not None:
-        c.execute('SELECT user_id FROM alerts WHERE id=?', (alert_id,))
+        c.execute('''SELECT user_id, type, session_id, created_at
+                     FROM alerts WHERE id=?''', (alert_id,))
         arow = c.fetchone()
         if not arow:
             conn.close()
@@ -4314,6 +6059,12 @@ def submit_feedback():
             conn.close()
             return jsonify({'success': False, 'message': 'alert does not belong to this user'}), 400
         user_id = int(arow['user_id'])
+        if arow['type'] not in RISK_FEEDBACK_TYPES + CHAT_FEEDBACK_TYPES:
+            conn.close()
+            return jsonify({
+                'success': False,
+                'message': 'feedback is supported only for risk and toxicity alerts',
+            }), 400
     if user_id is None:
         conn.close()
         return jsonify({'success': False, 'message': 'user_id or a valid alert_id is required'}), 400
@@ -4327,27 +6078,60 @@ def submit_feedback():
         conn.close()
         return deny
 
-    # Snapshot the model's most recent verdict for this child (retraining context).
-    c.execute('''SELECT p.id, p.risk_category, p.final_risk_score
-                 FROM predictions p JOIN sessions s ON p.session_id = s.session_id
-                 WHERE s.user_id=? ORDER BY p.id DESC LIMIT 1''', (user_id,))
-    prow     = c.fetchone()
+    # Snapshot exactly the model verdict being judged. A current/no-alert verdict uses
+    # the child's latest prediction. A risk alert uses its own session; legacy alerts
+    # created before session_id was added use the latest prediction that existed by the
+    # alert timestamp. Toxicity feedback labels CHAT_ALERT_T directly, not the session's
+    # later fused-risk prediction, so its risk snapshot deliberately stays NULL.
+    prow = None
+    if alert_id is None:
+        c.execute('''SELECT p.id, p.risk_category, p.final_risk_score
+                     FROM predictions p JOIN sessions s ON p.session_id = s.session_id
+                     WHERE s.user_id=? ORDER BY p.id DESC LIMIT 1''', (user_id,))
+        prow = c.fetchone()
+    elif arow['type'] in RISK_FEEDBACK_TYPES and arow['session_id'] is not None:
+        c.execute('''SELECT id, risk_category, final_risk_score
+                     FROM predictions WHERE session_id=?
+                     ORDER BY id DESC LIMIT 1''', (arow['session_id'],))
+        prow = c.fetchone()
+    elif arow['type'] in RISK_FEEDBACK_TYPES:
+        c.execute('''SELECT p.id, p.risk_category, p.final_risk_score
+                     FROM predictions p JOIN sessions s ON p.session_id=s.session_id
+                     WHERE s.user_id=? AND p.timestamp<=?
+                     ORDER BY p.timestamp DESC, p.id DESC LIMIT 1''',
+                  (user_id, arow['created_at']))
+        prow = c.fetchone()
+    if alert_id is not None and arow['type'] in RISK_FEEDBACK_TYPES and prow is None:
+        conn.close()
+        return jsonify({'success': False,
+                        'message': 'risk alert has no associated prediction'}), 409
     pred_id  = prow['id'] if prow else None
     pred_cat = prow['risk_category'] if prow else None
     pred_sc  = float(prow['final_risk_score']) if prow and prow['final_risk_score'] is not None else None
 
-    # One verdict per alert: a re-submission replaces the earlier one.
-    if alert_id is not None:
-        c.execute('DELETE FROM feedback WHERE alert_id=?', (alert_id,))
-
     # Explicit local timestamp — the column DEFAULT differs by engine (SQLite's
     # CURRENT_TIMESTAMP is UTC, Postgres' now() carries a tz suffix), which skewed
     # these rows against every other timestamp the app writes via datetime.now().
-    c.execute('''INSERT INTO feedback (user_id, alert_id, prediction_id, label,
-                                       risk_category, risk_score, note, created_at)
-                 VALUES (?,?,?,?,?,?,?,?)''',
-              (user_id, alert_id, pred_id, label, pred_cat, pred_sc, note,
-               datetime.now().isoformat()))
+    values = (user_id, alert_id, pred_id, label, pred_cat, pred_sc, note,
+              datetime.now().isoformat())
+    if alert_id is None:
+        c.execute('''INSERT INTO feedback (user_id, alert_id, prediction_id, label,
+                                           risk_category, risk_score, note, created_at)
+                     VALUES (?,?,?,?,?,?,?,?)''', values)
+    else:
+        # The partial unique index plus one-statement upsert makes concurrent ratings
+        # from two guardian phones converge to exactly one verdict for this alert.
+        c.execute('''INSERT INTO feedback (user_id, alert_id, prediction_id, label,
+                                           risk_category, risk_score, note, created_at)
+                     VALUES (?,?,?,?,?,?,?,?)
+                     ON CONFLICT(alert_id) WHERE alert_id IS NOT NULL DO UPDATE SET
+                         user_id=excluded.user_id,
+                         prediction_id=excluded.prediction_id,
+                         label=excluded.label,
+                         risk_category=excluded.risk_category,
+                         risk_score=excluded.risk_score,
+                         note=excluded.note,
+                         created_at=excluded.created_at''', values)
     conn.commit()
     conn.close()
     return jsonify({'success': True, 'message': 'Feedback recorded', 'label': label})
@@ -4358,7 +6142,7 @@ def feedback_summary():
     """Aggregate of parent verdicts for a child — the model-credibility / drift view.
     agreement_rate = accurate / (accurate + false_alarm): a real-world precision proxy
     built from genuine labels, unlike the synthetic test-set metrics in the model card."""
-    user_id = request.args.get('user_id', type=int)
+    user_id = _positive_int(request.args.get('user_id'), 'user_id')
     if user_id is None:
         return jsonify({'success': False, 'message': 'user_id is required'}), 400
     deny = guard(user_id)
@@ -4383,7 +6167,7 @@ def feedback_summary():
 
 @app.route('/api/child/status', methods=['GET'])
 def child_status():
-    user_id = request.args.get('user_id', 1, type=int)
+    user_id = _positive_int(request.args.get('user_id'), 'user_id')
     deny = guard(user_id)
     if deny: return deny
     conn    = get_db()
@@ -4401,11 +6185,7 @@ def child_status():
                  ORDER BY session_id DESC LIMIT 1''', (user_id,))
     active = c.fetchone()
 
-    # Latest prediction
-    c.execute('''SELECT p.risk_category, p.final_risk_score
-                 FROM predictions p JOIN sessions s ON s.session_id=p.session_id
-                 WHERE s.user_id=? ORDER BY p.timestamp DESC LIMIT 1''', (user_id,))
-    pred_row = c.fetchone()
+    risk_summary = _current_risk_summary(c, user_id)
     conn.close()
 
     if active:
@@ -4416,16 +6196,20 @@ def child_status():
             'is_playing':           True,
             'current_game':         active['game_name'],
             'session_duration_mins': dur_min,
-            'current_risk':         pred_row['risk_category'] if pred_row else 'unknown',
-            'risk_score':           pred_row['final_risk_score'] if pred_row else 0.0,
+            'current_risk':         risk_summary['current_risk'],
+            'risk_label':           risk_summary['risk_label'],
+            'risk_score':           risk_summary['risk_score'],
+            'risk_period':          risk_summary['risk_period'],
         })
     return jsonify({
         'success':    True,
         'is_playing': False,
         'current_game': None,
         'session_duration_mins': None,
-        'current_risk': pred_row['risk_category'] if pred_row else 'unknown',
-        'risk_score':   pred_row['final_risk_score'] if pred_row else 0.0,
+        'current_risk': risk_summary['current_risk'],
+        'risk_label':   risk_summary['risk_label'],
+        'risk_score':   risk_summary['risk_score'],
+        'risk_period':  risk_summary['risk_period'],
     })
 
 # ─────────────── GAMES LIST ──────────────────────────────────────
@@ -4465,15 +6249,18 @@ def get_games():
 @app.route('/api/dashboard/weekly_report', methods=['GET'])
 def weekly_report():
     """7-day breakdown for parental weekly report screen."""
-    user_id = request.args.get('user_id', 1, type=int)
+    user_id = _positive_int(request.args.get('user_id'), 'user_id')
     deny = guard(user_id)
     if deny: return deny
     deny = deny_non_parent()           # parent-only report
     if deny: return deny
-    since7  = (datetime.now() - timedelta(days=7)).isoformat()
-    since14 = (datetime.now() - timedelta(days=14)).isoformat()
     conn    = get_db()
     c       = conn.cursor()
+    # Report windows are whole CHILD-local calendar days, including today. A rolling
+    # server-time 168-hour cutoff disagreed with the dashboard around midnight and for
+    # families outside the server timezone.
+    since7 = _stored_recent_local_days(c, user_id, 7).isoformat()
+    since14 = _stored_recent_local_days(c, user_id, 14).isoformat()
 
     # Sessions this week
     c.execute('''SELECT session_id, game_name, start_time, duration_seconds,
@@ -4530,9 +6317,12 @@ def weekly_report():
 def save_screen_event():
     """Receive screen on/off/unlock events from the child's device."""
     data = request.get_json() or {}
-    user_id    = data.get('user_id')
+    try:
+        user_id = _positive_int(data.get('user_id'), 'user_id')
+    except (TypeError, ValueError):
+        return jsonify({'error': 'user_id must be a positive integer'}), 400
     event_type = str(data.get('event_type', '')).strip()
-    if not user_id or event_type not in ('screen_on', 'screen_off', 'unlocked'):
+    if event_type not in ('screen_on', 'screen_off', 'unlocked'):
         return jsonify({'error': 'user_id and valid event_type required'}), 400
     deny = guard(user_id)
     if deny: return deny
@@ -4544,10 +6334,12 @@ def save_screen_event():
             ts = datetime.now().isoformat()
     else:
         ts = datetime.now().isoformat()
+    deny = require_current_consent(user_id, ts)
+    if deny: return deny
     conn = get_db()
     c    = conn.cursor()
     c.execute('INSERT INTO screen_events (user_id, event_type, timestamp) VALUES (?,?,?)',
-              (int(user_id), event_type, ts))
+              (user_id, event_type, ts))
     conn.commit()
     conn.close()
     return jsonify({'success': True})
@@ -4559,18 +6351,23 @@ def save_screen_event():
 def save_notification_event():
     """Receive game notification events — direct craving signal."""
     data     = request.get_json() or {}
-    user_id  = data.get('user_id')
+    try:
+        user_id = _positive_int(data.get('user_id'), 'user_id')
+    except (TypeError, ValueError):
+        return jsonify({'error': 'user_id must be a positive integer'}), 400
     pkg      = str(data.get('package_name', '')).strip()
-    if not user_id or not pkg:
+    if not pkg:
         return jsonify({'error': 'user_id and package_name required'}), 400
     deny = guard(user_id)
+    if deny: return deny
+    deny = require_current_consent(user_id)
     if deny: return deny
     conn = get_db()
     c    = conn.cursor()
     c.execute('''INSERT INTO notification_events
                  (user_id, package_name, game_name, notification_title, timestamp)
                  VALUES (?,?,?,?,?)''',
-              (int(user_id), pkg,
+              (user_id, pkg,
                str(data.get('game_name', '')),
                str(data.get('notification_title', ''))[:120],
                datetime.now().isoformat()))
@@ -4583,7 +6380,7 @@ def save_notification_event():
 
 @app.route('/api/child/streak', methods=['GET'])
 def get_streak():
-    user_id = request.args.get('user_id', 1, type=int)
+    user_id = _positive_int(request.args.get('user_id'), 'user_id')
     deny = guard(user_id)
     if deny: return deny
     conn    = get_db()
@@ -4621,13 +6418,14 @@ def get_streak():
 @app.route('/api/parent/children', methods=['GET'])
 def parent_children():
     """List the children in the authenticated parent's family so the parent app can switch
-    between them WITHOUT re-entering the family code. The bearer token already carries the
-    allowed child ids (set at login), so no family code/PIN is needed here."""
+    between them WITHOUT re-entering the family code. New parent tokens carry a signed
+    family claim, so siblings registered after login appear immediately; legacy tokens
+    continue using the child-id allow-list captured at login."""
     deny = guard()                       # authenticate; populates g.auth {role, uid, allowed}
     if deny: return deny
     deny = deny_non_parent()             # the family roster is a parent-only view
     if deny: return deny
-    allowed = (g.auth or {}).get('allowed') or []
+    allowed = _authorized_user_ids()
     if not allowed:
         return jsonify({'success': True, 'children': []})
     conn = get_db()
@@ -4644,13 +6442,17 @@ def parent_children():
 def set_time_limit():
     """Parent approves or sets a daily gaming time limit for a child."""
     data    = request.get_json() or {}
-    user_id = data.get('user_id')
+    try:
+        user_id = _positive_int(data.get('user_id'), 'user_id')
+    except (TypeError, ValueError):
+        return jsonify({'success': False,
+                        'message': 'user_id must be a positive integer'}), 400
     deny = guard(user_id)
     if deny: return deny
     deny = deny_non_parent()           # a child must not set their own limit
     if deny: return deny
     hours   = data.get('daily_limit_hours')
-    if not user_id or hours is None:
+    if hours is None:
         return jsonify({'success': False, 'message': 'user_id and daily_limit_hours required'}), 400
     try:
         hours = float(hours)
@@ -4672,15 +6474,15 @@ def set_time_limit():
                  VALUES (?,?,1,?)
                  ON CONFLICT(user_id) DO UPDATE SET daily_limit_hours=excluded.daily_limit_hours,
                  set_by_parent=1, updated_at=excluded.updated_at''',
-              (int(user_id), hours, datetime.now().isoformat()))
+              (user_id, hours, datetime.now().isoformat()))
     # Notify the CHILD — the message is addressed to the child, and the child app reads
     # child_nudges (the alerts table is the PARENT's feed, so writing it there meant the
     # parent saw a message meant for the child). Keep only the latest pending limit nudge
     # so repeated edits don't stack.
     c.execute("DELETE FROM child_nudges WHERE user_id=? AND kind='limit' AND delivered=0",
-              (int(user_id),))
+              (user_id,))
     c.execute("INSERT INTO child_nudges (user_id, message, kind, created_at) VALUES (?,?,?,?)",
-              (int(user_id),
+              (user_id,
                f'Your parent set a {hours:.1f}h daily gaming limit. Keep an eye on your playtime!',
                'limit', datetime.now().isoformat()))
     conn.commit()
@@ -4693,18 +6495,22 @@ def send_nudge():
     """Parent sends a one-off nudge that pops up as a notification on the child's phone
     (e.g. 'time for a break', 'please watch your language', or a custom message)."""
     data    = request.get_json() or {}
-    user_id = data.get('user_id')
+    try:
+        user_id = _positive_int(data.get('user_id'), 'user_id')
+    except (TypeError, ValueError):
+        return jsonify({'success': False,
+                        'message': 'user_id must be a positive integer'}), 400
     deny = guard(user_id)
     if deny: return deny
     deny = deny_non_parent()           # nudges are a parent->child channel
     if deny: return deny
     message = (str(data.get('message') or '').strip())[:200]
-    if not user_id or not message:
+    if not message:
         return jsonify({'success': False, 'message': 'user_id and message required'}), 400
     conn = get_db()
     c    = conn.cursor()
     c.execute("INSERT INTO child_nudges (user_id, message, kind, created_at) VALUES (?,?,?,?)",
-              (int(user_id), message, 'parent', datetime.now().isoformat()))
+              (user_id, message, 'parent', datetime.now().isoformat()))
     conn.commit()
     conn.close()
     return jsonify({'success': True, 'message': 'Nudge sent'})
@@ -4712,9 +6518,13 @@ def send_nudge():
 
 @app.route('/api/child/nudges', methods=['GET'])
 def get_nudges():
-    """Child app polls for undelivered nudges; returns them and marks them delivered so
-    each pops up exactly once."""
-    user_id = request.args.get('user_id', type=int)
+    """Return pending nudges without consuming them.
+
+    Delivery is acknowledged separately only after Android accepts the notification;
+    a GET response lost to process death or denied notification permission must not
+    silently discard a parent's message.
+    """
+    user_id = _positive_int(request.args.get('user_id'), 'user_id')
     if user_id is None:
         return jsonify({'success': False, 'message': 'user_id is required'}), 400
     deny = guard(user_id)
@@ -4724,18 +6534,46 @@ def get_nudges():
     c.execute("SELECT id, message, kind, created_at FROM child_nudges "
               "WHERE user_id=? AND delivered=0 ORDER BY id ASC LIMIT 10", (user_id,))
     rows = [dict(r) for r in c.fetchall()]
-    if rows:
-        ids = [r['id'] for r in rows]
-        ph  = ','.join(['?'] * len(ids))
-        c.execute(f"UPDATE child_nudges SET delivered=1 WHERE id IN ({ph})", ids)
-        conn.commit()
     conn.close()
     return jsonify({'success': True, 'nudges': rows})
 
 
+@app.route('/api/child/nudges/ack', methods=['POST'])
+def acknowledge_nudges():
+    data = request.get_json() or {}
+    try:
+        user_id = _positive_int(data.get('user_id'), 'user_id')
+    except (TypeError, ValueError):
+        return jsonify({'success': False,
+                        'message': 'user_id must be a positive integer'}), 400
+    deny = guard(user_id)
+    if deny: return deny
+
+    raw_ids = data.get('nudge_ids')
+    if not isinstance(raw_ids, list) or not raw_ids or len(raw_ids) > 100:
+        return jsonify({'success': False,
+                        'message': 'nudge_ids must be a non-empty array of at most 100 ids'}), 400
+    try:
+        ids = list(dict.fromkeys(_positive_int(v, 'nudge_id') for v in raw_ids))
+    except (TypeError, ValueError):
+        return jsonify({'success': False,
+                        'message': 'nudge_ids must contain positive integers'}), 400
+
+    conn = get_db()
+    c = conn.cursor()
+    ph = ','.join(['?'] * len(ids))
+    c.execute(f'''UPDATE child_nudges SET delivered=1
+                  WHERE user_id=? AND delivered=0 AND id IN ({ph})''',
+              [user_id] + ids)
+    acknowledged = max(0, int(c.rowcount or 0))
+    conn.commit()
+    conn.close()
+    return jsonify({'success': True, 'acknowledged': acknowledged})
+
+
 @app.route('/api/child/get_limit', methods=['GET'])
 def get_time_limit():
-    user_id = request.args.get('user_id', 1, type=int)
+    user_id = _positive_int(request.args.get('user_id'), 'user_id')
     deny = guard(user_id)
     if deny: return deny
     conn    = get_db()
@@ -4754,11 +6592,18 @@ def get_time_limit():
 @app.route('/api/dashboard/child_enriched', methods=['GET'])
 def child_dashboard_enriched():
     """User dashboard + streak + time limit + self-awareness message."""
-    user_id = request.args.get('user_id', 1, type=int)
+    user_id = _positive_int(request.args.get('user_id'), 'user_id')
     deny = guard(user_id)
     if deny: return deny
     conn    = get_db()
     c       = conn.cursor()
+
+    # A parent can rename the child while the Child app remains signed in. Return the
+    # authoritative name on the home screen's existing refresh call so its encrypted
+    # local cache does not stay stale until the child logs out and back in.
+    c.execute('SELECT name FROM users WHERE user_id=?', (user_id,))
+    urow = c.fetchone()
+    child_name = urow['name'] if urow else None
 
     # Streak
     c.execute('SELECT * FROM streaks WHERE user_id=?', (user_id,))
@@ -4770,11 +6615,13 @@ def child_dashboard_enriched():
     tlrow = c.fetchone()
     daily_limit = float(tlrow['daily_limit_hours']) if tlrow else None
 
-    # Today's hours
-    today_iso = datetime.now().date().isoformat()
+    # Today's hours in the child's local calendar day, translated back to the
+    # server-clock timestamps used by the database.
+    today_start, today_end = _stored_local_day_bounds(c, user_id)
     c.execute('''SELECT COALESCE(ROUND(SUM(duration_seconds)/3600.0,2),0) AS h
-                 FROM sessions WHERE user_id=? AND SUBSTR(start_time,1,10)=? AND end_time IS NOT NULL''',
-              (user_id, today_iso))
+                 FROM sessions WHERE user_id=? AND start_time>=? AND start_time<?
+                 AND end_time IS NOT NULL''',
+              (user_id, today_start.isoformat(), today_end.isoformat()))
     today_h = float(c.fetchone()['h'] or 0)
     conn.close()
 
@@ -4804,6 +6651,7 @@ def child_dashboard_enriched():
     goal = daily_limit if daily_limit else DEFAULT_GOAL_HOURS
     return jsonify({
         'success':          True,
+        'child_name':       child_name,
         'streak':           streak,
         'limit_status':     limit_status,
         'played_today_hours': round(today_h, 2),
@@ -4831,7 +6679,7 @@ def weekly_report_pdf():
     import io
     from flask import make_response
 
-    user_id = request.args.get('user_id', 1, type=int)
+    user_id = _positive_int(request.args.get('user_id'), 'user_id')
     deny = guard(user_id)
     if deny: return deny
     deny = deny_non_parent()           # parent-only report
@@ -4842,7 +6690,8 @@ def weekly_report_pdf():
     profile = dict(c.fetchone() or {})
     pdf_tz_shift = _tz_shift_min(c, user_id)   # child-local hours for the late-night stat
 
-    since7 = (datetime.now() - timedelta(days=7)).isoformat()
+    since7 = _stored_recent_local_days(c, user_id, 7).isoformat()
+    local_today = _local_now(c, user_id).date()
     c.execute('''SELECT session_id, game_name, start_time, duration_seconds,
                  final_risk_score, risk_category
                  FROM sessions WHERE user_id=? AND start_time>=? ORDER BY start_time DESC''',
@@ -4873,7 +6722,9 @@ def weekly_report_pdf():
     # Voice emotion distribution this week.
     c.execute('''SELECT ve.emotion AS emotion, COUNT(*) AS n
                  FROM voice_events ve JOIN sessions s ON s.session_id=ve.session_id
-                 WHERE s.user_id=? AND ve.timestamp>=? GROUP BY ve.emotion ORDER BY n DESC''',
+                 WHERE s.user_id=? AND ve.timestamp>=?
+                   AND COALESCE(ve.capture_valid, 1)=1
+                 GROUP BY ve.emotion ORDER BY n DESC''',
               (user_id, since7))
     voice_rows = [dict(r) for r in c.fetchall()]
 
@@ -4897,7 +6748,10 @@ def weekly_report_pdf():
     risk_level  = risk_summary['current_risk']
     risk_label  = risk_summary['risk_label']
     risk_score  = risk_summary['risk_score']
-    peer_comp   = _peer_comparison(week_hours, profile.get('age', 15) or 15)
+    # Zero telemetry is not evidence that the child plays less than peers, and it
+    # cannot support a personalised peer comparison.
+    peer_comp   = (_peer_comparison(week_hours, profile.get('age', 15) or 15)
+                   if sessions else None)
     time_lim    = _suggest_time_limit(week_hours, risk_level, profile.get('age', 15) or 15)
     recs        = _build_recommendations(risk_level)
 
@@ -4916,7 +6770,14 @@ def weekly_report_pdf():
     pdf.set_y(8)
     pdf.cell(0, 10, 'Gaming Health Weekly Report', align='C', ln=True)
     pdf.set_font('Helvetica', '', 10)
-    pdf.cell(0, 6, f"Generated: {datetime.now().strftime('%d %b %Y')}  |  Child: {profile.get('name','Unknown')}  |  Age: {profile.get('age','?')}", align='C', ln=True)
+    pdf.cell(
+        0, 6,
+        _latin1(
+            f"Generated: {local_today.strftime('%d %b %Y')}  |  "
+            f"Child: {profile.get('name','Unknown')}  |  Age: {profile.get('age','?')}"
+        ),
+        align='C', ln=True
+    )
     pdf.ln(10)
 
     # Risk summary box
@@ -4924,7 +6785,7 @@ def weekly_report_pdf():
     pdf.set_fill_color(*risk_color)
     pdf.set_text_color(255, 255, 255)
     pdf.set_font('Helvetica', 'B', 24)
-    pdf.cell(0, 16, risk_label.upper(), align='C', fill=True, ln=True)
+    pdf.cell(0, 16, _latin1(risk_label.upper()), align='C', fill=True, ln=True)
     pdf.set_font('Helvetica', '', 11)
     period = risk_summary['risk_period']
     if period:
@@ -4932,13 +6793,21 @@ def weekly_report_pdf():
         period_text = (f"{period['label']} - {session_count} "
                        f"session{'s' if session_count != 1 else ''}")
     else:
-        period_text = 'Latest available prediction'
-    pdf.cell(0, 8, f"Risk Score: {risk_score*100:.0f}%   |   {period_text}",
+        period_text = ('No scored sessions yet' if risk_score is None
+                       else 'Latest available prediction')
+    score_text = (f"{risk_score * 100:.0f}%" if risk_score is not None
+                  else 'unavailable')
+    pdf.cell(0, 8, _latin1(f"Risk Score: {score_text}   |   {period_text}"),
              align='C', fill=True, ln=True)
     # 'percentile' is "plays more than X% of peers", so X=90 means the TOP 10%. Label it
     # as the Nth percentile rather than "Top 90%" (which read as the opposite).
-    pdf.cell(0, 8, f"Peer rank: {peer_comp['percentile']}th percentile",
-             align='C', fill=True, ln=True)
+    if peer_comp:
+        pdf.cell(0, 8, _latin1(
+            f"Peer rank: {peer_comp['percentile']}th percentile"),
+            align='C', fill=True, ln=True)
+    else:
+        pdf.cell(0, 8, 'Peer rank: not enough activity data',
+                 align='C', fill=True, ln=True)
     pdf.ln(6)
 
     # Stats table
@@ -4952,7 +6821,9 @@ def weekly_report_pdf():
         ('Sessions Played',     str(len(sessions))),
         ('Late-Night Sessions', str(late_count)),
         ('Healthy Day Streak',  f"{streak['current_streak'] if streak else 0} days"),
-        ('Suggested Daily Limit', f"{time_lim['suggested_daily_hours']:.1f} hours"),
+        ('Suggested Daily Limit',
+         (f"{time_lim['suggested_daily_hours']:.1f} hours"
+          if time_lim else 'not enough activity data')),
     ]
     for label, value in stats:
         pdf.set_font('Helvetica', 'B', 11)
@@ -4983,12 +6854,15 @@ def weekly_report_pdf():
     pdf.set_font('Helvetica', 'B', 13)
     pdf.cell(0, 8, 'Daily Activity Pattern', ln=True)
     pdf.set_font('Helvetica', '', 11)
-    today_d = datetime.now().date()
+    today_d = local_today
     daily, max_day = [], 0.001
     for i in range(6, -1, -1):
         d   = today_d - timedelta(days=i)
-        hrs = sum((s['duration_seconds'] or 0) / 3600.0
-                  for s in sessions if str(s['start_time'])[:10] == d.isoformat())
+        hrs = sum(
+            (s['duration_seconds'] or 0) / 3600.0
+            for s in sessions
+            if (_parse_ts(s['start_time']) + timedelta(minutes=pdf_tz_shift)).date() == d
+        )
         daily.append((d.strftime('%a %d'), hrs))
         max_day = max(max_day, hrs)
     for lbl, hrs in daily:
@@ -5051,11 +6925,18 @@ def weekly_report_pdf():
         pdf.multi_cell(pdf.epw, 6, _latin1("  Voice emotions detected: none this week"))
     pdf.ln(4)
 
-    # What's driving the risk (top behavioural factors)
+    # These factors come from the latest completed session, whereas the headline is
+    # the latest-active-day roll-up. Label the narrower scope explicitly.
     if drivers:
         pdf.set_font('Helvetica', 'B', 13)
-        pdf.cell(0, 8, "What's Driving the Risk", ln=True)
+        pdf.cell(0, 8, 'Latest Session Behaviour Factors', ln=True)
         pdf.set_font('Helvetica', '', 11)
+        pdf.set_x(pdf.l_margin)
+        pdf.multi_cell(
+            pdf.epw, 6,
+            'The headline above combines the latest active day; these factors '
+            'describe only the most recent completed session.'
+        )
         for d in drivers:
             arrow = 'raises' if d.get('direction') == 'raises' else 'lowers'
             pdf.set_x(pdf.l_margin)
@@ -5067,9 +6948,16 @@ def weekly_report_pdf():
     pdf.set_font('Helvetica', 'B', 13)
     pdf.cell(0, 8, 'Recommendations', ln=True)
     pdf.set_font('Helvetica', '', 11)
-    for rec in recs:
+    if recs:
+        for rec in recs:
+            pdf.set_x(pdf.l_margin)
+            pdf.multi_cell(pdf.epw, 6, _latin1(f"  * {rec}"))
+    else:
         pdf.set_x(pdf.l_margin)
-        pdf.multi_cell(pdf.epw, 6, _latin1(f"  * {rec}"))
+        pdf.multi_cell(
+            pdf.epw, 6,
+            'Complete a gaming session before personalised recommendations are shown.'
+        )
     pdf.ln(4)
 
     # Peer context
@@ -5077,7 +6965,11 @@ def weekly_report_pdf():
     pdf.cell(0, 8, 'Peer Comparison', ln=True)
     pdf.set_font('Helvetica', '', 11)
     pdf.set_x(pdf.l_margin)
-    pdf.multi_cell(pdf.epw, 6, _latin1(peer_comp['message']))
+    pdf.multi_cell(
+        pdf.epw, 6,
+        _latin1(peer_comp['message']) if peer_comp else
+        'Not enough activity data is available for a meaningful peer comparison.'
+    )
     pdf.ln(2)
     pdf.set_font('Helvetica', 'I', 9)
     pdf.set_x(pdf.l_margin)
@@ -5130,27 +7022,30 @@ def _detect_anomalies(user_id: int, force: bool = False):
         return []
     _anomaly_last_run[user_id] = now_mono
     conn = get_db()
-    cutoff_28d = (datetime.now() - timedelta(days=28)).isoformat()
-    rows = conn.execute('''
-        SELECT SUBSTR(start_time,1,10) AS d, SUM(duration_seconds)/3600.0 AS hours
-        FROM sessions
-        WHERE user_id = ? AND start_time >= ?
-        GROUP BY SUBSTR(start_time,1,10)
-        ORDER BY d
-    ''', (user_id, cutoff_28d)).fetchall()
-    if len(rows) < 7:
+    c = conn.cursor()
+    shift_min = _tz_shift_min(c, user_id)
+    cutoff_28d = _stored_recent_local_days(c, user_id, 28).isoformat()
+    c.execute('''SELECT start_time, COALESCE(duration_seconds,0) AS duration
+                 FROM sessions WHERE user_id=? AND start_time>=?
+                 ORDER BY start_time''', (user_id, cutoff_28d))
+    by_day = {}
+    for row in c.fetchall():
+        day = (_parse_ts(row['start_time'])
+               + timedelta(minutes=shift_min)).date().isoformat()
+        by_day[day] = by_day.get(day, 0.0) + float(row['duration'] or 0) / 3600.0
+    if len(by_day) < 7:
         conn.close()
         return []
 
-    hours = [r['hours'] for r in rows]
+    hours = list(by_day.values())
     median_h = float(np.median(hours))
 
     # rows[-1] is the latest day WITH sessions, which is not necessarily today — a big
     # day from last week must not keep raising "Today's playtime is +X%" all week. Key
     # the checks on the actual calendar dates instead.
-    by_day        = {r['d']: float(r['hours']) for r in rows}
-    today_str     = datetime.now().strftime('%Y-%m-%d')
-    yesterday_str = (datetime.now().date() - timedelta(days=1)).isoformat()
+    local_today   = _local_now(c, user_id).date()
+    today_str     = local_today.isoformat()
+    yesterday_str = (local_today - timedelta(days=1)).isoformat()
     today_hours     = by_day.get(today_str, 0.0)
     yesterday_hours = by_day.get(yesterday_str, 0.0)
     z_today = _mad_z(today_hours, hours)
@@ -5183,11 +7078,12 @@ def _detect_anomalies(user_id: int, force: bool = False):
             })
 
     # Persist new anomalies (de-dup by message + same day)
-    today = datetime.now().strftime('%Y-%m-%d')
+    dedup_start, dedup_end = _stored_local_day_bounds(c, user_id, local_today)
     for a in out:
         existing = conn.execute(
-            'SELECT id FROM anomalies WHERE user_id = ? AND message = ? AND SUBSTR(detected_at,1,10) = ?',
-            (user_id, a['message'], today)
+            '''SELECT id FROM anomalies WHERE user_id=? AND message=?
+               AND detected_at>=? AND detected_at<?''',
+            (user_id, a['message'], dedup_start.isoformat(), dedup_end.isoformat())
         ).fetchone()
         if existing:
             continue
@@ -5207,7 +7103,7 @@ def _detect_anomalies(user_id: int, force: bool = False):
 
 @app.route('/api/anomalies', methods=['GET'])
 def get_anomalies():
-    user_id = request.args.get('user_id', type=int)
+    user_id = _positive_int(request.args.get('user_id'), 'user_id')
     deny = guard(user_id)
     if deny: return deny
     deny = deny_non_parent()           # parent-only insight
@@ -5222,6 +7118,7 @@ def get_anomalies():
         WHERE user_id = ? AND resolved = 0
         ORDER BY detected_at DESC LIMIT 10
     ''', (user_id,)).fetchall()
+    conn.close()
     return jsonify({
         'success': True,
         'fresh': fresh,
@@ -5344,7 +7241,7 @@ def _build_counselor_context(user_id: int) -> dict:
 def counselor_chat():
     data = request.get_json() or {}
     try:
-        user_id = int(data.get('user_id'))
+        user_id = _positive_int(data.get('user_id'), 'user_id')
     except (TypeError, ValueError):
         return jsonify({'success': False, 'error': 'user_id and message required'}), 400
     deny = guard(user_id)
@@ -5382,7 +7279,7 @@ def counselor_chat():
 
 @app.route('/api/counselor/history', methods=['GET'])
 def counselor_history():
-    user_id = request.args.get('user_id', type=int)
+    user_id = _positive_int(request.args.get('user_id'), 'user_id')
     deny = guard(user_id)
     if deny: return deny
     if not user_id:
@@ -5406,34 +7303,49 @@ def counselor_history():
 # DAILY REFLECTION / MOOD CHECK-IN
 # ═════════════════════════════════════════════════════════════════
 
-def _rating_1_10(v):
-    """Coerce a check-in rating to an int in 1..10, else None (stored as missing)."""
+def _rating_1_5(v):
+    """Strict optional reflection rating on the Child UI's 1..5 scale."""
+    if v is None:
+        return None
+    if isinstance(v, bool) or isinstance(v, float) and not v.is_integer():
+        raise ValueError('rating must be a whole number from 1 to 5')
     try:
         n = int(v)
-        return n if 1 <= n <= 10 else None
+        if 1 <= n <= 5:
+            return n
     except (TypeError, ValueError):
-        return None
+        pass
+    raise ValueError('rating must be a whole number from 1 to 5')
 
 
 @app.route('/api/child/reflection', methods=['POST'])
 def post_reflection():
     data = request.get_json() or {}
     try:
-        user_id = int(data.get('user_id'))
+        user_id = _positive_int(data.get('user_id'), 'user_id')
     except (TypeError, ValueError):
         return jsonify({'success': False, 'error': 'user_id required'}), 400
     deny = guard(user_id)
     if deny: return deny
-    mood   = _rating_1_10(data.get('mood_rating'))
-    sleep  = _rating_1_10(data.get('sleep_quality'))
-    energy = _rating_1_10(data.get('energy_level'))
-    note   = str(data.get('note') or '')[:500]
+    try:
+        mood = _rating_1_5(data.get('mood_rating'))
+        sleep = _rating_1_5(data.get('sleep_quality'))
+        energy = _rating_1_5(data.get('energy_level'))
+    except ValueError as exc:
+        return jsonify({'success': False, 'error': str(exc)}), 400
+    raw_note = data.get('note', '')
+    if not isinstance(raw_note, str):
+        return jsonify({'success': False, 'error': 'note must be a string'}), 400
+    note = raw_note.strip()
+    if len(note) > 500:
+        return jsonify({'success': False,
+                        'error': 'note must be at most 500 characters'}), 400
     # Reject an entirely empty check-in: all three ratings invalid/missing AND no note
     # was silently stored as an all-NULL row that carries no signal but pollutes the
     # history and averages.
     if mood is None and sleep is None and energy is None and not note.strip():
         return jsonify({'success': False,
-                        'error': 'Provide at least one rating (1–10) or a note'}), 400
+                        'error': 'Provide at least one rating (1–5) or a note'}), 400
     conn = get_db()
     # Explicit local created_at: the column DEFAULT is UTC on SQLite, but the reader
     # filters created_at >= a LOCAL cutoff — defaults shifted every reflection by the
@@ -5443,15 +7355,16 @@ def post_reflection():
         VALUES (?, ?, ?, ?, ?, ?)
     ''', (user_id, mood, sleep, energy, note, datetime.now().isoformat()))
     conn.commit()
+    conn.close()
     return jsonify({'success': True})
 
 
 @app.route('/api/child/reflections', methods=['GET'])
 def get_reflections():
-    user_id = request.args.get('user_id', type=int)
+    user_id = _positive_int(request.args.get('user_id'), 'user_id')
     deny = guard(user_id)
     if deny: return deny
-    days = request.args.get('days', default=14, type=int)
+    days = _bounded_query_int('days', 14, 1, 365)
     if not user_id:
         return jsonify({'success': False, 'error': 'user_id required'}), 400
     conn = get_db()
@@ -5462,6 +7375,7 @@ def get_reflections():
         WHERE user_id = ? AND created_at >= ?
         ORDER BY created_at DESC
     ''', (user_id, cutoff)).fetchall()
+    conn.close()
     return jsonify({
         'success': True,
         'reflections': [dict(r) for r in rows]

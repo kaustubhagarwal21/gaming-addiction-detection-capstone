@@ -8,6 +8,8 @@ isolated throwaway SQLite DB seeded with deterministic data, so no real DB or
 `seed_demo.py` run is required. The seeded family is: child PIN 1234,
 parent PIN 0000, family code TEST01 (user_id=1).
 """
+import time
+
 import pytest
 
 FAMILY_CODE = 'TEST01'   # must match the family code seeded in conftest.py
@@ -85,7 +87,10 @@ def test_pg_placeholder_translation():
 
 # ─── Privacy: consent + data deletion ──────────────────────────────
 def test_consent_flow(client):
-    r = client.post('/api/consent', json={'user_id': 1})
+    import app as appmod
+    r = client.post('/api/consent',
+                    json={'user_id': 1, 'version': appmod.CONSENT_VERSION,
+                          'parent_pin': '0000'})
     assert r.status_code == 200 and r.get_json()['success'] is True
     r = client.get('/api/consent?user_id=1')
     j = r.get_json()
@@ -168,7 +173,7 @@ def test_legacy_risk_alerts_use_family_facing_labels(client):
 def test_screen_event(client):
     r = client.post('/api/child/screen_event',
                     json={'user_id': '1', 'event_type': 'screen_on',
-                          'timestamp': '1700000000000'})
+                          'timestamp': str(int(time.time() * 1000))})
     assert r.status_code == 200
 
 
@@ -193,10 +198,12 @@ def test_get_time_limit(client):
 
 
 def test_child_enriched(client):
+    expected_name = client.get('/api/user/profile?user_id=1').get_json()['name']
     r = client.get('/api/dashboard/child_enriched?user_id=1')
     assert r.status_code == 200
     data = r.get_json()
     assert data['success'] is True
+    assert data['child_name'] == expected_name
 
 
 # ─── Counselor chatbot ─────────────────────────────────────────────
@@ -289,6 +296,12 @@ def test_session_lifecycle(client):
     r = client.post(f'/api/session/{sid}/end')
     assert r.status_code == 200
 
+    # JSON booleans/fractions are not valid integer account identifiers.
+    assert client.post('/api/session/start',
+                       json={'user_id': True, 'game_name': 'BGMI'}).status_code == 400
+    assert client.post('/api/session/start',
+                       json={'user_id': 1.5, 'game_name': 'BGMI'}).status_code == 400
+
 
 # ─── Validation guards ─────────────────────────────────────────────
 
@@ -315,7 +328,7 @@ def test_model_card(client):
 def test_feedback_loop(client):
     alerts = client.get('/api/alerts?user_id=1').get_json()['alerts']
     assert alerts, 'seed should provide at least one alert'
-    aid = alerts[0]['id']
+    aid = next(a['id'] for a in alerts if a['type'] in ('risk', 'toxicity'))
 
     r = client.post('/api/feedback', json={'alert_id': aid, 'label': 'accurate'})
     assert r.status_code == 200 and r.get_json()['success'] is True
@@ -328,6 +341,52 @@ def test_feedback_loop(client):
     summary = client.get('/api/feedback/summary?user_id=1').get_json()
     assert summary['success'] is True
     assert summary['counts'].get('accurate', 0) >= 1
+
+
+def test_feedback_on_revision_and_streak_alerts(client):
+    """The Parent app offers verdict buttons on risk_revision and toxicity_streak
+    alerts (AlertTriage.isFeedbackEligible) — the backend must accept those types,
+    not just the original one-event 'risk'/'toxicity' forms."""
+    from app import _insert_alert, get_db
+    conn = get_db()
+    c = conn.cursor()
+    # Attach the revision to a real scored session so its prediction snapshot resolves.
+    c.execute('''SELECT p.session_id FROM predictions p
+                 JOIN sessions s ON s.session_id=p.session_id
+                 WHERE s.user_id=1 ORDER BY p.id DESC LIMIT 1''')
+    sid = c.fetchone()['session_id']
+    rev_id = _insert_alert(c, 1, 'risk_revision',
+                           'Late evidence revised this session to Low concern.',
+                           'info', session_id=sid)
+    streak_id = _insert_alert(c, 1, 'toxicity_streak',
+                              'Repeated concerning language this gaming session.',
+                              'high', session_id=sid)
+    conn.commit()
+    conn.close()
+
+    for aid in (rev_id, streak_id):
+        r = client.post('/api/feedback', json={'alert_id': aid, 'label': 'false_alarm'})
+        assert r.status_code == 200, (aid, r.get_json())
+        assert r.get_json()['success'] is True
+
+    # And session_start stays operational-only (nothing to rate).
+    conn = get_db()
+    c = conn.cursor()
+    op_id = _insert_alert(c, 1, 'session_start', 'started playing BGMI', 'info')
+    conn.commit()
+    conn.close()
+    r = client.post('/api/feedback', json={'alert_id': op_id, 'label': 'accurate'})
+    assert r.status_code == 400
+
+    # Clean up: later tests count user 1's toxicity_streak alerts in the shared DB.
+    conn = get_db()
+    c = conn.cursor()
+    ids = tuple(i for i in (rev_id, streak_id, op_id) if i is not None)
+    ph = ','.join(['?'] * len(ids))
+    c.execute(f'DELETE FROM feedback WHERE alert_id IN ({ph})', ids)
+    c.execute(f'DELETE FROM alerts WHERE id IN ({ph})', ids)
+    conn.commit()
+    conn.close()
 
 
 def test_feedback_bad_label(client):
@@ -362,7 +421,7 @@ def test_chat_non_string_message_rejected_cleanly(client):
     r = client.post('/api/session/start', json={'user_id': 1, 'game_name': 'BGMI'})
     sid = r.get_json()['session_id']
     r = client.post(f'/api/session/{sid}/chat', json={'message': 12345})
-    assert r.status_code == 200          # coerced to the string "12345"
+    assert r.status_code == 400
     r = client.post(f'/api/session/{sid}/chat', json={'message': None})
     assert r.status_code == 400          # empty after coercion
     client.post(f'/api/session/{sid}/end')
@@ -374,10 +433,7 @@ def test_voice_garbage_intensity_rejected_cleanly(client):
     sid = r.get_json()['session_id']
     r = client.post(f'/api/session/{sid}/voice',
                     json={'emotion': 'angry', 'intensity': 'not-a-number', 'duration_seconds': None})
-    assert r.status_code == 200
-    body = r.get_json()
-    assert body['success'] is True
-    assert 0.0 <= body['intensity'] <= 1.0
+    assert r.status_code == 400
     client.post(f'/api/session/{sid}/end')
 
 
@@ -414,12 +470,93 @@ def test_backfill_validates_and_clamps(client):
                        json={'user_id': 1, 'game_name': 'BGMI',
                              'start_time': datetime.now().isoformat(),
                              'end_time': datetime.now().isoformat()}).status_code == 400
-    # 40-hour interval → clamped to the stale ceiling (6h), never stored as-is.
+    # Explicit client timestamps allow a genuine long bout, capped independently of
+    # the six-hour orphan timeout.
     start = (datetime.now() - timedelta(hours=40)).isoformat()
     r = client.post('/api/session/backfill',
                     json={'user_id': 1, 'game_name': 'BGMI', 'start_time': start,
                           'end_time': datetime.now().isoformat(), 'client_key': 'k-long'})
-    assert r.get_json()['duration_seconds'] == 6 * 3600
+    assert r.get_json()['duration_seconds'] == 24 * 3600
+
+
+def test_backfill_rejects_malformed_reverse_stale_future_and_tiny_intervals(client):
+    """The backfill endpoint is a data-integrity boundary, not a timestamp repair tool."""
+    from datetime import datetime, timedelta
+
+    now = datetime.now()
+    base = {'user_id': 1, 'game_name': 'BGMI', 'client_key': 'invalid-shape-key'}
+    assert client.post('/api/session/backfill', json=[]).status_code == 400
+    assert client.post('/api/session/backfill', json={**base, 'game_name': None,
+                       'start_time': (now - timedelta(minutes=2)).isoformat(),
+                       'end_time': now.isoformat()}).status_code == 400
+    assert client.post('/api/session/backfill', json={**base, 'user_id': True,
+                       'start_time': (now - timedelta(minutes=2)).isoformat(),
+                       'end_time': now.isoformat()}).status_code == 400
+    assert client.post('/api/session/backfill', json={**base, 'user_id': 1.5,
+                       'start_time': (now - timedelta(minutes=2)).isoformat(),
+                       'end_time': now.isoformat()}).status_code == 400
+    assert client.post('/api/session/backfill', json={**base, 'client_key': 'reverse-key',
+                       'start_time': now.isoformat(),
+                       'end_time': (now - timedelta(seconds=1)).isoformat()}).status_code == 400
+    assert client.post('/api/session/backfill', json={**base, 'client_key': 'tiny-key',
+                       'start_time_ms': int(now.timestamp() * 1000),
+                       'end_time_ms': int(now.timestamp() * 1000) + 500}).status_code == 400
+    assert client.post('/api/session/backfill', json={**base, 'client_key': 'stale-key',
+                       'start_time': (now - timedelta(days=8)).isoformat(),
+                       'end_time': (now - timedelta(days=8) + timedelta(minutes=1)).isoformat()
+                       }).status_code == 400
+    assert client.post('/api/session/backfill', json={**base, 'client_key': 'future-key',
+                       'start_time': (now + timedelta(minutes=10)).isoformat(),
+                       'end_time': (now + timedelta(minutes=11)).isoformat()}).status_code == 400
+
+
+def test_backfill_epoch_contract_and_idempotency_key_conflict(client):
+    """Epoch millis preserve the instant; a key cannot silently alias another bout."""
+    from datetime import datetime, timedelta
+
+    end = datetime.now() - timedelta(minutes=10)
+    start = end - timedelta(minutes=2)
+    body = {'user_id': 1, 'game_name': 'BGMI',
+            'start_time_ms': int(start.timestamp() * 1000),
+            'end_time_ms': int(end.timestamp() * 1000),
+            'client_key': 'epoch-contract-key'}
+    created = client.post('/api/session/backfill', json=body)
+    assert created.status_code == 200
+    assert created.get_json()['duration_seconds'] == 120
+    assert client.post('/api/session/backfill', json=body).get_json()['deduped'] is True
+
+    reused = dict(body)
+    reused['game_name'] = 'Candy Crush'
+    conflict = client.post('/api/session/backfill', json=reused)
+    assert conflict.status_code == 409
+
+
+def test_backfill_retry_repairs_partial_scoring_once(client, monkeypatch):
+    """A crash after the session INSERT must be recoverable without duplicate evidence."""
+    from datetime import datetime, timedelta
+    import app as appmod
+
+    end = datetime.now() - timedelta(minutes=20)
+    body = {'user_id': 1, 'game_name': 'BGMI',
+            'start_time': (end - timedelta(minutes=3)).isoformat(),
+            'end_time': end.isoformat(), 'client_key': 'partial-retry-key'}
+    real_prediction = appmod.run_prediction
+    monkeypatch.setattr(appmod, 'run_prediction',
+                        lambda *args, **kwargs: (_ for _ in ()).throw(RuntimeError('boom')))
+    assert client.post('/api/session/backfill', json=body).status_code == 500
+    monkeypatch.setattr(appmod, 'run_prediction', real_prediction)
+
+    repaired = client.post('/api/session/backfill', json=body)
+    assert repaired.status_code == 200 and repaired.get_json()['deduped'] is True
+    sid = repaired.get_json()['session_id']
+    conn = appmod.get_db()
+    assert conn.execute('SELECT COUNT(*) AS n FROM behavioral_data WHERE session_id=?',
+                        (sid,)).fetchone()['n'] == 1
+    assert conn.execute('SELECT COUNT(*) AS n FROM predictions WHERE session_id=?',
+                        (sid,)).fetchone()['n'] == 1
+    assert conn.execute('SELECT backfill_finalized FROM sessions WHERE session_id=?',
+                        (sid,)).fetchone()['backfill_finalized'] == 1
+    conn.close()
 
 
 def test_voice_probs_shadow_logged_without_changing_serving(client, monkeypatch):
@@ -443,7 +580,7 @@ def test_voice_probs_shadow_logged_without_changing_serving(client, monkeypatch)
     assert r.status_code == 200 and r.get_json()['success'] is True
 
     conn = appmod.get_db()
-    row = conn.execute('SELECT emotion, intensity, probs FROM voice_events '
+    row = conn.execute('SELECT emotion, intensity, probs, capture_valid FROM voice_events '
                        'WHERE session_id=? ORDER BY id DESC LIMIT 1', (sid,)).fetchone()
     conn.close()
     assert row is not None
@@ -452,6 +589,45 @@ def test_voice_probs_shadow_logged_without_changing_serving(client, monkeypatch)
     assert abs(sum(stored.values()) - 1.0) < 1e-6
     # Serving unchanged: intensity is still the model max-prob the fusion consumed.
     assert row['intensity'] == 0.7
+    assert row['capture_valid'] == 1
+    assert r.get_json()['captured'] is True
+    client.post(f'/api/session/{sid}/end')
+
+
+def test_voice_rejected_by_extractor_is_missing_not_neutral_evidence(client, monkeypatch):
+    """A VAD/silence rejection must not add a low neutral score to the ensemble.
+
+    The upload is retained for shadow observability, but capture_valid=0 excludes it
+    from voice counts, emotion analytics and prediction modality presence.
+    """
+    import io
+    import app as appmod
+
+    monkeypatch.setattr(appmod, 'analyse_audio',
+                        lambda path: (None, 0.0, 9.5, None))
+    sid = client.post('/api/session/start',
+                      json={'user_id': 1, 'game_name': 'BGMI'}).get_json()['session_id']
+    r = client.post(f'/api/session/{sid}/voice',
+                    data={'audio': (io.BytesIO(b'RIFFnon-speech'), 'noise.wav')},
+                    content_type='multipart/form-data')
+    assert r.status_code == 200
+    assert r.get_json()['captured'] is False
+
+    conn = appmod.get_db()
+    event = conn.execute(
+        'SELECT emotion, intensity, probs, capture_valid FROM voice_events '
+        'WHERE session_id=? ORDER BY id DESC LIMIT 1', (sid,)).fetchone()
+    # Rejected uploads remain auditable, but are explicitly invalid evidence.
+    assert dict(event) == {'emotion': 'neutral', 'intensity': 0.0,
+                           'probs': None, 'capture_valid': 0}
+    assert conn.execute('SELECT COUNT(*) AS n FROM predictions WHERE session_id=?',
+                        (sid,)).fetchone()['n'] == 0
+    conn.close()
+
+    pred = client.post(f'/api/session/{sid}/predict').get_json()
+    assert pred['modalities']['voice'] is False
+    detail = client.get(f'/api/session/{sid}').get_json()
+    assert detail['voice_count'] == 0
     client.post(f'/api/session/{sid}/end')
 
 
@@ -542,9 +718,79 @@ def test_parent_can_edit_child_profile(client):
     prof = client.get('/api/user/profile?user_id=1').get_json()
     assert prof['name'] == 'Arjun R'
     assert prof['age'] == 15
-    # Out-of-range age is silently ignored, not stored.
-    client.post('/api/user/update', json={'user_id': 1, 'age': 999})
+    # The already-signed-in Child app refreshes this endpoint, so a parent rename must
+    # be visible there without forcing a logout/login.
+    enriched = client.get('/api/dashboard/child_enriched?user_id=1').get_json()
+    assert enriched['child_name'] == 'Arjun R'
+
+    # Invalid data is rejected explicitly rather than ignored behind a false success.
+    bad_age = client.post('/api/user/update', json={'user_id': 1, 'age': 999})
+    assert bad_age.status_code == 400 and bad_age.get_json()['success'] is False
     assert client.get('/api/user/profile?user_id=1').get_json()['age'] == 15
+
+
+@pytest.mark.parametrize('payload', [
+    {'name': '   '},
+    {'name': 'x' * 41},
+    {'age': 'fifteen'},
+    {'age': 15.5},
+    {'age': True},
+])
+def test_profile_update_rejects_invalid_fields(client, payload):
+    payload = {'user_id': 1, **payload}
+    r = client.post('/api/user/update', json=payload)
+    assert r.status_code == 400
+    assert r.get_json()['success'] is False
+
+
+def test_profile_update_requires_explicit_user_and_json_object(client):
+    assert client.post('/api/user/update', json={'name': 'Wrong child'}).status_code == 400
+    assert client.post('/api/user/update', json=[]).status_code == 400
+    assert client.post('/api/user/update', json={'user_id': 1}).status_code == 400
+    assert client.post('/api/user/update', json={'user_id': True, 'name': 'Wrong'}).status_code == 400
+    assert client.post('/api/user/update', json={'user_id': 1.5, 'name': 'Wrong'}).status_code == 400
+    assert client.post('/api/user/update', json={'user_id': 1, 'name': 123}).status_code == 400
+
+
+def test_registration_uses_the_same_profile_name_and_age_boundary(client):
+    common = {'pin': '654321', 'parent_pin': '654320'}
+    assert client.post('/api/register',
+                       json={**common, 'name': 'x' * 41, 'age': 15}).status_code == 400
+    assert client.post('/api/register',
+                       json={**common, 'name': 'Child', 'age': True}).status_code == 400
+    assert client.post('/api/register',
+                       json={**common, 'name': 'Child', 'age': 15.5}).status_code == 400
+    assert client.post('/api/register',
+                       json={**common, 'name': None, 'age': 15}).status_code == 400
+
+
+def test_profile_pin_reset_preserves_child_parent_separation(client):
+    # Registration refuses equal Child/Family PINs; reset must preserve that invariant
+    # in both directions for the selected child and every sibling in the family.
+    child_same = client.post('/api/user/update', json={'user_id': 1, 'pin': '0000'})
+    assert child_same.status_code == 400
+    family_same = client.post('/api/user/update', json={'user_id': 1, 'parent_pin': '1234'})
+    assert family_same.status_code == 400
+    # Neither rejected request changed the existing credentials.
+    assert client.post('/api/user/login',
+                       json={'pin': '1234', 'role': 'child'}).status_code == 200
+    assert client.post('/api/user/login',
+                       json={'pin': '0000', 'role': 'parent',
+                             'family_code': 'TEST01'}).status_code == 200
+
+    # Validate the final state, not each new value against the old counterpart: an
+    # atomic two-PIN rotation may legitimately move the child onto the old family PIN.
+    rotated = client.post('/api/user/update',
+                          json={'user_id': 1, 'pin': '0000', 'parent_pin': '9999'})
+    assert rotated.status_code == 200
+    assert client.post('/api/user/login',
+                       json={'pin': '0000', 'role': 'child'}).status_code == 200
+    assert client.post('/api/user/login',
+                       json={'pin': '9999', 'role': 'parent',
+                             'family_code': 'TEST01'}).status_code == 200
+    restored = client.post('/api/user/update',
+                           json={'user_id': 1, 'pin': '1234', 'parent_pin': '0000'})
+    assert restored.status_code == 200
 
 
 def test_child_token_cannot_edit_profile(client, monkeypatch):
@@ -763,3 +1009,24 @@ def test_all_aggregate_headlines_share_latest_daily_risk(client, monkeypatch):
     assert 'SOME CONCERN' in captured
     assert any(text.startswith('Risk Score: 34%') for text in captured)
     assert any('2 sessions' in text for text in captured)
+
+
+def test_openapi_lists_every_runtime_api_route():
+    """Keep the mobile/backend contract index from silently falling behind Flask."""
+    import re
+    from pathlib import Path
+    import app as appmod
+
+    spec_text = (Path(appmod.__file__).with_name('openapi.yaml')
+                 .read_text(encoding='utf-8'))
+    documented = set(re.findall(r'^  (/api/[^:]+):\s*$', spec_text, re.MULTILINE))
+
+    def canonical(rule):
+        return re.sub(r'<(?:[^:>]+:)?([^>]+)>', r'{\1}', rule)
+
+    runtime = {
+        canonical(rule.rule)
+        for rule in appmod.app.url_map.iter_rules()
+        if rule.rule.startswith('/api/')
+    }
+    assert documented == runtime

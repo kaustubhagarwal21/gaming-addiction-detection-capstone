@@ -5,16 +5,17 @@ info:
     Backend REST API for the AI-driven gaming addiction detection system —
     PES University Capstone PW26_SJ_05.
 
-    Three-modality ML ensemble: behavioral (20 features), chat toxicity
-    (TF-IDF + LinearSVC), voice emotion (MFCC + RandomForest). All inference
-    runs on-device or on this server; no data leaves the family's
-    infrastructure.
-  version: '1.0.0'
+    Three-modality server-side ML ensemble: behavioral Random Forest,
+    TF-IDF/logistic-regression chat toxicity, and acoustic voice-emotion
+    classification. Protected routes require the signed bearer token returned
+    by login or registration.
+  version: '2.0.0'
   contact:
     name: PES Capstone Team
-    email: kaustubh@example.com
 
 servers:
+  - url: https://gaming-addiction-api.onrender.com
+    description: Production
   - url: http://localhost:5000
     description: Local development
   - url: http://192.168.1.100:5000
@@ -29,10 +30,16 @@ tags:
   - name: Counselor
   - name: Reflection
   - name: Anomaly
+  - name: Account
+  - name: Monitoring
+
+security:
+  - bearerAuth: []
 
 paths:
   /api/health:
     get:
+      security: []
       tags: [Auth]
       summary: Health check
       responses:
@@ -41,6 +48,7 @@ paths:
 
   /api/user/login:
     post:
+      security: []
       tags: [Auth]
       summary: Login (child or parent role)
       requestBody:
@@ -65,6 +73,7 @@ paths:
 
   /api/games:
     get:
+      security: []
       tags: [Sessions]
       summary: List supported games
       responses:
@@ -95,50 +104,50 @@ paths:
                   success: { type: boolean }
                   session_id: { type: integer }
 
-  /api/session/{id}/end:
+  /api/session/{sid}/end:
     post:
       tags: [Sessions]
       summary: End session and run prediction
       parameters:
         - in: path
-          name: id
+          name: sid
           schema: { type: integer }
           required: true
       responses:
         '200':
           description: Session ended with prediction
 
-  /api/session/{id}/behavioral:
+  /api/session/{sid}/behavioral:
     post:
       tags: [Data Ingestion]
       summary: Submit behavioral features mid-session
       parameters:
         - in: path
-          name: id
+          name: sid
           schema: { type: integer }
           required: true
       responses:
         '200': { description: OK }
 
-  /api/session/{id}/predict:
+  /api/session/{sid}/predict:
     post:
       tags: [Data Ingestion]
       summary: Run live ensemble prediction during session
       parameters:
         - in: path
-          name: id
+          name: sid
           schema: { type: integer }
           required: true
       responses:
         '200': { description: Live prediction }
 
-  /api/session/{id}/voice:
+  /api/session/{sid}/voice:
     post:
       tags: [Data Ingestion]
       summary: Upload 10s voice WAV segment
       parameters:
         - in: path
-          name: id
+          name: sid
           schema: { type: integer }
           required: true
       requestBody:
@@ -147,18 +156,31 @@ paths:
           multipart/form-data:
             schema:
               type: object
+              required: [audio]
               properties:
-                audio: { type: string, format: binary }
+                audio:
+                  type: string
+                  format: binary
+                  description: Maximum request size 2 MB.
+          application/json:
+            schema:
+              type: object
+              required: [emotion, intensity, duration_seconds]
+              properties:
+                emotion: { type: string, enum: [angry, frustrated, excited, neutral] }
+                intensity: { type: number, minimum: 0, maximum: 1 }
+                duration_seconds: { type: number, minimum: 0, maximum: 30 }
       responses:
         '200': { description: Emotion detected }
+        '413': { description: Audio request exceeds 2 MB }
 
-  /api/session/{id}/chat:
+  /api/session/{sid}/chat:
     post:
       tags: [Data Ingestion]
       summary: Upload captured chat text
       parameters:
         - in: path
-          name: id
+          name: sid
           schema: { type: integer }
           required: true
       requestBody:
@@ -170,7 +192,7 @@ paths:
               required: [message]
               properties:
                 message: { type: string }
-                source: { type: string, enum: [keyboard, ocr, voice_stt] }
+                source: { type: string, enum: [keyboard, ime_keystroke, ocr, voice_stt] }
       responses:
         '200': { description: OK }
 
@@ -219,7 +241,19 @@ paths:
           schema: { type: integer }
           required: true
       responses:
-        '200': { description: Dashboard data }
+        '200':
+          description: Dashboard data with server-configured risk cutoffs
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  risk_thresholds:
+                    type: object
+                    required: [some_concern, high_concern]
+                    properties:
+                      some_concern: { type: number, format: float }
+                      high_concern: { type: number, format: float }
 
   /api/dashboard/child_enriched:
     get:
@@ -255,7 +289,20 @@ paths:
       parameters:
         - { in: query, name: user_id, schema: { type: integer }, required: true }
       responses:
-        '200': { description: Enriched dashboard }
+        '200':
+          description: Enriched dashboard
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  unread_alert_count: { type: integer, minimum: 0 }
+                  risk_thresholds:
+                    type: object
+                    required: [some_concern, high_concern]
+                    properties:
+                      some_concern: { type: number, format: float }
+                      high_concern: { type: number, format: float }
 
   /api/dashboard/weekly_report/pdf:
     get:
@@ -378,7 +425,260 @@ paths:
       responses:
         '200': { description: OK }
 
+  /api/model_card:
+    get:
+      security: []
+      tags: [Auth]
+      summary: Public model metrics and limitations
+      responses:
+        '200': { description: Model card }
+
+  /api/register:
+    post:
+      security: []
+      tags: [Auth]
+      summary: Register a child and create or join a family
+      responses:
+        '200': { description: Child registered and signed in }
+        '400': { description: Invalid registration data }
+        '403': { description: Family PIN mismatch }
+        '409': { description: PIN already in use }
+
+  /api/user/fcm_token:
+    post:
+      tags: [Monitoring]
+      summary: Register a parent device FCM token
+      responses:
+        '200': { description: Token registered }
+
+  /api/user/fcm_token/unregister:
+    post:
+      security: []
+      tags: [Monitoring]
+      summary: Remove a device FCM token during durable logout
+      responses:
+        '200': { description: Token removed }
+
+  /api/user/profile:
+    get:
+      tags: [Account]
+      summary: Get a child profile
+      parameters:
+        - { in: query, name: user_id, schema: { type: integer }, required: true }
+      responses:
+        '200': { description: Child profile }
+
+  /api/user/update:
+    post:
+      tags: [Account]
+      summary: Parent-only child profile or family PIN update
+      responses:
+        '200': { description: Profile updated }
+
+  /api/consent:
+    get:
+      tags: [Account]
+      summary: Get the child consent-version status
+      parameters:
+        - { in: query, name: user_id, schema: { type: integer }, required: true }
+      responses:
+        '200': { description: Consent status }
+    post:
+      tags: [Account]
+      summary: Record parent-authorized consent for the current privacy version
+      description: Requires a parent-role token, or the child's valid Family PIN.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [user_id, version]
+              properties:
+                user_id: { type: integer, minimum: 1 }
+                version: { type: string, example: '2026-07-30' }
+                parent_pin: { type: string, pattern: '^[0-9]{4,6}$' }
+      responses:
+        '200': { description: Consent recorded }
+        '400': { description: Invalid or outdated consent version }
+        '403': { description: Parent authorization failed }
+
+  /api/user/export:
+    get:
+      tags: [Account]
+      summary: Parent-only export of a child's stored data
+      parameters:
+        - { in: query, name: user_id, schema: { type: integer }, required: true }
+      responses:
+        '200': { description: JSON data export }
+
+  /api/user/delete_data:
+    post:
+      tags: [Account]
+      summary: Parent-only deletion of child activity or account data
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [user_id]
+              properties:
+                user_id: { type: integer, minimum: 1 }
+                scope: { type: string, enum: [data, account], default: data }
+      responses:
+        '200': { description: Data deleted }
+
+  /api/session/backfill:
+    post:
+      tags: [Sessions]
+      summary: Idempotently store an offline completed session
+      responses:
+        '200': { description: Backfill stored/scored or existing idempotent result returned }
+
+  /api/session/{sid}:
+    get:
+      tags: [Sessions]
+      summary: Get a single owned session
+      parameters:
+        - { in: path, name: sid, schema: { type: integer }, required: true }
+      responses:
+        '200': { description: Session detail }
+        '404': { description: Session not found }
+
+  /api/sessions:
+    get:
+      tags: [Sessions]
+      summary: List a child's sessions
+      parameters:
+        - { in: query, name: user_id, schema: { type: integer }, required: true }
+        - { in: query, name: limit, schema: { type: integer, minimum: 1, maximum: 200, default: 50 } }
+      responses:
+        '200': { description: Session array }
+
+  /api/analyse/chat:
+    post:
+      tags: [Data Ingestion]
+      summary: Score one authenticated chat message without storing it
+      responses:
+        '200': { description: Toxicity score and band }
+
+  /api/child/heartbeat:
+    post:
+      tags: [Monitoring]
+      summary: Record child monitor, permission and voice-capture health
+      responses:
+        '200': { description: Heartbeat accepted }
+
+  /api/child/tamper:
+    post:
+      tags: [Monitoring]
+      summary: Report a child-side logout or protection event
+      responses:
+        '200': { description: Event recorded }
+
+  /api/verify_parent_pin:
+    post:
+      tags: [Account]
+      summary: Verify the family PIN before a protected child-side action
+      responses:
+        '200': { description: Verification result }
+
+  /api/alerts/mark_read:
+    post:
+      tags: [Dashboard (Parent)]
+      summary: Mark owned alerts as read
+      responses:
+        '200': { description: Alerts marked read }
+
+  /api/feedback:
+    post:
+      tags: [Dashboard (Parent)]
+      summary: Store or replace a parent's prediction verdict
+      responses:
+        '200': { description: Feedback stored }
+
+  /api/feedback/summary:
+    get:
+      tags: [Dashboard (Parent)]
+      summary: Summarize parent verdict agreement
+      parameters:
+        - { in: query, name: user_id, schema: { type: integer }, required: true }
+      responses:
+        '200': { description: Feedback summary }
+
+  /api/child/status:
+    get:
+      tags: [Monitoring]
+      summary: Get live playing status for a child
+      parameters:
+        - { in: query, name: user_id, schema: { type: integer }, required: true }
+      responses:
+        '200': { description: Live child status }
+
+  /api/dashboard/emotions:
+    get:
+      tags: [Dashboard (Parent)]
+      summary: Parent-only voice-emotion insights
+      parameters:
+        - { in: query, name: user_id, schema: { type: integer }, required: true }
+      responses:
+        '200': { description: Emotion insights }
+
+  /api/dashboard/chat_analysis:
+    get:
+      tags: [Dashboard (Parent)]
+      summary: Parent-only chat-toxicity insights
+      parameters:
+        - { in: query, name: user_id, schema: { type: integer }, required: true }
+      responses:
+        '200': { description: Chat insights }
+
+  /api/dashboard/weekly_report:
+    get:
+      tags: [Dashboard (Parent)]
+      summary: Parent-only seven-child-local-day report data
+      parameters:
+        - { in: query, name: user_id, schema: { type: integer }, required: true }
+      responses:
+        '200': { description: Weekly report }
+
+  /api/parent/children:
+    get:
+      tags: [Account]
+      summary: List children currently authorized for this parent
+      responses:
+        '200': { description: Family child roster }
+
+  /api/parent/nudge:
+    post:
+      tags: [Dashboard (Parent)]
+      summary: Queue a one-off parent message for the child
+      responses:
+        '200': { description: Nudge queued }
+
+  /api/child/nudges:
+    get:
+      tags: [Dashboard (Child)]
+      summary: Get pending nudges without consuming them
+      parameters:
+        - { in: query, name: user_id, schema: { type: integer }, required: true }
+      responses:
+        '200': { description: Pending nudges }
+
+  /api/child/nudges/ack:
+    post:
+      tags: [Dashboard (Child)]
+      summary: Acknowledge nudges after Android accepted their notification
+      responses:
+        '200': { description: Nudges acknowledged }
+
 components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: signed-token
   schemas:
     LoginResponse:
       type: object

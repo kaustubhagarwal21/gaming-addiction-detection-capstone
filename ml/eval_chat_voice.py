@@ -28,7 +28,8 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 DATA_DIR   = os.path.join(ROOT, 'data')
 MODELS_DIR = os.path.join(ROOT, 'backend', 'models')
 sys.path.insert(0, os.path.join(ROOT, 'backend'))
-from text_utils import clean_text   # the exact serving preprocessing
+# NOTE: no clean_text here on purpose — assemble_chat_dataset() already applies the
+# serving clean_text to every row, so transforming df['text'] directly is consistent.
 
 ALERT_T = float(os.environ.get('CHAT_ALERT_T', '0.90'))   # must match backend/app.py's default
 

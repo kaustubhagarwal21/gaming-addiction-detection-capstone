@@ -8,7 +8,8 @@ Run against a local Docker Postgres OR the live Render database:
         -e POSTGRES_DB=gaming_addiction -e POSTGRES_USER=gaming_app \
         -e POSTGRES_PASSWORD=dev postgres:16-alpine
     DATABASE_URL=postgresql://gaming_app:dev@localhost:5433/gaming_addiction \
-        AUTH_ENFORCE=1 python scripts/pg_smoketest.py
+        AUTH_ENFORCE=1 AUTH_SECRET=local-smoke-secret PIN_PEPPER=local-smoke-pepper \
+        python scripts/pg_smoketest.py
 
 It imports the app (which runs init_db against Postgres → creates the schema),
 registers a child + parent via the login flow, and checks that token auth and

@@ -3,7 +3,7 @@
 # step, with HTTPS and a stable *.onrender.com URL provided automatically.
 #
 # One-time setup:
-#   1. Push this repo to GitHub (the project isn't a git repo yet — `git init`).
+#   1. Push the repository branch you want Render to deploy to GitHub.
 #   2. Render dashboard → New → Blueprint → pick the repo. It reads this file.
 #   3. AUTH_SECRET / PIN_PEPPER are generated automatically. DATABASE_URL is a
 #      manual secret (sync:false) — set it in the dashboard to your Neon Postgres
@@ -36,6 +36,8 @@ services:
         generateValue: true
       - key: KEEP_AUDIO
         value: "0"               # never retain raw audio in production
+      - key: REQUIRE_DATABASE_URL
+        value: "1"               # fail closed instead of silently using ephemeral SQLite
       - key: VOICE_VAD_MIN_SPEECH
         value: "0.35"            # pilot finding: default 0.1 let game music/ambience
                                  # through the speech gate and flood the emotion model
@@ -43,8 +45,8 @@ services:
                                  # frames to be actual speech; reversible knob.
       # Durable external Postgres (Neon). Set the value in the Render dashboard
       # (Environment tab). sync:false means blueprint syncs never overwrite your
-      # manual value. If it's ever unset, the app safely falls back to ephemeral
-      # SQLite rather than crashing.
+      # manual value. REQUIRE_DATABASE_URL makes an unset/invalid value fail startup
+      # rather than silently losing production data in ephemeral SQLite.
       - key: DATABASE_URL
         sync: false
 

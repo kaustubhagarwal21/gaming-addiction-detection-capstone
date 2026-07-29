@@ -151,6 +151,63 @@ def test_psi_identical_and_shifted():
     assert np.isfinite(psi(np.full(500, 0.5), rng.normal(0.5, 0.1, 500)))  # degenerate ref
 
 
+def test_drift_population_gate_requires_both_windows():
+    from monitor_drift import drift_gate_eligible, finite_mean
+    assert drift_gate_eligible(3, 3, 3) is True
+    assert drift_gate_eligible(20, 2, 3) is False
+    assert drift_gate_eligible(2, 20, 3) is False
+    assert finite_mean([None, float('nan')]) is None
+    assert finite_mean([0, 1, None]) == pytest.approx(0.5)
+
+
+def test_fusion_weight_grid_includes_all_boundary_combinations():
+    from analyze_fusion_sensitivity import served_band, weight_combos
+    combos = weight_combos()
+    assert len(combos) == 37
+    assert (0.25, 0.30, 0.45) in combos
+    assert (0.55, 0.30, 0.15) in combos
+    assert (0.40, 0.15, 0.45) in combos
+    assert (0.40, 0.45, 0.15) in combos
+    assert all(sum(c) == pytest.approx(1.0) for c in combos)
+    assert served_band({'observation_cap': True}, 0.9, 0.33, 0.67) == 'at_risk'
+    assert served_band({'observation_cap': False}, 0.9, 0.33, 0.67) == 'addicted'
+
+
+def test_prevalence_threshold_reports_finite_sample_share_and_validates():
+    from calibrate_thresholds_prevalence import prevalence_threshold
+    scores = np.linspace(0.01, 1.0, 100)
+    threshold, achieved = prevalence_threshold(scores, 0.064)
+    assert 0.9 < threshold < 1.0
+    assert achieved == pytest.approx(0.07)
+    with pytest.raises(ValueError):
+        prevalence_threshold(scores, 0.0)
+    with pytest.raises(ValueError):
+        prevalence_threshold([0.2, np.nan], 0.1)
+
+
+def test_voice_shadow_math_validates_vectors_and_bbse_orientation():
+    from analyze_voice_shadow import (CLASSES, abstain_labels, bbse_prior,
+                                      probability_vector)
+    p = probability_vector('{"angry": 0.1, "excited": 0.1, '
+                           '"frustrated": 0.6001, "neutral": 0.1999}')
+    assert p is not None and p.sum() == pytest.approx(1.0)
+    assert probability_vector('{bad json') is None
+    assert probability_vector({'angry': float('nan')}) is None
+    P = np.array([[0.1, 0.1, 0.5, 0.3], [0.1, 0.1, 0.2, 0.6]])
+    assert abstain_labels(P, 0.1) == ['frustrated', 'neutral']
+    q = np.array([0.1, 0.2, 0.3, 0.4])
+    np.testing.assert_allclose(bbse_prior(np.eye(4), q), q, atol=1e-6)
+    assert len(CLASSES) == 4
+
+
+def test_chat_sweep_contains_each_served_marker_once():
+    from eval_chat_conda import ALERT_HIGH_T, ALERT_T, sweep_thresholds
+    thresholds = sweep_thresholds(0.75, ALERT_T)
+    assert thresholds == sorted(set(thresholds))
+    assert thresholds.count(ALERT_T) == 1
+    assert thresholds.count(ALERT_HIGH_T) == 1
+
+
 def test_posterior_exceeds_monotonic_in_evidence():
     from tune_from_feedback import _posterior_exceeds
     assert _posterior_exceeds(0, 0, 0.4) == 0.0              # no evidence → no claim
@@ -198,7 +255,13 @@ def test_tuner_defaults_match_serving():
     root = Path(__file__).resolve().parents[2]
     app_src   = (root / 'backend' / 'app.py').read_text(encoding='utf-8')
     tuner_src = (root / 'ml' / 'tune_from_feedback.py').read_text(encoding='utf-8')
-    served = {k: float(re.search(rf"environ\.get\('{k}',\s*'([\d.]+)'\)", app_src).group(1))
-              for k in ('RISK_T1', 'RISK_T2', 'CHAT_ALERT_T')}
+    served = {}
+    for key in ('RISK_T1', 'RISK_T2', 'CHAT_ALERT_T'):
+        match = re.search(
+            rf"{key}\s*=\s*_env_float\(\s*'{key}',\s*([\d.]+)",
+            app_src,
+        )
+        assert match, f'could not locate the serving default for {key}'
+        served[key] = float(match.group(1))
     tuner = eval(re.search(r'DEFAULTS\s*=\s*(\{[^}]+\})', tuner_src).group(1))
     assert tuner == served, f'tuner DEFAULTS {tuner} != serving defaults {served}'

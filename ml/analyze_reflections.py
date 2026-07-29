@@ -2,7 +2,7 @@
 Reflections as a free external-validity check.
 
 The child app already collects daily self-reports (mood / sleep quality / energy,
-1-10). If the risk model measures something real, a higher-risk gaming day should
+1-5). If the risk model measures something real, a higher-risk gaming day should
 tend to be followed by a WORSE self-reported next morning — especially sleep quality
 after late-night play. This script tests exactly that with Spearman rank correlations
 (monotonic, no linearity assumption): each child's mean risk on day D against their
@@ -114,7 +114,7 @@ def main():
            pair(risk, refl, 1))
     report("Same-day (secondary view):", pair(risk, refl, 0))
     print(f"\nNote: Spearman rank correlation; pairs pooled across children. "
-          f"Self-reports are 1-10 (higher = better), risk is 0-1 (higher = worse), "
+          f"Self-reports are 1-5 (higher = better), risk is 0-1 (higher = worse), "
           f"so a NEGATIVE r supports the model. Minimum {MIN_PAIRS} pairs per cell.")
 
 

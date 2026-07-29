@@ -100,6 +100,18 @@ def label(v):
     return 'DRIFT' if v > 0.2 else ('moderate' if v > 0.1 else 'stable')
 
 
+def drift_gate_eligible(users_ref: int, users_rec: int, min_users: int) -> bool:
+    """Whether both windows contain the configured minimum population."""
+    return min(users_ref, users_rec) >= min_users
+
+
+def finite_mean(values):
+    """Mean of finite observed values, or None when a legacy column has no data."""
+    clean = np.asarray([v for v in values if v is not None], dtype=float)
+    clean = clean[np.isfinite(clean)]
+    return float(clean.mean()) if clean.size else None
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
@@ -124,6 +136,10 @@ def main():
                          'PSI exceeds 0.2 from ordinary behavioural variability. The '
                          'report is still printed and written either way.')
     args = ap.parse_args()
+    if args.recent_days <= 0 or args.reference_days <= 0:
+        ap.error('--recent-days and --reference-days must be positive')
+    if args.min_users <= 0:
+        ap.error('--min-users must be positive')
 
     now = datetime.now()
     recent_start = now - timedelta(days=args.recent_days)
@@ -147,20 +163,29 @@ def main():
           f"({len(ref)} predictions, {users_ref} children)")
     print(f"recent   : {recent_start.date()} .. {now.date()}  "
           f"({len(rec)} predictions, {users_rec} children)")
-    if len(ref) < MIN_ROWS or len(rec) < MIN_ROWS:
-        print(f"\nInsufficient data (need >= {MIN_ROWS} predictions per window) — "
-              "widen the windows or re-run once the pilot has accumulated history.")
-        return
-
     report = {'windows': {'reference': [str(ref_start.date()), str(recent_start.date()),
                                         len(ref)],
                           'recent': [str(recent_start.date()), str(now.date()), len(rec)]},
+              'population': {'reference_users': users_ref, 'recent_users': users_rec,
+                             'min_users': args.min_users},
               'scores': {}, 'bands': {}, 'presence': {}, 'volume': {}}
+    if len(ref) < MIN_ROWS or len(rec) < MIN_ROWS:
+        print(f"\nInsufficient data (need >= {MIN_ROWS} predictions per window) — "
+              "widen the windows or re-run once the pilot has accumulated history.")
+        report['status'] = 'insufficient_data'
+        if args.json:
+            with open(args.json, 'w') as f:
+                json.dump(report, f, indent=2, allow_nan=False)
+            print(f"[OK] wrote {args.json}")
+        return
+
+    report['status'] = 'ok'
 
     print(f"\n{'score':<18} {'PSI':>7} {'verdict':<10} {'KS p':>9} {'mean ref->rec'}")
     for col in ('final_risk_score', 'behavior_score', 'chat_score', 'voice_score'):
         a = np.array([r[col] for r in ref if r[col] is not None], dtype=float)
         b = np.array([r[col] for r in rec if r[col] is not None], dtype=float)
+        a, b = a[np.isfinite(a)], b[np.isfinite(b)]
         if len(a) < MIN_ROWS or len(b) < MIN_ROWS:
             print(f"{col:<18} {'—':>7} insufficient rows")
             continue
@@ -182,10 +207,13 @@ def main():
 
     print("\nmodality-presence rates (a falling rate = capture regression, not drift):")
     for col in ('behavior_present', 'chat_present', 'voice_present'):
-        pr = np.mean([r[col] for r in ref if r[col] is not None] or [np.nan])
-        pc = np.mean([r[col] for r in rec if r[col] is not None] or [np.nan])
-        report['presence'][col] = [round(float(pr), 3), round(float(pc), 3)]
-        print(f"  {col:<18} {pr:5.1%} -> {pc:5.1%}")
+        pr = finite_mean([r[col] for r in ref])
+        pc = finite_mean([r[col] for r in rec])
+        report['presence'][col] = [round(pr, 3) if pr is not None else None,
+                                   round(pc, 3) if pc is not None else None]
+        pr_text = f"{pr:5.1%}" if pr is not None else "  n/a"
+        pc_text = f"{pc:5.1%}" if pc is not None else "  n/a"
+        print(f"  {col:<18} {pr_text} -> {pc_text}")
 
     vol_ref = len(ref) / max(args.reference_days, 1)
     vol_rec = len(rec) / max(args.recent_days, 1)
@@ -193,14 +221,18 @@ def main():
     print(f"\nprediction volume: {vol_ref:.1f}/day -> {vol_rec:.1f}/day")
 
     worst = max((s['psi'] for s in report['scores'].values()), default=0.0)
+    eligible = drift_gate_eligible(users_ref, users_rec, args.min_users)
+    report['gate'] = {'eligible': eligible,
+                      'fail_on_drift': bool(args.fail_on_drift),
+                      'would_fail': bool(worst > 0.2 and eligible)}
     print(f"\nOVERALL: {label(worst)} (worst score PSI {worst:.3f})")
     if args.json:
         with open(args.json, 'w') as f:
-            json.dump(report, f, indent=2)
+            json.dump(report, f, indent=2, allow_nan=False)
         print(f"[OK] wrote {args.json}")
     if args.fail_on_drift and worst > 0.2:
         pop = min(users_ref, users_rec)
-        if pop < args.min_users:
+        if not eligible:
             print(f"\nnote: red-run gate NOT enforced — only {pop} distinct child(ren) in a "
                   f"window (< --min-users {args.min_users}). Population-stability metrics "
                   "need a population: single-user week-over-week PSI reflects one child's "

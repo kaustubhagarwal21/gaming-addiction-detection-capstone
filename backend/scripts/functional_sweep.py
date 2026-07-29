@@ -28,6 +28,8 @@ for _ext in ('', '-wal', '-shm'):
         pass
 os.environ['DATABASE_PATH'] = _TMP_DB
 os.environ['AUTH_ENFORCE'] = '1'
+os.environ.setdefault('AUTH_SECRET', 'functional-sweep-secret')
+os.environ.setdefault('PIN_PEPPER', 'functional-sweep-pepper')
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 import app as appmod  # noqa: E402
@@ -123,7 +125,15 @@ r = client.post('/api/verify_parent_pin', json={'user_id': child_a, 'pin': '0000
 check('verify parent PIN (wrong)', r.status_code == 200 and r.get_json()['valid'] is False)
 
 print("== Consent ==")
-r = client.post('/api/consent', json={'user_id': child_a}, headers=auth(tok_a))
+r = client.post(
+    '/api/consent',
+    json={
+        'user_id': child_a,
+        'version': appmod.CONSENT_VERSION,
+        'parent_pin': '9876',
+    },
+    headers=auth(tok_a),
+)
 check('record consent', r.status_code == 200)
 r = client.get(f'/api/consent?user_id={child_a}', headers=auth(tok_a))
 j = r.get_json()
@@ -166,8 +176,17 @@ r = client.post('/api/parent/nudge', json={'user_id': child_a, 'message': 'Dinne
                 headers=auth(tok_p))
 check('parent sends custom nudge', r.status_code == 200)
 r = client.get(f'/api/child/nudges?user_id={child_a}', headers=auth(tok_a))
-kinds = sorted(n['kind'] for n in r.get_json()['nudges'])
+pending_nudges = r.get_json()['nudges']
+kinds = sorted(n['kind'] for n in pending_nudges)
 check('child receives language+limit+parent nudges', kinds == ['language', 'limit', 'parent'], kinds)
+# GET is deliberately non-destructive: Android acknowledges only after the notification
+# was accepted, so a killed process/disabled notification channel cannot lose a nudge.
+r = client.post('/api/child/nudges/ack',
+                json={'user_id': child_a,
+                      'nudge_ids': [n['id'] for n in pending_nudges]},
+                headers=auth(tok_a))
+check('child acknowledges displayed nudges',
+      r.status_code == 200 and r.get_json().get('acknowledged') == len(pending_nudges))
 r = client.get(f'/api/child/nudges?user_id={child_a}', headers=auth(tok_a))
 check('nudges delivered exactly once', r.get_json()['nudges'] == [])
 

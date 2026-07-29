@@ -17,16 +17,11 @@ import shap
 HERE      = os.path.dirname(os.path.abspath(__file__))
 MODEL_DIR = os.path.join(HERE, '..', 'models')
 
-FEATURES = [
+DEFAULT_FEATURES = [
     'daily_play_time_hours', 'weekly_play_time_hours', 'sessions_per_day',
     'avg_session_duration_min', 'late_night_play_ratio', 'days_played_per_week',
     'longest_play_streak_days', 'binge_sessions_per_week',
     'avg_break_between_sessions_min', 'rapid_relogin_ratio',
-    'urge_to_continue_score', 'loss_of_time_awareness_score',
-    'control_loss_score', 'craving_score', 'tolerance_score',
-    'missed_sleep_days_per_week', 'fatigue_after_play_score',
-    'routine_disruption_score', 'neglect_responsibilities_score',
-    'gaming_priority_score',
 ]
 
 
@@ -43,13 +38,23 @@ def per_class(sv):
 
 model  = joblib.load(os.path.join(MODEL_DIR, 'behavior_model.pkl'))
 scaler = joblib.load(os.path.join(MODEL_DIR, 'feature_scaler.pkl'))
+feature_path = os.path.join(MODEL_DIR, 'feature_names.pkl')
+FEATURES = joblib.load(feature_path) if os.path.exists(feature_path) else DEFAULT_FEATURES
+FEATURES = list(FEATURES)
 print("Loaded:", type(model).__name__, "| classes:", getattr(model, 'classes_', None))
+
+expected = int(getattr(model, 'n_features_in_', len(FEATURES)))
+if len(FEATURES) != expected:
+    raise RuntimeError(
+        f"feature_names.pkl has {len(FEATURES)} entries but the model expects {expected}"
+    )
 
 # A high-risk-ish sample
 sample = {f: 0.0 for f in FEATURES}
 sample.update({'daily_play_time_hours': 6.0, 'weekly_play_time_hours': 40.0,
-               'late_night_play_ratio': 0.6, 'control_loss_score': 0.8,
-               'craving_score': 0.7, 'missed_sleep_days_per_week': 4.0})
+               'late_night_play_ratio': 0.6,
+               'binge_sessions_per_week': 3.0,
+               'rapid_relogin_ratio': 0.7})
 
 X = scaler.transform(pd.DataFrame([sample])[FEATURES])
 explainer = shap.TreeExplainer(model)

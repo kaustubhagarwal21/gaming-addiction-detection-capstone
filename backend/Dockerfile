@@ -38,11 +38,15 @@ ENV PATH=/home/app/.local/bin:$PATH \
     OPENBLAS_NUM_THREADS=1 \
     MKL_NUM_THREADS=1 \
     NUMEXPR_NUM_THREADS=1 \
-    MALLOC_ARENA_MAX=2
+    MALLOC_ARENA_MAX=2 \
+    # Standalone/local containers have no DATABASE_URL. Keep their SQLite file in
+    # a dedicated writable directory instead of /app itself (WORKDIR is root-owned).
+    DATABASE_PATH=/app/data/gaming_addiction.db
 
 WORKDIR /app
 COPY --chown=app:app . /app
-RUN mkdir -p /app/audio_uploads && chown -R app:app /app/audio_uploads
+RUN mkdir -p /app/audio_uploads /app/data \
+    && chown -R app:app /app/audio_uploads /app/data
 
 USER app
 
@@ -66,9 +70,12 @@ HEALTHCHECK --interval=30s --timeout=5s --start-period=40s --retries=3 CMD curl 
 #   memory-creep risk is gone, so recycle less often. Frequent recycling on a SINGLE
 #   worker briefly drops the listener while the new worker forks, and a platform health
 #   check hitting that gap reads a "connection reset" — the exact failure Render
-#   reported. --preload keeps each fork sub-second; 500 makes the gap vanishingly rare.
+#   reported. 500 makes the recycle gap rare.
+# Do not use --preload: the app creates its database pool during module import.
+# Preloading would create connections in the master and fork their sockets into
+# workers, which is unsafe for psycopg and SQLite-backed deployments.
 # OMP/OPENBLAS/MKL/NUMEXPR=1 + MALLOC_ARENA_MAX=2: stop numpy/sklearn's native BLAS from
 #   spawning per-core thread pools and glibc from creating many malloc arenas, both of
 #   which multiply resident memory in a small container for no throughput gain here.
 # sh -c so ${PORT} (set by the platform) is expanded at runtime.
-CMD ["sh", "-c", "OMP_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1 MKL_NUM_THREADS=1 NUMEXPR_NUM_THREADS=1 MALLOC_ARENA_MAX=2 gunicorn --bind 0.0.0.0:${PORT} --workers ${WEB_CONCURRENCY:-1} --threads 4 --timeout 120 --graceful-timeout 30 --keep-alive 5 --preload --max-requests 500 --max-requests-jitter 50 --access-logfile - --error-logfile - app:app"]
+CMD ["sh", "-c", "OMP_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1 MKL_NUM_THREADS=1 NUMEXPR_NUM_THREADS=1 MALLOC_ARENA_MAX=2 gunicorn --bind 0.0.0.0:${PORT} --workers ${WEB_CONCURRENCY:-1} --threads 4 --timeout 120 --graceful-timeout 30 --keep-alive 5 --max-requests 500 --max-requests-jitter 50 --access-logfile - --error-logfile - app:app"]

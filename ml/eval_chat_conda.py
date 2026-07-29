@@ -45,6 +45,15 @@ sys.path.insert(0, os.path.join(ROOT, 'backend'))
 from text_utils import clean_text, keyword_toxicity  # noqa: E402  (serving preprocessing)
 
 ALERT_T = float(os.environ.get('CHAT_ALERT_T', '0.90'))   # must match backend/app.py's default
+ALERT_HIGH_T = float(os.environ.get('CHAT_ALERT_HIGH_T', '0.95'))
+
+
+def sweep_thresholds(*extra):
+    """Every served marker exactly once, plus the fixed diagnostic grid."""
+    values = {0.3, 0.5, 0.6, 0.7, 0.85, 0.9, 0.97, ALERT_T, ALERT_HIGH_T, *extra}
+    if any(not np.isfinite(t) or not 0.0 <= t <= 1.0 for t in values):
+        raise ValueError('chat thresholds must be finite values in [0, 1]')
+    return sorted(values)
 
 
 def _load(name):
@@ -144,11 +153,8 @@ def main():
     scores = served_scores(df['text'].tolist(), clf, vec, cal)
     y = df['toxic'].values
 
-    # Sorted, de-duplicated: with ALERT_T at its default 0.9 the old literal tuple
-    # contained 0.9 twice and never 0.95 — yet 0.95 is the served HIGH-severity
-    # marker (CHAT_ALERT_HIGH_T), whose row the paper cites. Include both markers.
-    sweep = [metrics_at(scores, y, t)
-             for t in sorted({0.3, 0.5, 0.6, 0.7, 0.85, 0.9, ALERT_T, 0.95, 0.97})]
+    # Sorted and de-duplicated, including both env-overridable served markers.
+    sweep = [metrics_at(scores, y, t) for t in sweep_thresholds()]
     best = max(sweep, key=lambda m: m['f1_toxic'])
     out = {
         'dataset': 'built-in smoke sample' if args.smoke else os.path.basename(args.csv),
@@ -237,7 +243,7 @@ def main():
             'at_alert_threshold': {'before': metrics_at(before, y_eval, ALERT_T),
                                    'after':  metrics_at(after, y_eval, ALERT_T)},
             'after_sweep': [metrics_at(after, y_eval, t)
-                            for t in (0.5, 0.6, 0.7, 0.75, ALERT_T, 0.9)],
+                            for t in sweep_thresholds(0.75)],
         }
         print(json.dumps(comp, indent=2))
 

@@ -27,6 +27,22 @@ import numpy as np
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 
+def prevalence_threshold(scores, prevalence):
+    """Return (quantile threshold, empirically achieved top-band share).
+
+    Finite samples and ties mean a quantile cannot generally reproduce the requested
+    prevalence exactly; reporting the achieved share prevents false precision.
+    """
+    if not np.isfinite(prevalence) or not 0.0 < prevalence < 1.0:
+        raise ValueError('prevalence must be a finite value strictly between 0 and 1')
+    values = np.asarray(scores, dtype=float)
+    if values.size == 0 or not np.all(np.isfinite(values)):
+        raise ValueError('scores must be a non-empty finite sequence')
+    threshold = float(np.quantile(values, 1.0 - prevalence))
+    achieved = float(np.mean(values >= threshold))
+    return threshold, achieved
+
+
 def _connect():
     url = os.environ.get('DATABASE_URL', '').strip()
     if url.startswith(('postgres://', 'postgresql://')):
@@ -55,6 +71,10 @@ def main():
     ap.add_argument('--min-users', type=int, default=10,
                     help='refuse to recommend below this many distinct children')
     args = ap.parse_args()
+    if not np.isfinite(args.prevalence) or not 0.0 < args.prevalence < 1.0:
+        ap.error('--prevalence must be a finite value strictly between 0 and 1')
+    if args.min_users < 2:
+        ap.error('--min-users must be at least 2')
 
     conn, ph = _connect()
     cur = conn.cursor()
@@ -63,13 +83,14 @@ def main():
                            SUM(COALESCE(duration_seconds, 0)) AS dur,
                            AVG(final_risk_score) AS mean_s
                     FROM sessions
-                    WHERE start_time >= {ph} AND final_risk_score IS NOT NULL
+                    WHERE start_time >= {ph} AND end_time IS NOT NULL
+                      AND final_risk_score IS NOT NULL
                     GROUP BY user_id''', (args.since,))
     per_child = []
     for r in cur.fetchall():
         score = (float(r['ws']) / float(r['dur'])) if float(r['dur'] or 0) > 0 \
             else float(r['mean_s'])
-        per_child.append((r['user_id'], round(score, 4)))
+        per_child.append((r['user_id'], score))
     conn.close()
 
     n = len(per_child)
@@ -80,9 +101,20 @@ def main():
     scores = np.array([s for _, s in per_child], dtype=float)
     if n == 0:
         sys.exit("no data")
-    t2 = float(np.quantile(scores, 1.0 - args.prevalence))
+    t2, achieved = prevalence_threshold(scores, args.prevalence)
+    try:
+        current_t2 = float(os.environ.get('RISK_T2', '0.67'))
+    except ValueError:
+        sys.exit("RISK_T2 must be a finite number strictly between 0 and 1")
+    if not np.isfinite(current_t2) or not 0.0 < current_t2 < 1.0:
+        sys.exit("RISK_T2 must be a finite number strictly between 0 and 1")
     print(f"\nprevalence-anchored T2 = quantile(per-child scores, {1 - args.prevalence:.3f})"
-          f" = {t2:.3f}   (current RISK_T2 = 0.67)")
+          f" = {t2:.3f}   (current RISK_T2 = {current_t2:.3f})")
+    print(f"finite-sample top-band share at score >= T2: {achieved:.1%} "
+          f"(target {args.prevalence:.1%})")
+    if achieved > args.prevalence + (1.0 / n):
+        print("note: ties at the cutoff make the achieved share materially larger than "
+              "the anchor; collect a larger cohort before using this threshold.")
 
     if n < args.min_users:
         print(f"\nPOPULATION GATE: only {n} child(ren) < --min-users {args.min_users} — "
