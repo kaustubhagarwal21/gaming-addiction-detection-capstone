@@ -1,9 +1,11 @@
 package com.pes.gamingdetector.util
 
+import android.annotation.SuppressLint
 import android.content.SharedPreferences
 import com.pes.gamingdetector.api.ApiClient
 import org.json.JSONArray
 import org.json.JSONObject
+import java.util.concurrent.atomic.AtomicBoolean
 
 /**
  * Tiny disk-backed retry queue for chat lines whose upload failed (device offline,
@@ -34,11 +36,12 @@ object ChatUploadQueue {
     // ChatQueueLogic — pure and JVM-unit-tested; this object owns storage and I/O.
 
     private val lock = Any()
-    @Volatile private var flushing = false
+    private val flushing = AtomicBoolean(false)
 
     private fun readArr(prefs: SharedPreferences): JSONArray =
         try { JSONArray(prefs.getString(KEY, "[]")) } catch (_: Exception) { JSONArray() }
 
+    @SuppressLint("ApplySharedPref") // capture runs off-main; durability is intentional
     fun enqueue(context: android.content.Context, sessionId: Int, message: String, source: String) {
         if (sessionId == -1 || message.isBlank()) return
         val prefs = SecurePrefs.get(context, Constants.PREFS_NAME)
@@ -52,7 +55,7 @@ object ChatUploadQueue {
                     .put("src", source)
                     .put("ts", System.currentTimeMillis())
             )
-            prefs.edit().putString(KEY, arr.toString()).apply()
+            prefs.edit().putString(KEY, arr.toString()).commit()
         }
         // Durable retry: fires when connectivity returns even if the monitoring service
         // (whose poll loop is the low-latency flush path) has since been killed.
@@ -69,8 +72,10 @@ object ChatUploadQueue {
      *  flush is already running, and it stops at the first network/5xx/transient failure
      *  (still offline) leaving the rest queued in order. */
     suspend fun flush(context: android.content.Context) {
-        if (flushing) return
-        flushing = true
+        // WorkManager and PassiveMonitorService can call flush at the same instant. A
+        // volatile check followed by a volatile write is not atomic; both callers could
+        // upload the same snapshot. CAS gives exactly one caller ownership of the pass.
+        if (!flushing.compareAndSet(false, true)) return
         try {
             val prefs = SecurePrefs.get(context, Constants.PREFS_NAME)
             // Load the bearer token into ApiClient BEFORE any upload. In the WorkManager
@@ -79,7 +84,11 @@ object ChatUploadQueue {
             // treated as a permanent 4xx, they were dropped. This is exactly the
             // process-death case this durable queue exists to cover, so it must send the
             // token itself rather than assume some Activity/Service already did.
-            ApiClient.authToken = prefs.getString(Constants.KEY_AUTH_TOKEN, null)
+            ApiClient.restorePersistedToken(
+                prefs.getString(Constants.KEY_AUTH_TOKEN, null),
+                prefs.getString(Constants.KEY_AUTH_SERVER_URL, null)
+                    ?: prefs.getString(Constants.KEY_SERVER_URL, Constants.BASE_URL)
+            )
             // Read-only snapshot — the queue stays on disk; entries are removed one by one
             // only after the server confirms them (below), so a kill mid-flush loses nothing.
             val snapshot = synchronized(lock) {
@@ -114,15 +123,16 @@ object ChatUploadQueue {
                 }
             }
         } finally {
-            flushing = false
+            flushing.set(false)
         }
     }
 
     /** Remove exactly one queued entry from disk (matched by its id, falling back to full
      *  content for legacy entries written before ids existed). Re-reads under the lock so
      *  lines enqueued during the flush are preserved. */
+    @SuppressLint("ApplySharedPref")
     private fun removeEntry(prefs: SharedPreferences, target: JSONObject) = synchronized(lock) {
         val kept = ChatQueueLogic.removeFirstMatch(readArr(prefs), target)
-        prefs.edit().putString(KEY, kept.toString()).apply()
+        prefs.edit().putString(KEY, kept.toString()).commit()
     }
 }

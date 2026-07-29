@@ -13,7 +13,7 @@ import kotlinx.coroutines.launch
  * "just one more game". The circle grows on the inhale and shrinks on the exhale;
  * the child follows along. Purely on-device, no data collected.
  */
-class BreatheActivity : AppCompatActivity() {
+class BreatheActivity : AuthenticatedActivity() {
     private lateinit var binding: ActivityBreatheBinding
 
     private val inhaleMs = 4000L
@@ -22,6 +22,7 @@ class BreatheActivity : AppCompatActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        if (!ensureAuthenticatedOnCreate()) return
         binding = ActivityBreatheBinding.inflate(layoutInflater)
         setContentView(binding.root)
 

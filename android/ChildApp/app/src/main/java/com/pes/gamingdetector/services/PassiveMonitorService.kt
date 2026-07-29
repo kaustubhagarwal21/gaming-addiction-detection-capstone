@@ -1,6 +1,7 @@
 package com.pes.gamingdetector.services
 
 import android.app.KeyguardManager
+import android.app.NotificationManager
 import android.app.PendingIntent
 import android.app.Service
 import android.content.BroadcastReceiver
@@ -9,6 +10,7 @@ import android.content.Intent
 import android.content.IntentFilter
 import android.net.Uri
 import android.os.IBinder
+import android.os.PowerManager
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
 import androidx.core.content.ContextCompat
@@ -17,13 +19,16 @@ import com.pes.gamingdetector.activities.HomeActivity
 import com.pes.gamingdetector.api.ApiClient
 import com.pes.gamingdetector.api.StartSessionRequest
 import com.pes.gamingdetector.util.ChatUploadQueue
+import com.pes.gamingdetector.util.CaptureHealthLogic
 import com.pes.gamingdetector.util.Constants
 import com.pes.gamingdetector.util.ForegroundResolver
 import com.pes.gamingdetector.util.ForegroundTracker
 import com.pes.gamingdetector.util.GameDetector
 import com.pes.gamingdetector.util.OfflineSessionBuffer
+import com.pes.gamingdetector.util.OfflineSessionLogic
 import com.pes.gamingdetector.util.PrefsManager
 import com.pes.gamingdetector.util.RiskPresentation
+import com.pes.gamingdetector.util.SessionEndLogic
 import kotlinx.coroutines.*
 
 /**
@@ -48,9 +53,16 @@ class PassiveMonitorService : Service() {
 
     // Auto-session state
     private var trackedPackage: String = ""
-    private var gameLeftAt: Long = 0L
+    // Keep both clocks: epoch is persisted/sent to the server as the real stop instant;
+    // elapsedRealtime is used only for the in-process grace duration so a wall-clock
+    // correction cannot end a session early or hold it open indefinitely.
+    private var gameLeftAtEpochMs: Long = 0L
+    private var gameLeftAtElapsedMs: Long = 0L
     @Volatile private var startingSession = false  // guards the async startSession round-trip
     @Volatile private var endingSession = false    // guards the async endSession round-trip
+    @Volatile private var pendingStartPackage = ""
+    @Volatile private var pendingStartLastSeenMs = 0L
+    private var lastEndAttemptElapsedMs = 0L
     // Screen physically off (SCREEN_OFF → true, SCREEN_ON → false). Lock state itself
     // is read live from KeyguardManager (see locked()), not tracked here.
     @Volatile private var screenOff = false
@@ -61,6 +73,7 @@ class PassiveMonitorService : Service() {
     private val IDLE_POLL_MS = 30_000L  // device locked + no session → nothing to detect, save battery
     private val NUDGE_POLL_MS = 12_000L // how often to check for parent->child nudges (low-latency)
     private val HEARTBEAT_MS  = 180_000L // liveness ping every 3 min (tamper/uninstall watchdog + live "monitoring active" dot)
+    private val OFFLINE_CHECKPOINT_MS = 30_000L
 
     private var screenReceiver: BroadcastReceiver? = null
     // onStartCommand can fire repeatedly on a LIVE service (START_STICKY redelivery, or
@@ -100,9 +113,20 @@ class PassiveMonitorService : Service() {
 
         prefs = PrefsManager(this)
         startForeground(NOTIF_ID, buildNotification())   // must happen on EVERY start (5s rule)
+        // START_STICKY may recreate the service without passing through Home/Boot. Fail
+        // closed here so an expired login or stale/declined consent can never resume
+        // screen/session collection merely because Android restarted the process.
+        if (!prefs.canMonitor()) {
+            stopSelf()
+            return START_NOT_STICKY
+        }
         // One-time setup, guarded so a repeat start doesn't leak a receiver or duplicate loops.
         if (!loopsStarted) {
             loopsStarted = true
+            // A sticky restart can happen while the display is already off, after the
+            // SCREEN_OFF broadcast was missed. Initialise from live state before the
+            // UsageStats loop sees the last-resumed game and starts a phantom session.
+            screenOff = !(getSystemService(PowerManager::class.java)?.isInteractive ?: true)
             registerScreenReceiver()
             scope.launch { usageStatsLoop() }
             scope.launch { nudgeLoop() }
@@ -122,6 +146,10 @@ class PassiveMonitorService : Service() {
     /** Child swiped the app away from recents — best-effort relaunch so monitoring survives.
      *  If even this fails, the server's heartbeat watchdog still alerts the parent. */
     override fun onTaskRemoved(rootIntent: Intent?) {
+        if (!::prefs.isInitialized || !prefs.canMonitor()) {
+            super.onTaskRemoved(rootIntent)
+            return
+        }
         try {
             val restart = Intent(applicationContext, PassiveMonitorService::class.java)
             // getForegroundService, not getService: on minSdk 26+ starting a plain
@@ -146,10 +174,15 @@ class PassiveMonitorService : Service() {
     // sent, so the first change always reports.
     @Volatile private var lastStatusKey: String = ""
 
-    /** Current device-admin + capture-permission flags as a 4-char key (e.g. "1101"). */
+    /** Current device-admin + capture-permission flags. Voice uses u while unknown. */
     private fun statusKey(): String =
         "${if (isDeviceAdminActive()) 1 else 0}${if (hasUsageAccess()) 1 else 0}" +
-        "${if (isAccessibilityOn()) 1 else 0}${if (isKeyboardActive()) 1 else 0}"
+        "${if (isAccessibilityOn()) 1 else 0}${if (isKeyboardActive()) 1 else 0}" +
+        when (prefs.voiceCaptureActive) {
+            true -> "1"
+            false -> "0"
+            null -> "u"
+        }
 
     /** Build + send one heartbeat (liveness + tz + status flags). Records the sent flags
      *  only on success, so a failed (offline) send is retried on the next change/tick. */
@@ -158,14 +191,18 @@ class PassiveMonitorService : Service() {
         val key = statusKey()
         try {
             val tzMin = java.util.TimeZone.getDefault().getOffset(System.currentTimeMillis()) / 60000
-            ApiClient.getInstance(prefs.serverUrl).heartbeat(mapOf(
+            val body = mutableMapOf<String, Any>(
                 "user_id" to prefs.userId,
                 "tz_offset_min" to tzMin,
                 "device_admin" to key[0].digitToInt(),
                 "perm_usage" to key[1].digitToInt(),
                 "perm_accessibility" to key[2].digitToInt(),
-                "perm_keyboard" to key[3].digitToInt()))
-            lastStatusKey = key
+                "perm_keyboard" to key[3].digitToInt())
+            prefs.voiceCaptureActive?.let { body["voice_capture"] = if (it) 1 else 0 }
+            val resp = ApiClient.getInstance(prefs.serverUrl).heartbeat(body)
+            // Retrofit returns normally on 4xx/5xx. Only remember a status as delivered
+            // after a real success, otherwise the next fast tick must retry it.
+            if (resp.isSuccessful && resp.body()?.success == true) lastStatusKey = key
         } catch (_: Exception) { /* offline — server infers silence; retried next tick */ }
     }
 
@@ -192,7 +229,19 @@ class PassiveMonitorService : Service() {
                 if (uid != -1) {
                     val resp = ApiClient.getInstance(prefs.serverUrl).getNudges(uid)
                     if (resp.isSuccessful && resp.body()?.success == true) {
-                        resp.body()?.nudges?.forEach { showNudge(it.message, it.kind) }
+                        val shownIds = resp.body()?.nudges.orEmpty()
+                            .filter { showNudge(it.id, it.message, it.kind) }
+                            .map { it.id }
+                        // GET is now non-destructive. Acknowledge only notifications the
+                        // OS accepted; denied notification permission/process death leaves
+                        // them pending for a later retry instead of losing them forever.
+                        if (shownIds.isNotEmpty()) {
+                            ApiClient.getInstance(prefs.serverUrl).ackNudges(
+                                mapOf("user_id" to prefs.userId, "nudge_ids" to shownIds)
+                            )
+                            // A failed ack is harmless: stable notification ids replace
+                            // the existing cards on the next poll rather than duplicating.
+                        }
                     }
                 }
             } catch (_: Exception) { /* network blip — try again next tick */ }
@@ -248,16 +297,21 @@ class PassiveMonitorService : Service() {
 
     private fun checkCaptureRegression() {
         val bits = "${if (isAccessibilityOn()) 1 else 0}${if (isKeyboardActive()) 1 else 0}"
+        // Recover the previous observation from encrypted preferences after a reboot or
+        // process restart. A RAM-only baseline misses exactly the OS-reset case this
+        // self-heal exists for: the new process first observes OFF and never sees 1 -> 0.
         val prev = lastCaptureBits
+            ?: prefs.lastCaptureBits.takeIf { it.length == 2 }
         lastCaptureBits = bits
-        if (prev == null) return                       // first observation: no baseline
-        when {
-            prev[1] == '1' && bits[1] == '0' -> notifyReenable(
+        if (prefs.lastCaptureBits != bits) prefs.lastCaptureBits = bits
+        when (CaptureHealthLogic.loss(prev, bits)) {
+            CaptureHealthLogic.Loss.KEYBOARD -> notifyReenable(
                 "Wellbeing Keyboard turned off",
                 "In-game chat capture is paused. Tap to switch it back on.")
-            prev[0] == '1' && bits[0] == '0' -> notifyReenable(
+            CaptureHealthLogic.Loss.ACCESSIBILITY -> notifyReenable(
                 "Chat monitoring turned off",
                 "Accessibility was disabled. Tap to re-enable gaming-wellbeing monitoring.")
+            null -> Unit
         }
     }
 
@@ -281,8 +335,16 @@ class PassiveMonitorService : Service() {
         } catch (_: SecurityException) { /* notifications not permitted — skip */ }
     }
 
-    private fun showNudge(message: String, kind: String?) {
-        try {
+    private fun showNudge(id: Int, message: String, kind: String?): Boolean {
+        return try {
+            if (!NotificationManagerCompat.from(this).areNotificationsEnabled()) return false
+            // notify() succeeds even when this one channel is disabled. Do not ACK and
+            // destroy the server nudge unless the child can actually see the card.
+            val channel = getSystemService(NotificationManager::class.java)
+                ?.getNotificationChannel(Constants.CHANNEL_ALERTS)
+            if (channel == null || channel.importance == NotificationManager.IMPORTANCE_NONE) {
+                return false
+            }
             val title = when (kind) {
                 "language" -> "A friendly reminder"
                 "limit"    -> "Daily limit updated"
@@ -297,9 +359,16 @@ class PassiveMonitorService : Service() {
                 .setPriority(NotificationCompat.PRIORITY_HIGH)
                 .setAutoCancel(true)
                 .build()
-            NotificationManagerCompat.from(this)
-                .notify(System.currentTimeMillis().toInt() and 0xFFFF, notif)
-        } catch (_: SecurityException) { /* notifications not permitted — skip */ }
+            // Stable, namespaced id: several nudges returned in one poll used the same
+            // millisecond-derived id and overwrote one another before the child saw them.
+            val notificationId = 0x4E000000 or (id and 0x00FFFFFF)
+            NotificationManagerCompat.from(this).notify(notificationId, notif)
+            true
+        } catch (_: SecurityException) {
+            false
+        } catch (_: Exception) {
+            false
+        }
     }
 
     // ── Notification ──────────────────────────────────────────────
@@ -403,6 +472,39 @@ class PassiveMonitorService : Service() {
         val sessionActive = prefs.hasActiveSession()
         val foregroundPkg = ForegroundResolver.current(this)
 
+        // A previous end attempt may have failed or the process may have died while it was
+        // in flight. Retry the SAME durable stop instant instead of re-starting the grace
+        // clock and counting the offline/server-outage gap as play time.
+        if (sessionActive && prefs.pendingEndSessionId == prefs.activeSessionId &&
+            prefs.pendingEndStoppedAt > 0L) {
+            val nowElapsed = android.os.SystemClock.elapsedRealtime()
+            if (!endingSession &&
+                (lastEndAttemptElapsedMs == 0L ||
+                    nowElapsed - lastEndAttemptElapsedMs >= GRACE_MS)) {
+                launchAutoEnd(prefs.pendingEndStoppedAt)
+            }
+            return
+        } else if (prefs.pendingEndSessionId != -1) {
+            // Marker from a session that is no longer active; never apply it to a new id.
+            prefs.clearPendingEnd()
+        }
+
+        // While the start request is in flight, remember the last tick on which its game
+        // was definitely foreground. If the request times out after the child already
+        // left, this bounds the locally completed interval instead of counting the whole
+        // 30-90 second network timeout as play.
+        if (!sessionActive && startingSession && !locked() &&
+            foregroundPkg == pendingStartPackage) {
+            pendingStartLastSeenMs = System.currentTimeMillis()
+        }
+
+        // A game can begin AND end while the phone has no network. Finalize that local
+        // bout as soon as it leaves foreground; waiting for a later successful start of
+        // the same title used to back-fill the intervening hours/days as fake play time.
+        if (!sessionActive && !startingSession) {
+            reconcileOfflineMarker(foregroundPkg)
+        }
+
         // Re-adopt an orphaned session: if the service restarted mid-session (e.g.
         // after a reinstall) the in-memory trackedPackage is lost while prefs still
         // holds the active session. Recover the package from the saved game name so
@@ -436,12 +538,13 @@ class PassiveMonitorService : Service() {
                 foregroundPkg != trackedPackage &&
                 GameDetector.isGame(this, foregroundPkg)
             if (stillPlaying) {
-                gameLeftAt = 0L  // reset grace — game still running
+                gameLeftAtEpochMs = 0L  // reset grace — game still running
+                gameLeftAtElapsedMs = 0L
             } else if (switchedToAnotherGame) {
                 // Clean hand-off: end this game's session now so the next tick starts a
                 // fresh session for the new game. Each game's time is attributed to it
                 // instead of the first game silently absorbing the second's playtime.
-                launchAutoEnd()
+                launchAutoEnd(System.currentTimeMillis())
             } else {
                 // Away from the game. If we're in an ancillary flow the game delegated to
                 // (sign-in / purchase / rewarded-ad Custom Tab), use the longer NEUTRAL
@@ -449,15 +552,16 @@ class PassiveMonitorService : Service() {
                 // any real other app uses the short grace; sitting there past it ends the
                 // session. The grace is chosen from the CURRENT foreground each tick, so
                 // moving from an ad to the home screen correctly falls back to the short one.
-                if (gameLeftAt == 0L) {
-                    gameLeftAt = System.currentTimeMillis()
+                if (gameLeftAtElapsedMs == 0L) {
+                    gameLeftAtEpochMs = System.currentTimeMillis()
+                    gameLeftAtElapsedMs = android.os.SystemClock.elapsedRealtime()
                 }
                 val grace = if (isAncillary(foregroundPkg)) NEUTRAL_GRACE_MS else GRACE_MS
-                val awayMs = System.currentTimeMillis() - gameLeftAt
+                val awayMs = android.os.SystemClock.elapsedRealtime() - gameLeftAtElapsedMs
                 if (awayMs > grace) {
                     // Attribute time only up to when play actually stopped — exclude the
                     // grace/ancillary tail the user was no longer in the game.
-                    launchAutoEnd(endedSecondsAgo = awayMs / 1000)
+                    launchAutoEnd(gameLeftAtEpochMs)
                 }
             }
         } else {
@@ -477,29 +581,164 @@ class PassiveMonitorService : Service() {
                 startingSession = true
                 val pkg = foregroundPkg
                 val gameName = GameDetector.displayName(this, pkg)
+                val detectedAt = System.currentTimeMillis()
+                pendingStartPackage = pkg
+                pendingStartLastSeenMs = detectedAt
                 scope.launch {
-                    try { performAutoStart(gameName, pkg) }
-                    finally { startingSession = false }
+                    try { performAutoStart(gameName, pkg, detectedAt) }
+                    finally {
+                        pendingStartPackage = ""
+                        pendingStartLastSeenMs = 0L
+                        startingSession = false
+                    }
                 }
             }
         }
     }
 
-    private suspend fun performAutoStart(gameName: String, pkg: String) {
+    /** Complete a persisted offline marker when its game is no longer foreground. */
+    private fun reconcileOfflineMarker(foregroundPkg: String?) {
+        val start = prefs.offlineSessionStartMs
+        if (start <= 0L) return
+        val storedPkg = prefs.offlineSessionPackage
+        val stillPlaying = !locked() && foregroundPkg != null &&
+            (storedPkg == foregroundPkg ||
+                (storedPkg.isBlank() && runCatching {
+                    GameDetector.displayName(this, foregroundPkg) == prefs.offlineSessionGame
+                }.getOrDefault(false)))
+        val now = System.currentTimeMillis()
+        if (stillPlaying) {
+            if (now - prefs.offlineSessionLastSeenMs >= OFFLINE_CHECKPOINT_MS) {
+                prefs.touchOfflineSession(now)
+            }
+            return
+        }
+        finishOfflineMarker(now)
+    }
+
+    private fun finishOfflineMarker(nowMs: Long): Boolean {
+        val start = prefs.offlineSessionStartMs
+        if (start <= 0L) return true
+        val end = OfflineSessionLogic.boundedEnd(
+            start,
+            prefs.offlineSessionLastSeenMs,
+            nowMs,
+            POLL_MS
+        )
+        val saved = OfflineSessionBuffer.record(
+            this,
+            prefs.offlineSessionGame,
+            start,
+            end,
+            prefs.offlineSessionKey
+        )
+        // Never clear the only durable copy if the queue commit failed.
+        if (saved) prefs.clearOfflineSession()
+        return saved
+    }
+
+    /** Persist or finish an offline bout after a retryable start failure. */
+    private fun handleTransientStartFailure(gameName: String, pkg: String, detectedAt: Long) {
+        val now = System.currentTimeMillis()
+        val currentPkg = ForegroundResolver.current(this)
+        val stillPlaying = !locked() && currentPkg == pkg
+
+        // Normally reconcileOfflineMarker handled a previous game's marker before this
+        // request launched. Keep the fallback safe across a process restore/race.
+        if (prefs.offlineSessionStartMs > 0L &&
+            prefs.offlineSessionPackage.isNotBlank() &&
+            prefs.offlineSessionPackage != pkg) {
+            if (!finishOfflineMarker(now)) return
+        }
+
+        val existing = prefs.offlineSessionStartMs > 0L &&
+            (prefs.offlineSessionPackage == pkg ||
+                (prefs.offlineSessionPackage.isBlank() && prefs.offlineSessionGame == gameName))
+        val start = if (existing) prefs.offlineSessionStartMs else detectedAt
+        val key = if (existing) prefs.offlineSessionKey else java.util.UUID.randomUUID().toString()
+        val lastSeen = maxOf(start, prefs.offlineSessionLastSeenMs, pendingStartLastSeenMs)
+
+        if (stillPlaying) {
+            if (!existing) {
+                prefs.markOfflineSession(gameName, pkg, start, key, lastSeen)
+            } else if (lastSeen > prefs.offlineSessionLastSeenMs) {
+                prefs.touchOfflineSession(lastSeen)
+            }
+        } else {
+            val end = OfflineSessionLogic.boundedEnd(start, lastSeen, now, POLL_MS)
+            val saved = OfflineSessionBuffer.record(this, gameName, start, end, key)
+            if (saved && existing) {
+                prefs.clearOfflineSession()
+            } else if (!saved && !existing) {
+                // Keep a retryable marker when the first queue commit itself failed.
+                prefs.markOfflineSession(gameName, pkg, start, key, lastSeen)
+            }
+        }
+    }
+
+    private suspend fun performAutoStart(gameName: String, pkg: String, detectedAt: Long) {
         if (prefs.hasActiveSession()) return  // already tracking
+        val api = ApiClient.getInstance(prefs.serverUrl)
+        val resp = try {
+            api.startSession(StartSessionRequest(prefs.userId, gameName))
+        } catch (_: java.io.IOException) {
+            handleTransientStartFailure(gameName, pkg, detectedAt)
+            return
+        } catch (_: Exception) {
+            // A serialization/programming error is not evidence that the phone was
+            // offline. Marking it as such can duplicate a session the server created
+            // successfully but whose unexpected response failed to decode.
+            return
+        }
+        if (!resp.isSuccessful || resp.body()?.success != true) {
+            if (OfflineSessionLogic.isTransientStartFailure(resp.code())) {
+                handleTransientStartFailure(gameName, pkg, detectedAt)
+            }
+            return
+        }
+
+        // From here on the server session definitely exists. Keep failures in local
+        // service startup/prefs work out of the network-failure path; the old broad catch
+        // created a second offline marker for an already-created server session.
         try {
-            val api  = ApiClient.getInstance(prefs.serverUrl)
-            val resp = api.startSession(StartSessionRequest(prefs.userId, gameName))
-            if (resp.isSuccessful && resp.body()?.success == true) {
-                val sessionId = resp.body()!!.sessionId
-                prefs.activeSessionId      = sessionId
-                prefs.activeSessionGame    = gameName
-                prefs.activeSessionPackage = pkg   // for orphan recovery of any game
-                prefs.activeSessionStart   = System.currentTimeMillis()
+                val body = resp.body()!!
+                val sessionId = body.sessionId
+                if (sessionId <= 0) return
+                val saved = prefs.saveActiveSession(
+                    sessionId,
+                    gameName,
+                    pkg,
+                    System.currentTimeMillis()
+                )
+                if (!saved) {
+                    // The server session exists, but it cannot be recovered after process
+                    // death without durable local state. Close it immediately rather than
+                    // launching an un-endable/orphaned monitor.
+                    val closed = try {
+                        val end = api.endSession(sessionId)
+                        end.isSuccessful && end.body()?.success == true
+                    } catch (_: Exception) {
+                        false
+                    }
+                    if (closed) {
+                        prefs.clearSession()
+                    } else {
+                        // commit() updates the in-process preference map even when its disk
+                        // write reports false. Keep monitoring/retrying in this process and
+                        // make one more durable write attempt for the original instant.
+                        prefs.markPendingEnd(sessionId, System.currentTimeMillis())
+                        trackedPackage = pkg
+                        gameLeftAtEpochMs = 0L
+                        gameLeftAtElapsedMs = 0L
+                        ensureGameMonitorService()
+                    }
+                    return
+                }
                 // Tie trackedPackage to an actually-created session so a failed start
                 // doesn't leave a phantom tracked package behind.
                 trackedPackage = pkg
-                gameLeftAt = 0L
+                gameLeftAtEpochMs = 0L
+                gameLeftAtElapsedMs = 0L
 
                 // Offline-head backfill: if this SAME game had begun while offline (a
                 // start we couldn't register then), the span from that offline start until
@@ -508,61 +747,74 @@ class PassiveMonitorService : Service() {
                 // A different game means the offline attempt was abandoned; either way we
                 // clear the marker so it can't leak into a later unrelated session.
                 val offStart = prefs.offlineSessionStartMs
-                if (offStart > 0L && prefs.offlineSessionGame == gameName) {
-                    OfflineSessionBuffer.record(this, gameName, offStart,
-                        System.currentTimeMillis(), prefs.offlineSessionKey)
+                val sameOfflineBout = offStart > 0L &&
+                    (prefs.offlineSessionPackage == pkg ||
+                        (prefs.offlineSessionPackage.isBlank() && prefs.offlineSessionGame == gameName))
+                if (sameOfflineBout) {
+                    if (body.reused) {
+                        // The first start reached the server and only its response was
+                        // lost. Its open session already covers this interval.
+                        prefs.clearOfflineSession()
+                    } else if (OfflineSessionBuffer.record(this, gameName, offStart,
+                            detectedAt, prefs.offlineSessionKey)) {
+                        prefs.clearOfflineSession()
+                    }
+                } else if (offStart > 0L) {
+                    finishOfflineMarker(detectedAt)
                 }
-                prefs.clearOfflineSession()
 
                 // Launch GameMonitorService (behavioral data + voice analysis)
-                ContextCompat.startForegroundService(
-                    this,
-                    Intent(this, GameMonitorService::class.java).apply {
-                        putExtra("session_id", sessionId)
-                        putExtra("game_name", gameName)
-                        putExtra("user_id", prefs.userId)
-                        putExtra("server_url", prefs.serverUrl)
-                    }
-                )
-            }
-        } catch (_: Exception) {
-            // Network failure (offline / Render cold-start): remember when THIS game
-            // began so the online start above can back-fill the offline head. Set once
-            // per offline bout — don't push the start forward on every retry tick.
-            if (prefs.offlineSessionStartMs == 0L || prefs.offlineSessionGame != gameName) {
-                prefs.offlineSessionStartMs = System.currentTimeMillis()
-                prefs.offlineSessionGame = gameName
-                prefs.offlineSessionKey = java.util.UUID.randomUUID().toString()
-            }
-        }
+                ensureGameMonitorService()
+        } catch (_: Exception) { /* server session exists; maintenance/end recovery handles it */ }
     }
 
     // Clears tracked state synchronously and runs the async end behind a guard so
     // repeated 5s ticks can't fire a second endSession before this one completes.
-    private fun launchAutoEnd(endedSecondsAgo: Long = 0L) {
+    private fun launchAutoEnd(stoppedAtMs: Long = System.currentTimeMillis()) {
         if (endingSession) return
+        val sessionId = prefs.activeSessionId
+        if (sessionId <= 0) return
+        val existingStop = if (prefs.pendingEndSessionId == sessionId)
+            prefs.pendingEndStoppedAt else 0L
+        val durableStop = existingStop.takeIf { it > 0L }
+            ?: stoppedAtMs.coerceAtMost(System.currentTimeMillis())
+        if (existingStop <= 0L && !prefs.markPendingEnd(sessionId, durableStop)) {
+            // Keep the tracked/grace state intact and retry persistence on the next tick.
+            return
+        }
         endingSession = true
+        lastEndAttemptElapsedMs = android.os.SystemClock.elapsedRealtime()
         trackedPackage = ""
-        gameLeftAt = 0L
+        gameLeftAtEpochMs = 0L
+        gameLeftAtElapsedMs = 0L
+        val gameName = prefs.activeSessionGame
         scope.launch {
-            try { performAutoEnd(endedSecondsAgo) } finally { endingSession = false }
+            try { performAutoEnd(sessionId, gameName, durableStop) }
+            finally { endingSession = false }
         }
     }
 
-    private suspend fun performAutoEnd(endedSecondsAgo: Long) {
-        val sessionId = prefs.activeSessionId
-        val gameName  = prefs.activeSessionGame
-        if (sessionId == -1) return
-        stopService(Intent(this, GameMonitorService::class.java))
+    private suspend fun performAutoEnd(
+        sessionId: Int,
+        gameName: String,
+        stoppedAtMs: Long
+    ) {
+        if (sessionId <= 0 || prefs.activeSessionId != sessionId) return
         try {
-            val resp = ApiClient.getInstance(prefs.serverUrl).endSession(sessionId, endedSecondsAgo)
+            val endedSecondsAgo = SessionEndLogic.endedSecondsAgo(
+                stoppedAtMs,
+                System.currentTimeMillis()
+            )
+            val resp = ApiClient.getInstance(prefs.serverUrl)
+                .endSession(sessionId, endedSecondsAgo)
             when {
-                resp.isSuccessful -> {
+                resp.isSuccessful && resp.body()?.success == true -> {
                     // Only clear the local session once the server has actually recorded the
                     // end. Clearing on failure (the old behaviour) orphaned the server
                     // session — it stayed "playing" until the 6h stale fallback and then
                     // recorded a zero-duration session.
                     prefs.clearSession()
+                    stopService(Intent(this, GameMonitorService::class.java))
                     val pred = resp.body()?.prediction
                     val category = pred?.riskLabel ?: "unknown"
                     val score    = pred?.riskScore
@@ -579,17 +831,40 @@ class PassiveMonitorService : Service() {
                     )
                     showSessionEndNotification(gameName, "$emoji $riskLine")
                 }
-                resp.code() in 400..499 && resp.code() != 408 && resp.code() != 429 ->
+                resp.code() in 400..499 && resp.code() != 408 && resp.code() != 429 -> {
                     // Permanent reject (e.g. 404 — the session no longer exists server-side).
                     // Nothing to retry; clear locally so detection can resume.
                     prefs.clearSession()
+                    stopService(Intent(this, GameMonitorService::class.java))
+                }
                 // else: 5xx / 408 / 429 — the end did NOT persist. Keep the local session so
                 // a later tick retries (re-adoption restarts the grace), instead of leaving
                 // the server session open. No clearSession() here.
+                else -> ensureGameMonitorService()
             }
         } catch (_: Exception) {
             // Network failure — the request never landed. Keep the session and retry on a
             // later tick rather than clearing locally while the server still shows it open.
+            ensureGameMonitorService()
+        }
+    }
+
+    /** Keep behavioral/voice monitoring attached whenever a transient end failure leaves
+     * the local session alive. Safe to call if the service is already running. */
+    private fun ensureGameMonitorService() {
+        if (!prefs.canMonitor() || !prefs.hasActiveSession()) return
+        try {
+            ContextCompat.startForegroundService(
+                this,
+                Intent(this, GameMonitorService::class.java).apply {
+                    putExtra("session_id", prefs.activeSessionId)
+                    putExtra("game_name", prefs.activeSessionGame)
+                    putExtra("user_id", prefs.userId)
+                    putExtra("server_url", prefs.serverUrl)
+                }
+            )
+        } catch (e: Exception) {
+            android.util.Log.w("PassiveMonitor", "Could not attach session monitor: ${e.message}")
         }
     }
 

@@ -17,6 +17,7 @@ package com.pes.gamingdetector.util
  */
 class KeystrokeBuffer(
     private val flushIdleMs: Long = 2_500L,
+    private val nowElapsedMs: () -> Long = { System.nanoTime() / 1_000_000L },
     private val onFlush: (String) -> Unit
 ) {
     private val sb = StringBuilder()
@@ -26,7 +27,7 @@ class KeystrokeBuffer(
     fun handleKey(rawLabel: String?) {
         val label = rawLabel?.trim().orEmpty()
         if (label.isEmpty()) return
-        lastActivityMs = System.currentTimeMillis()
+        lastActivityMs = nowElapsedMs()
 
         when {
             isEnter(label)     -> flush()
@@ -60,7 +61,7 @@ class KeystrokeBuffer(
     /** Call periodically. Returns true if it actually flushed. */
     fun flushIfIdle(): Boolean {
         if (sb.isEmpty()) return false
-        if (System.currentTimeMillis() - lastActivityMs < flushIdleMs) return false
+        if (nowElapsedMs() - lastActivityMs < flushIdleMs) return false
         flush()
         return true
     }

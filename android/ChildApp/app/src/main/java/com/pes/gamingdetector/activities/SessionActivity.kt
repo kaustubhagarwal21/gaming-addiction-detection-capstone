@@ -2,16 +2,20 @@ package com.pes.gamingdetector.activities
 
 import android.content.Intent
 import android.os.Bundle
+import android.os.SystemClock
 import android.view.View
 import android.widget.Toast
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
+import androidx.core.content.ContextCompat
 import androidx.lifecycle.lifecycleScope
 import com.pes.gamingdetector.api.ApiClient
 import com.pes.gamingdetector.databinding.ActivitySessionBinding
 import com.pes.gamingdetector.services.GameMonitorService
 import com.pes.gamingdetector.util.PrefsManager
 import com.pes.gamingdetector.util.RiskPresentation
+import com.pes.gamingdetector.util.SessionDurationClock
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
@@ -24,15 +28,18 @@ import kotlinx.coroutines.launch
  * reached while a session is already active (the resume banner or the monitoring
  * notification). If it's opened without one, it just returns to Home.
  */
-class SessionActivity : AppCompatActivity() {
+class SessionActivity : AuthenticatedActivity() {
     private lateinit var binding: ActivitySessionBinding
     private lateinit var prefs: PrefsManager
     private var timerJob: Job? = null
     private var livePredictJob: Job? = null
     private var gameName: String = ""
+    private var displayedSessionId: Int = -1
+    private var durationClock: SessionDurationClock? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        if (!ensureAuthenticatedOnCreate()) return
         binding = ActivitySessionBinding.inflate(layoutInflater)
         setContentView(binding.root)
         prefs = PrefsManager(this)
@@ -48,6 +55,12 @@ class SessionActivity : AppCompatActivity() {
             finish()
             return
         }
+        displayedSessionId = prefs.activeSessionId
+        durationClock = SessionDurationClock(
+            sessionStartedAtEpochMs = prefs.activeSessionStart,
+            createdAtEpochMs = System.currentTimeMillis(),
+            createdAtElapsedMs = SystemClock.elapsedRealtime(),
+        )
         showActiveSession()
 
         binding.btnEndSession.setOnClickListener { confirmEndSession() }
@@ -80,7 +93,6 @@ class SessionActivity : AppCompatActivity() {
         binding.progressBar.visibility = View.VISIBLE
 
         val sessionId = prefs.activeSessionId
-        stopService(Intent(this, GameMonitorService::class.java))
 
         lifecycleScope.launch {
             try {
@@ -89,11 +101,20 @@ class SessionActivity : AppCompatActivity() {
                 if (resp.isSuccessful && resp.body()?.success == true) {
                     val pred = resp.body()!!.prediction
                     prefs.clearSession()
+                    stopService(Intent(this@SessionActivity, GameMonitorService::class.java))
                     if (pred != null) showResult(pred)
                     else {
                         Toast.makeText(this@SessionActivity, "Session ended", Toast.LENGTH_SHORT).show()
                         finish()
                     }
+                } else if (resp.code() in 400..499 && resp.code() != 408 && resp.code() != 429) {
+                    // The server definitively rejected this id (usually an already-pruned
+                    // session). Retrying forever cannot recover it; clear local state.
+                    prefs.clearSession()
+                    stopService(Intent(this@SessionActivity, GameMonitorService::class.java))
+                    Toast.makeText(this@SessionActivity,
+                        "Session is no longer active on the server.", Toast.LENGTH_LONG).show()
+                    finish()
                 } else {
                     // Server error — without this branch the button stayed disabled
                     // forever with no message. Restore the live view so the child can
@@ -103,11 +124,15 @@ class SessionActivity : AppCompatActivity() {
                         Toast.LENGTH_LONG).show()
                     restoreActiveView()
                 }
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
                 Toast.makeText(this@SessionActivity, "Error ending session: ${e.message}", Toast.LENGTH_LONG).show()
                 restoreActiveView()
             } finally {
-                binding.progressBar.visibility = View.GONE
+                if (isActive && !isFinishing && !isDestroyed) {
+                    binding.progressBar.visibility = View.GONE
+                }
             }
         }
     }
@@ -116,8 +141,29 @@ class SessionActivity : AppCompatActivity() {
     private fun restoreActiveView() {
         binding.btnEndSession.isEnabled = true
         if (prefs.hasActiveSession()) {
+            // Ending used to stop GameMonitor before the network call. A timeout/5xx then
+            // left the session active but silently disabled voice/break monitoring.
+            restartMonitorService()
             startTimer()
             startLivePredictions()
+        }
+    }
+
+    private fun restartMonitorService() {
+        if (!prefs.canMonitor() || !prefs.hasActiveSession()) return
+        try {
+            ContextCompat.startForegroundService(
+                this,
+                Intent(this, GameMonitorService::class.java).apply {
+                    putExtra("session_id", prefs.activeSessionId)
+                    putExtra("game_name", prefs.activeSessionGame)
+                    putExtra("user_id", prefs.userId)
+                    putExtra("server_url", prefs.serverUrl)
+                }
+            )
+        } catch (_: Exception) {
+            // The visible activity is normally eligible to start it; leave the session
+            // retryable even on an OEM-specific refusal.
         }
     }
 
@@ -128,9 +174,15 @@ class SessionActivity : AppCompatActivity() {
         binding.tvRiskLabel.text = RiskPresentation.displayLabel(pred.riskLabel)
         binding.tvRiskScore.text =
             "This session \u00B7 ${RiskPresentation.riskScoreText(pred.riskScore)}"
-        binding.tvBehaviorScore.text = "Behavior: ${"%.0f".format(pred.behaviorScore * 100)}%"
-        binding.tvChatScore.text = "Chat: ${"%.0f".format(pred.chatScore * 100)}%"
-        binding.tvVoiceScore.text = "Voice: ${"%.0f".format(pred.voiceScore * 100)}%"
+        fun signalText(label: String, present: Boolean?, score: Double): String =
+            if (present == false) "$label: not captured"
+            else "$label: ${"%.0f".format(score * 100)}%"
+        binding.tvBehaviorScore.text = signalText(
+            "Behavior", pred.modalities?.behavior, pred.behaviorScore)
+        binding.tvChatScore.text = signalText(
+            "Chat", pred.modalities?.chat, pred.chatScore)
+        binding.tvVoiceScore.text = signalText(
+            "Voice", pred.modalities?.voice, pred.voiceScore)
 
         binding.tvRiskLabel.setTextColor(android.graphics.Color.WHITE)
 
@@ -168,7 +220,7 @@ class SessionActivity : AppCompatActivity() {
      *  timer would otherwise show elapsed-since-epoch garbage and the live poller
      *  would query session id -1. */
     private fun sessionEndedElsewhere(): Boolean {
-        if (prefs.hasActiveSession()) return false
+        if (prefs.hasActiveSession() && prefs.activeSessionId == displayedSessionId) return false
         timerJob?.cancel()
         livePredictJob?.cancel()
         Toast.makeText(this, "Session ended", Toast.LENGTH_SHORT).show()
@@ -180,7 +232,7 @@ class SessionActivity : AppCompatActivity() {
         timerJob = lifecycleScope.launch {
             while (isActive) {
                 if (sessionEndedElsewhere()) return@launch
-                val elapsed = System.currentTimeMillis() - prefs.activeSessionStart
+                val elapsed = durationClock?.elapsedMs(SystemClock.elapsedRealtime()) ?: 0L
                 val h = elapsed / 3_600_000
                 val m = (elapsed % 3_600_000) / 60_000
                 val s = (elapsed % 60_000) / 1_000
@@ -207,6 +259,8 @@ class SessionActivity : AppCompatActivity() {
                             body.riskScore
                         )
                     }
+                } catch (e: CancellationException) {
+                    throw e
                 } catch (_: Exception) {}
 
                 // Delay AFTER the fetch so the first prediction shows immediately

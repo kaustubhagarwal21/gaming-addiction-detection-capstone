@@ -25,6 +25,20 @@ object OfflineSessionLogic {
     /** Drop a buffered session whose START is older than [MAX_AGE_MS]. */
     fun isStale(startMs: Long, now: Long): Boolean = now - startMs > MAX_AGE_MS
 
+    /** A start failed before the server could allocate a usable session id. Auth and
+     *  validation errors need user/action fixes; only timeout, throttling and 5xx are
+     *  reasonable evidence of a temporarily unreachable backend. */
+    fun isTransientStartFailure(code: Int): Boolean =
+        code == 408 || code == 429 || code in 500..599
+
+    /** Close a marker at the last time the game was definitely observed, allowing one
+     *  poll interval for the transition. This prevents a marker restored hours after a
+     *  process death from counting the entire stopped/offline gap as play time. */
+    fun boundedEnd(startMs: Long, lastSeenMs: Long, nowMs: Long, pollMs: Long): Long {
+        val observed = maxOf(startMs, lastSeenMs)
+        return minOf(nowMs, observed + maxOf(0L, pollMs))
+    }
+
     /** Append [entry], evicting oldest-first past [MAX_ENTRIES]. Mutates and returns [arr]. */
     fun boundedAppend(arr: JSONArray, entry: JSONObject): JSONArray {
         arr.put(entry)

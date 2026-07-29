@@ -14,8 +14,11 @@ object Constants {
     const val KEY_ACTIVE_SESSION_GAME = "active_session_game"
     const val KEY_ACTIVE_SESSION_PKG = "active_session_pkg"
     const val KEY_ACTIVE_SESSION_START = "active_session_start"
+    const val KEY_PENDING_END_SESSION_ID = "pending_end_session_id"
+    const val KEY_PENDING_END_STOPPED_AT = "pending_end_stopped_at"
     const val KEY_CHILD_CODE = "child_code"
     const val KEY_AUTH_TOKEN = "auth_token"
+    const val KEY_AUTH_SERVER_URL = "auth_server_url"
 
     // Notification channels
     const val CHANNEL_MONITORING = "monitoring_channel"

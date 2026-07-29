@@ -3,38 +3,60 @@ package com.pes.parentmonitor.activities
 import android.os.Bundle
 import android.view.View
 import android.widget.Toast
-import androidx.appcompat.app.AppCompatActivity
 import androidx.lifecycle.lifecycleScope
 import com.pes.parentmonitor.api.ApiClient
 import com.pes.parentmonitor.databinding.ActivityChatAnalysisBinding
+import com.pes.parentmonitor.util.AuthNavigation
 import com.pes.parentmonitor.util.PrefsManager
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 
-class ChatAnalysisActivity : AppCompatActivity() {
+class ChatAnalysisActivity : AuthenticatedActivity() {
     private lateinit var binding: ActivityChatAnalysisBinding
     private lateinit var prefs: PrefsManager
+    private var loadJob: Job? = null
+    private var loadGeneration = 0
+    private var displayedChildId = -1
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         binding = ActivityChatAnalysisBinding.inflate(layoutInflater)
         setContentView(binding.root)
         prefs = PrefsManager(this)
+        if (!AuthNavigation.ensureAuthenticated(this, prefs)) return
 
         setSupportActionBar(binding.toolbar)
         supportActionBar?.setDisplayHomeAsUpEnabled(true)
         supportActionBar?.title = "Chat Analysis"
 
         binding.swipeRefresh.setOnRefreshListener { loadChatAnalysis() }
+    }
+
+    override fun onAuthenticatedResume() {
         loadChatAnalysis()
     }
 
     private fun loadChatAnalysis() {
+        loadJob?.cancel()
+        val generation = ++loadGeneration
+        val childId = prefs.childUserId
+        val serverUrl = prefs.serverUrl
+        prepareForChild(childId)
         binding.progressBar.visibility = View.VISIBLE
-        lifecycleScope.launch {
+        if (childId <= 0) {
+            showUnavailable()
+            binding.progressBar.visibility = View.GONE
+            binding.swipeRefresh.isRefreshing = false
+            Toast.makeText(this, "No child selected", Toast.LENGTH_SHORT).show()
+            return
+        }
+        loadJob = lifecycleScope.launch {
             try {
-                val api = ApiClient.getInstance(prefs.serverUrl)
+                val api = ApiClient.getInstance(serverUrl)
                 // Dedicated chat analytics from real captured messages + toxicity scores.
-                val resp = api.getChatAnalysis(prefs.childUserId)
+                val resp = api.getChatAnalysis(childId)
+                if (generation != loadGeneration || childId != prefs.childUserId) return@launch
                 if (resp.isSuccessful && resp.body()?.success == true) {
                     val data = resp.body()!!
                     val total = data.stats?.totalMessages ?: 0
@@ -44,12 +66,14 @@ class ChatAnalysisActivity : AppCompatActivity() {
 
                     if (total == 0) {
                         binding.tvChatRisk.text = "No chat captured yet"
-                        binding.tvChatRisk.setTextColor(getColor(com.pes.parentmonitor.R.color.risk_low))
+                        binding.tvChatRisk.setTextColor(getColor(com.pes.parentmonitor.R.color.text_secondary))
                         binding.tvCommunicationPattern.text =
                             "Typed in-game messages and voice-to-text are analysed here for toxicity. " +
                             "Note: not every game has in-game text chat — voice-only or single-player " +
                             "games may produce no chat data, and that's expected."
-                        binding.tvKeywordGuidance.text = buildKeywordGuidance("casual")
+                        binding.tvKeywordGuidance.text =
+                            "Guidance is unavailable until typed chat or voice-to-text is captured. " +
+                            "No chat data is not evidence that communication was safe or concerning."
                         return@launch
                     }
 
@@ -95,14 +119,44 @@ class ChatAnalysisActivity : AppCompatActivity() {
 
                     // Guidance keyed on the real toxicity level
                     binding.tvKeywordGuidance.text = buildKeywordGuidance(sev)
+                } else {
+                    showUnavailable()
+                    Toast.makeText(
+                        this@ChatAnalysisActivity,
+                        "Chat analysis is unavailable (${resp.code()})",
+                        Toast.LENGTH_SHORT
+                    ).show()
                 }
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
+                if (generation != loadGeneration || childId != prefs.childUserId) return@launch
+                showUnavailable()
                 Toast.makeText(this@ChatAnalysisActivity, "Load failed: ${e.message}", Toast.LENGTH_SHORT).show()
             } finally {
-                binding.progressBar.visibility = View.GONE
-                binding.swipeRefresh.isRefreshing = false
+                if (generation == loadGeneration) {
+                    binding.progressBar.visibility = View.GONE
+                    binding.swipeRefresh.isRefreshing = false
+                    loadJob = null
+                }
             }
         }
+    }
+
+    private fun prepareForChild(childId: Int) {
+        if (displayedChildId == childId) return
+        displayedChildId = childId
+        supportActionBar?.subtitle = prefs.childName.takeIf { it.isNotBlank() }
+        showUnavailable()
+    }
+
+    private fun showUnavailable() {
+        binding.tvChatRisk.text = "Unknown"
+        binding.tvChatRisk.setTextColor(getColor(com.pes.parentmonitor.R.color.text_secondary))
+        binding.tvCommunicationPattern.text =
+            "Chat analysis is unavailable until data for the selected child loads."
+        binding.tvKeywordGuidance.text =
+            "No guidance is inferred while chat data is unavailable."
     }
 
     /** A line transcribed from the child's speech (Vosk STT) vs typed in-game text. */
@@ -124,6 +178,18 @@ class ChatAnalysisActivity : AppCompatActivity() {
             2. Ask about what's happening in the game
             3. Discuss how these feelings connect to real life
             4. Consider professional support if pattern persists
+        """.trimIndent()
+
+        "at_risk" -> """
+            🔍 Borderline Language to Watch:
+
+            Some captured messages show elevated toxicity. Look for repeated insults,
+            rage, bullying, or language that continues across several sessions.
+
+            Helpful next steps:
+            1. Ask calmly what happened in the game
+            2. Discuss respectful communication and taking breaks
+            3. Watch for repetition rather than judging one isolated message
         """.trimIndent()
 
         else -> """

@@ -108,7 +108,7 @@
                         android:orientation="vertical">
                         <View android:id="@+id/riskBar"
                             android:layout_width="match_parent" android:layout_height="6dp"
-                            android:background="@color/risk_low" />
+                            android:background="@color/text_secondary" />
                         <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content"
                             android:orientation="horizontal" android:padding="16dp" android:gravity="center_vertical">
                             <LinearLayout android:layout_width="0dp" android:layout_height="wrap_content"
@@ -122,7 +122,8 @@
                             </LinearLayout>
                             <TextView android:id="@+id/tvRiskLevel"
                                 android:layout_width="wrap_content" android:layout_height="wrap_content"
-                                android:text="Low concern" android:textStyle="bold" android:textSize="18sp" />
+                                android:text="Unknown" android:textStyle="bold" android:textSize="18sp"
+                                android:textColor="@color/text_secondary" />
                         </LinearLayout>
                     </LinearLayout>
                 </androidx.cardview.widget.CardView>

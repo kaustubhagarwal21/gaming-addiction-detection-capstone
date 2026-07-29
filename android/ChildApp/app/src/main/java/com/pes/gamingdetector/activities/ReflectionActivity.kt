@@ -12,9 +12,10 @@ import com.pes.gamingdetector.R
 import com.pes.gamingdetector.api.ApiClient
 import com.pes.gamingdetector.databinding.ActivityReflectionBinding
 import com.pes.gamingdetector.util.PrefsManager
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
 
-class ReflectionActivity : AppCompatActivity() {
+class ReflectionActivity : AuthenticatedActivity() {
 
     private lateinit var binding: ActivityReflectionBinding
     private lateinit var prefs: PrefsManager
@@ -22,6 +23,7 @@ class ReflectionActivity : AppCompatActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        if (!ensureAuthenticatedOnCreate()) return
         binding = ActivityReflectionBinding.inflate(layoutInflater)
         setContentView(binding.root)
         prefs = PrefsManager(this)
@@ -83,6 +85,8 @@ class ReflectionActivity : AppCompatActivity() {
                     Toast.makeText(this@ReflectionActivity, "Couldn't save — try again", Toast.LENGTH_SHORT).show()
                     binding.btnSubmit.isEnabled = true
                 }
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
                 Toast.makeText(this@ReflectionActivity, "Network error", Toast.LENGTH_SHORT).show()
                 binding.btnSubmit.isEnabled = true

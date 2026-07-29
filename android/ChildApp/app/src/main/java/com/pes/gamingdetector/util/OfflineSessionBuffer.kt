@@ -29,17 +29,24 @@ object OfflineSessionBuffer {
         try { JSONArray(prefs.getString(KEY, "[]")) } catch (_: Exception) { JSONArray() }
 
     /** Buffer one completed offline session for backfill. Invalid intervals are ignored. */
-    fun record(context: Context, game: String, startMs: Long, endMs: Long, key: String) {
-        if (game.isBlank() || key.isBlank()) return
-        if (!OfflineSessionLogic.isValidInterval(startMs, endMs)) return
+    fun record(context: Context, game: String, startMs: Long, endMs: Long, key: String): Boolean {
+        if (game.isBlank() || key.isBlank()) return false
+        if (!OfflineSessionLogic.isValidInterval(startMs, endMs)) return false
         val prefs = SecurePrefs.get(context, Constants.PREFS_NAME)
-        synchronized(lock) {
+        val saved = synchronized(lock) {
             val arr = OfflineSessionLogic.boundedAppend(
                 readArr(prefs),
                 JSONObject().put("key", key).put("game", game)
                     .put("start", startMs).put("end", endMs))
-            prefs.edit().putString(KEY, arr.toString()).apply()
+            // Called from the monitor/worker IO coroutine. Commit before scheduling the
+            // worker so an immediate process death cannot lose the supposedly durable row.
+            prefs.edit().putString(KEY, arr.toString()).commit()
         }
+        if (!saved) return false
+        // The service loop is the low-latency path; WorkManager is the durable path
+        // when the process dies before connectivity returns.
+        ChatFlushWorker.schedule(context)
+        return true
     }
 
     fun pendingCount(context: Context): Int {
@@ -50,13 +57,19 @@ object OfflineSessionBuffer {
     /** Deliver everything pending. No-op when empty or already flushing; stops at the
      *  first transient failure (still offline / server struggling), leaving the rest. */
     suspend fun flush(context: Context) {
-        if (flushing) return
-        flushing = true
+        synchronized(lock) {
+            if (flushing) return
+            flushing = true
+        }
         try {
             val prefs = SecurePrefs.get(context, Constants.PREFS_NAME)
             // Load the token first — in a WorkManager-woken process no PrefsManager ran,
             // so ApiClient.authToken would be null and every post 401 (now transient).
-            ApiClient.authToken = prefs.getString(Constants.KEY_AUTH_TOKEN, null)
+            ApiClient.restorePersistedToken(
+                prefs.getString(Constants.KEY_AUTH_TOKEN, null),
+                prefs.getString(Constants.KEY_AUTH_SERVER_URL, null)
+                    ?: prefs.getString(Constants.KEY_SERVER_URL, Constants.BASE_URL)
+            )
             val userId = prefs.getInt(Constants.KEY_USER_ID, -1)
             if (userId == -1) return
             val snapshot = synchronized(lock) {
@@ -77,8 +90,10 @@ object OfflineSessionBuffer {
                     val resp = api.backfillSession(mapOf(
                         "user_id" to userId,
                         "game_name" to o.getString("game"),
-                        "start_time" to isoUtc(o.getLong("start")),
-                        "end_time" to isoUtc(o.getLong("end")),
+                        // Epoch millis preserve the instant across device/server
+                        // timezones. Naive phone-local ISO strings shifted non-IST users.
+                        "start_time_ms" to o.getLong("start"),
+                        "end_time_ms" to o.getLong("end"),
                         "client_key" to o.getString("key")))
                     if (ChatQueueLogic.isTransientFailure(resp.code())) break   // keep, retry later
                     removeEntry(prefs, o.getString("key"))                      // 2xx / permanent 4xx → done
@@ -87,20 +102,12 @@ object OfflineSessionBuffer {
                 }
             }
         } finally {
-            flushing = false
+            synchronized(lock) { flushing = false }
         }
-    }
-
-    /** Epoch millis → server-parseable local ISO ('yyyy-MM-ddTHH:mm:ss'). The backend
-     *  reads times in its own (IST) clock; a naive local timestamp matches how live
-     *  sessions are stored, so a back-filled session sits correctly among them. */
-    private fun isoUtc(ms: Long): String {
-        val fmt = java.text.SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss", java.util.Locale.US)
-        return fmt.format(java.util.Date(ms))
     }
 
     private fun removeEntry(prefs: SharedPreferences, key: String) = synchronized(lock) {
         val kept = OfflineSessionLogic.removeByKey(readArr(prefs), key)
-        prefs.edit().putString(KEY, kept.toString()).apply()
+        prefs.edit().putString(KEY, kept.toString()).commit()
     }
 }

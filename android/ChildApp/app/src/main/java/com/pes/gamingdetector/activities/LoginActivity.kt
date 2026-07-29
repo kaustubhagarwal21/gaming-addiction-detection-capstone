@@ -6,10 +6,13 @@ import android.view.View
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
 import androidx.lifecycle.lifecycleScope
+import com.pes.gamingdetector.BuildConfig
 import com.pes.gamingdetector.api.ApiClient
 import com.pes.gamingdetector.api.LoginRequest
 import com.pes.gamingdetector.databinding.ActivityLoginBinding
 import com.pes.gamingdetector.util.PrefsManager
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 
 class LoginActivity : AppCompatActivity() {
@@ -26,8 +29,13 @@ class LoginActivity : AppCompatActivity() {
         binding.tvCreateAccount.setOnClickListener {
             startActivity(Intent(this, RegisterActivity::class.java))
         }
+        // Backend switching is a developer/setup tool, not a way around the parent-PIN
+        // gate on family/game settings. Production uses the fixed HTTPS backend.
+        binding.tvSettings.visibility = if (BuildConfig.DEBUG) View.VISIBLE else View.GONE
         binding.tvSettings.setOnClickListener {
-            startActivity(Intent(this, SettingsActivity::class.java))
+            startActivity(Intent(this, SettingsActivity::class.java).apply {
+                putExtra(SettingsActivity.EXTRA_SERVER_SETUP_ONLY, true)
+            })
         }
     }
 
@@ -56,11 +64,15 @@ class LoginActivity : AppCompatActivity() {
                 } else {
                     Toast.makeText(this@LoginActivity, "Invalid PIN", Toast.LENGTH_SHORT).show()
                 }
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
                 Toast.makeText(this@LoginActivity, "Cannot reach server: ${e.message}", Toast.LENGTH_LONG).show()
             } finally {
-                binding.btnLogin.isEnabled = true
-                binding.progressBar.visibility = View.GONE
+                if (isActive && !isFinishing && !isDestroyed) {
+                    binding.btnLogin.isEnabled = true
+                    binding.progressBar.visibility = View.GONE
+                }
             }
         }
     }

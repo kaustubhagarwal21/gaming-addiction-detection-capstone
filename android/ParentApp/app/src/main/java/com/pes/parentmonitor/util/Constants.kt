@@ -9,20 +9,31 @@ object Constants {
     const val PREFS_NAME = "parent_app_prefs"
     const val KEY_PARENT_ID = "parent_id"
     const val KEY_PARENT_NAME = "parent_name"
+    const val KEY_FAMILY_CODE = "family_code"
     const val KEY_SERVER_URL = "server_url"
     const val KEY_CHILD_USER_ID = "child_user_id"
     const val KEY_LAST_RISK_LEVEL = "last_risk_level"
     const val KEY_FCM_TOKEN = "fcm_token"
     const val KEY_LAST_ALERT_ID = "last_notified_alert_id"
     const val KEY_AUTH_TOKEN = "auth_token"
+    const val KEY_AUTH_ORIGIN = "auth_origin"
 
     // Notification channels
     const val CHANNEL_ALERTS = "alerts_channel"
+    const val CHANNEL_ALERTS_GENERAL = "alerts_general_v1"
+    const val CHANNEL_ACTIVITY = "activity_updates_v1"
     const val CHANNEL_POLLING = "polling_channel"
 
     // Notification IDs
     const val NOTIF_ALERT = 2001
     const val NOTIF_POLLING = 2002
+
+    // Notification routing. A family can have multiple children, so every alert tap
+    // must carry the child it belongs to instead of opening whichever child happened
+    // to be selected last.
+    const val EXTRA_CHILD_USER_ID = "notification_child_user_id"
+    const val EXTRA_CHILD_NAME = "notification_child_name"
+    const val EXTRA_ALERT_TYPE = "notification_alert_type"
 
     // Background alert-polling interval (ms). FCM push is the instant path for high-risk
     // alerts; this poll is the catch-all that also delivers the other alert types

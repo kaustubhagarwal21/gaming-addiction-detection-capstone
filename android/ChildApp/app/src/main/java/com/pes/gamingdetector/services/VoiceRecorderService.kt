@@ -10,12 +10,14 @@ import android.media.AudioRecord
 import android.media.MediaRecorder
 import android.os.Build
 import android.os.IBinder
+import android.os.SystemClock
 import android.util.Log
 import androidx.core.app.NotificationCompat
 import androidx.core.content.ContextCompat
 import com.pes.gamingdetector.R
 import com.pes.gamingdetector.api.ApiClient
 import com.pes.gamingdetector.util.Constants
+import com.pes.gamingdetector.util.PrefsManager
 import kotlinx.coroutines.*
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.MultipartBody
@@ -31,19 +33,45 @@ class VoiceRecorderService : Service() {
     private var sessionId: Int = -1
     private var serverUrl: String = Constants.BASE_URL
     private val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
+    private lateinit var prefs: PrefsManager
+    private var recordingJob: Job? = null
+    private var uploadJob: Job? = null
     // Guards against a duplicate onStartCommand opening a SECOND AudioRecord on the same
     // mic (two recorders contend and one fails / yields garbage).
     @Volatile private var recording = false
+    @Volatile private var gracefulStopRequested = false
 
     // Vosk requires 16kHz; librosa tone analysis works fine at 16kHz too
     private val sampleRate = 16000
     private val channelConfig = AudioFormat.CHANNEL_IN_MONO
     private val audioFormat = AudioFormat.ENCODING_PCM_16BIT
-    private val bufferSize = AudioRecord.getMinBufferSize(sampleRate, channelConfig, audioFormat) * 2
+    private val bufferSize: Int by lazy {
+        val minimum = AudioRecord.getMinBufferSize(sampleRate, channelConfig, audioFormat)
+        // The API returns negative error codes on unsupported/broken devices. Never
+        // pass one to ShortArray/AudioRecord; one second of mono PCM is a safe fallback.
+        if (minimum > 0) maxOf(minimum * 2, sampleRate) else sampleRate * 2
+    }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        sessionId = intent?.getIntExtra("session_id", -1) ?: -1
-        serverUrl = intent?.getStringExtra("server_url") ?: Constants.BASE_URL
+        prefs = PrefsManager(this)
+        if (intent?.action == ACTION_STOP) {
+            requestGracefulStop(startId)
+            return START_NOT_STICKY
+        }
+        val requestedSession = intent?.getIntExtra("session_id", -1) ?: -1
+        val requestedUrl = intent?.getStringExtra("server_url") ?: prefs.serverUrl
+        if (!prefs.canMonitor() || requestedSession <= 0 ||
+            requestedSession != prefs.activeSessionId) {
+            prefs.voiceCaptureActive = false
+            stopSelf(startId)
+            return START_NOT_STICKY
+        }
+        // Never mutate identifiers underneath an existing recorder. Otherwise an old
+        // PCM/STT job can be silently attributed to a newly started session.
+        if (recording) return START_NOT_STICKY
+        sessionId = requestedSession
+        serverUrl = requestedUrl
+        prefs.voiceCaptureActive = false
 
         // Can't capture audio without the runtime mic permission — bail cleanly.
         if (ContextCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO)
@@ -79,18 +107,27 @@ class VoiceRecorderService : Service() {
             return START_NOT_STICKY
         }
 
-        // Already capturing — a repeat start (GameMonitorService re-invoking us) must not
-        // open a second recorder on the mic. The flag is cleared when the loop exits for
-        // ANY reason (mic busy, model failure), so a later session can try again.
-        if (recording) return START_NOT_STICKY
         recording = true
-        scope.launch {
-            try { recordLoop() } finally { recording = false }
+        gracefulStopRequested = false
+        val captureSession = sessionId
+        val captureUrl = serverUrl
+        recordingJob = scope.launch {
+            try {
+                recordLoop(captureSession, captureUrl)
+            } catch (e: Exception) {
+                Log.w("VoiceRecorder", "Voice capture stopped unexpectedly: ${e.message}")
+            } finally {
+                recording = false
+                prefs.voiceCaptureActive = false
+                // Do not leave a foreground "Voice Analysis Active" notification after
+                // the recorder failed or exited.
+                stopSelf()
+            }
         }
         return START_NOT_STICKY
     }
 
-    private suspend fun recordLoop() {
+    private suspend fun recordLoop(captureSession: Int, captureUrl: String) {
         val model = withContext(Dispatchers.IO) { loadVoskModel() }
         val recognizer = model?.let {
             try { Recognizer(it, sampleRate.toFloat()) } catch (_: Exception) { null }
@@ -111,6 +148,7 @@ class VoiceRecorderService : Service() {
         try {
             if (recorder.state != AudioRecord.STATE_INITIALIZED) throw IllegalStateException("AudioRecord not initialized")
             recorder.startRecording()
+            prefs.voiceCaptureActive = true
         } catch (e: Exception) {
             Log.w("VoiceRecorder", "Could not start recording (mic busy?): ${e.message}")
             recognizer?.close()
@@ -123,10 +161,11 @@ class VoiceRecorderService : Service() {
         // Raw byte stream, not MutableList<Byte> — a 10s segment is ~320 KB, and boxing
         // every byte cost ~16x that in allocations/GC churn on the audio hot path.
         val pcmAccumulator = java.io.ByteArrayOutputStream()
-        var segmentStart = System.currentTimeMillis()
+        var segmentStartElapsed = SystemClock.elapsedRealtime()
+        var finalPcm = ByteArray(0)
 
         try {
-            while (currentCoroutineContext().isActive) {
+            while (currentCoroutineContext().isActive && !gracefulStopRequested) {
                 val read = recorder.read(chunkBuffer, 0, chunkBuffer.size)
                 if (read < 0) {
                     // Persistent error (ERROR_INVALID_OPERATION etc. — mic revoked or
@@ -142,7 +181,7 @@ class VoiceRecorderService : Service() {
                     if (recognizer.acceptWaveForm(chunkBuffer, read)) {
                         val text = JSONObject(recognizer.result).optString("text").trim()
                         if (text.isNotBlank()) {
-                            submitChat(text)
+                            submitChat(captureSession, captureUrl, text)
                         }
                     }
                 }
@@ -154,12 +193,22 @@ class VoiceRecorderService : Service() {
                     pcmAccumulator.write((s shr 8) and 0xff)
                 }
 
-                if (System.currentTimeMillis() - segmentStart >= Constants.VOICE_SEGMENT_DURATION_MS) {
+                if (SystemClock.elapsedRealtime() - segmentStartElapsed >=
+                    Constants.VOICE_SEGMENT_DURATION_MS) {
                     val pcmCopy = pcmAccumulator.toByteArray()
                     pcmAccumulator.reset()
-                    segmentStart = System.currentTimeMillis()
+                    segmentStartElapsed = SystemClock.elapsedRealtime()
                     if (pcmCopy.isNotEmpty()) {
-                        scope.launch { uploadPcmAsWav(pcmCopy) }
+                        // Bound the network queue to one request. A 90-second cloud wake
+                        // must not accumulate nine WAV uploads/jobs in memory.
+                        if (uploadJob?.isActive != true) {
+                            uploadJob = scope.launch {
+                                uploadPcmAsWav(captureSession, captureUrl, pcmCopy)
+                            }
+                        } else {
+                            Log.w("VoiceRecorder",
+                                "Dropping voice segment while prior upload is in flight")
+                        }
                     }
                 }
             }
@@ -167,22 +216,50 @@ class VoiceRecorderService : Service() {
             // Flush any final partial utterance
             recognizer?.let {
                 val text = JSONObject(it.finalResult).optString("text").trim()
-                if (text.isNotBlank()) submitChat(text)
+                if (text.isNotBlank()) submitChat(captureSession, captureUrl, text)
             }
+            finalPcm = pcmAccumulator.toByteArray()
         } finally {
             recognizer?.close()
             model?.close()
             try { recorder.stop() } catch (_: Exception) {}
             recorder.release()
         }
+
+        // Session-end STOP is graceful: let the one bounded in-flight upload finish,
+        // then submit the last partial segment. A hard service/process kill still cancels
+        // promptly, and this drain itself is capped so shutdown cannot hang indefinitely.
+        withTimeoutOrNull(GRACEFUL_DRAIN_MS) {
+            uploadJob?.join()
+            if (finalPcm.isNotEmpty()) {
+                uploadPcmAsWav(captureSession, captureUrl, finalPcm)
+            }
+        }
     }
 
     companion object {
+        const val ACTION_STOP = "com.pes.gamingdetector.STOP_VOICE"
+        private const val GRACEFUL_DRAIN_MS = 8_000L
+
         // Bump when assets/vosk_model.zip changes. Without this marker an app UPDATE
         // kept serving the previously-extracted model forever (extraction only ran
         // when the dir was missing), silently ignoring a bundled model swap — e.g.
         // the en-us -> Indian-English (en-in) change for Hinglish-speaking users.
         private const val VOSK_MODEL_VERSION = "small-en-in-0.4"
+    }
+
+    private fun requestGracefulStop(startId: Int) {
+        gracefulStopRequested = true
+        if (recordingJob?.isActive != true) {
+            stopSelf(startId)
+            return
+        }
+        // AudioRecord.read is blocking but normally returns within a buffer interval.
+        // Force a hard stop shortly after the upload-drain budget if a device driver hangs.
+        scope.launch {
+            delay(GRACEFUL_DRAIN_MS + 2_000L)
+            if (recordingJob?.isActive == true) stopSelf(startId)
+        }
     }
 
     private fun loadVoskModel(): Model? {
@@ -229,34 +306,57 @@ class VoiceRecorderService : Service() {
         }
     }
 
-    private fun submitChat(text: String) {
-        if (sessionId == -1) return
+    private fun submitChat(captureSession: Int, captureUrl: String, text: String) {
+        if (captureSession <= 0) return
         scope.launch {
             try {
-                val api = ApiClient.getInstance(serverUrl)
-                val resp = api.uploadChat(sessionId, mapOf("message" to text, "source" to "voice_stt"))
+                val api = ApiClient.getInstance(captureUrl)
+                val resp = api.uploadChat(
+                    captureSession, mapOf("message" to text, "source" to "voice_stt"))
                 // Retrofit doesn't throw on HTTP errors; queue the transient codes flush()
                 // would retry so a 5xx/429 doesn't silently drop the transcript line.
                 if (com.pes.gamingdetector.util.ChatQueueLogic.isTransientFailure(resp.code()))
                     com.pes.gamingdetector.util.ChatUploadQueue
-                        .enqueue(this@VoiceRecorderService, sessionId, text, "voice_stt")
+                        .enqueue(this@VoiceRecorderService, captureSession, text, "voice_stt")
             } catch (_: Exception) {
                 // Network failure — queue the transcript line for retry.
                 com.pes.gamingdetector.util.ChatUploadQueue
-                    .enqueue(this@VoiceRecorderService, sessionId, text, "voice_stt")
+                    .enqueue(this@VoiceRecorderService, captureSession, text, "voice_stt")
             }
         }
     }
 
-    private suspend fun uploadPcmAsWav(pcmData: ByteArray) {
+    private suspend fun uploadPcmAsWav(
+        captureSession: Int,
+        captureUrl: String,
+        pcmData: ByteArray
+    ) {
         val wavFile = File(cacheDir, "voice_${System.currentTimeMillis()}.wav")
         try {
             writePcmToWav(pcmData, wavFile)
-            val api = ApiClient.getInstance(serverUrl)
+            val api = ApiClient.getInstance(captureUrl)
             val requestBody = wavFile.asRequestBody("audio/wav".toMediaType())
             val part = MultipartBody.Part.createFormData("audio", wavFile.name, requestBody)
-            api.uploadVoice(sessionId, part)
-        } catch (_: Exception) {
+            var delivered = false
+            repeat(2) { attempt ->
+                if (delivered) return@repeat
+                try {
+                    val response = api.uploadVoice(captureSession, part)
+                    val retryable = response.code() == 408 || response.code() == 429 ||
+                        response.code() >= 500
+                    delivered = response.isSuccessful && response.body()?.success == true
+                    if (!delivered && retryable && attempt == 0) delay(1_000)
+                } catch (_: java.io.IOException) {
+                    if (attempt == 0) delay(1_000)
+                }
+            }
+            // This represents the working end-to-end voice path, not just permission.
+            // A VAD-rejected but successfully handled clip is still a healthy pipeline.
+            prefs.voiceCaptureActive = delivered
+            if (!delivered) Log.w("VoiceRecorder", "Voice upload failed after retry")
+        } catch (e: Exception) {
+            prefs.voiceCaptureActive = false
+            Log.w("VoiceRecorder", "Voice upload failed: ${e.message}")
         } finally {
             wavFile.delete()
         }
@@ -268,6 +368,8 @@ class VoiceRecorderService : Service() {
     }
 
     override fun onDestroy() {
+        if (::prefs.isInitialized) prefs.voiceCaptureActive = false
+        gracefulStopRequested = true
         scope.cancel()
         super.onDestroy()
     }

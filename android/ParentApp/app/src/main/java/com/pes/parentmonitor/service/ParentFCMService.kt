@@ -1,23 +1,18 @@
 package com.pes.parentmonitor.service
 
-import android.Manifest
 import android.app.NotificationManager
 import android.app.PendingIntent
 import android.content.Intent
-import android.content.pm.PackageManager
-import android.os.Build
 import androidx.core.app.NotificationCompat
-import androidx.core.content.ContextCompat
 import com.google.firebase.messaging.FirebaseMessagingService
 import com.google.firebase.messaging.RemoteMessage
 import com.pes.parentmonitor.R
 import com.pes.parentmonitor.activities.AlertsActivity
-import com.pes.parentmonitor.api.ApiClient
 import com.pes.parentmonitor.util.Constants
+import com.pes.parentmonitor.util.NotificationIdentity
+import com.pes.parentmonitor.util.NotificationRouting
+import com.pes.parentmonitor.util.NotificationSupport
 import com.pes.parentmonitor.util.PrefsManager
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.launch
 
 class ParentFCMService : FirebaseMessagingService() {
 
@@ -26,50 +21,92 @@ class ParentFCMService : FirebaseMessagingService() {
         val prefs = PrefsManager(this)
         prefs.fcmToken = token
         if (prefs.isLoggedIn()) {
-            registerTokenWithBackend(token, prefs)
+            FcmTokenSyncWorker.enqueueRegistration(this, token)
         }
     }
 
-    // Called when a data/notification message arrives while app is in background or foreground.
+    // Backend pushes are data-only so this code controls routing in both foreground and
+    // background. A logged-out device may still receive a push while durable unregister
+    // is waiting for connectivity; never show it locally.
     override fun onMessageReceived(message: RemoteMessage) {
-        val title = message.notification?.title ?: "Parental Alert"
-        val body  = message.notification?.body  ?: "Check your child's gaming activity"
-        showNotification(title, body)
+        val prefs = PrefsManager(this)
+        if (!prefs.isLoggedIn()) return
+        if (!NotificationRouting.belongsToFamily(
+                message.data["family_code"],
+                prefs.familyCode
+            )
+        ) return
+
+        val childId = message.data["child_id"]?.toIntOrNull()
+        val childName = message.data["child_name"]?.takeIf { it.isNotBlank() }
+        val title = message.data["title"]?.takeIf { it.isNotBlank() }
+            ?: message.notification?.title ?: "Parental Alert"
+        val body = message.data["body"]?.takeIf { it.isNotBlank() }
+            ?: message.notification?.body ?: "Check your child's gaming activity"
+        showNotification(
+            title = title,
+            body = body,
+            childId = childId,
+            childName = childName,
+            alertType = message.data["type"],
+            severity = message.data["severity"],
+            alertId = message.data["alert_id"]?.toIntOrNull(),
+            notificationKey = message.messageId
+        )
     }
 
-    private fun showNotification(title: String, body: String) {
+    private fun showNotification(
+        title: String,
+        body: String,
+        childId: Int?,
+        childName: String?,
+        alertType: String?,
+        severity: String?,
+        alertId: Int?,
+        notificationKey: String?
+    ) {
+        val prefs = PrefsManager(this)
+        if (childId != null && childId > 0 && alertId != null && alertId > 0 &&
+            alertId <= prefs.lastNotifiedAlertId(childId)
+        ) return
+        val channelId = NotificationRouting.channelFor(alertType, severity)
+        if (!NotificationSupport.canPost(this, channelId)) return
         val intent = Intent(this, AlertsActivity::class.java).apply {
             flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
+            childId?.takeIf { it > 0 }?.let { putExtra(Constants.EXTRA_CHILD_USER_ID, it) }
+            childName?.let { putExtra(Constants.EXTRA_CHILD_NAME, it) }
+            alertType?.let { putExtra(Constants.EXTRA_ALERT_TYPE, it) }
         }
+        val durableAlertId = alertId?.takeIf { it > 0 }
+        val requestCode = durableAlertId?.let(NotificationIdentity::requestCodeForAlert)
+            ?: NotificationIdentity.fallbackRequestCode(
+                notificationKey ?: "${childId ?: "unknown"}:$body"
+            )
         val pi = PendingIntent.getActivity(
-            this, 0, intent, PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
+            this, requestCode, intent,
+            PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
         )
-        val notif = NotificationCompat.Builder(this, Constants.CHANNEL_ALERTS)
+        val notif = NotificationCompat.Builder(this, channelId)
             .setSmallIcon(R.drawable.ic_alert)
-            .setContentTitle(title)
+            .setContentTitle(childName?.let { "$title · $it" } ?: title)
             .setContentText(body)
             .setStyle(NotificationCompat.BigTextStyle().bigText(body))
-            .setPriority(NotificationCompat.PRIORITY_HIGH)
+            .setPriority(NotificationRouting.priorityFor(channelId))
             .setContentIntent(pi)
             .setAutoCancel(true)
             .build()
-        // Android 13+ requires POST_NOTIFICATIONS at runtime; guard so a denied
-        // permission is a clean no-op (and lint-clean) rather than a dropped notify.
-        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU ||
-            ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS)
-                == PackageManager.PERMISSION_GRANTED) {
+        try {
+            val notificationId = durableAlertId?.let(NotificationIdentity::notificationIdForAlert)
+                ?: NotificationIdentity.fallbackNotificationId(
+                    notificationKey ?: "${childId ?: "unknown"}:$body"
+                )
             getSystemService(NotificationManager::class.java)
-                .notify(System.currentTimeMillis().toInt() and 0xFFFF, notif)
-        }
-    }
-
-    private fun registerTokenWithBackend(token: String, prefs: PrefsManager) {
-        CoroutineScope(Dispatchers.IO).launch {
-            try {
-                val api  = ApiClient.getInstance(prefs.serverUrl)
-                val body = mapOf<String, Any>("user_id" to prefs.parentId, "fcm_token" to token)
-                api.updateFcmToken(body)
-            } catch (_: Exception) {}
-        }
+                .notify(notificationId, notif)
+            if (childId != null && childId > 0 && alertId != null &&
+                alertId > prefs.lastNotifiedAlertId(childId)
+            ) {
+                prefs.advanceLastNotifiedAlertId(childId, alertId)
+            }
+        } catch (_: SecurityException) { /* permission was revoked after the check */ }
     }
 }

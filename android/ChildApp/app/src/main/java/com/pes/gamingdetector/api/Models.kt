@@ -35,6 +35,9 @@ data class StartSessionRequest(
 data class SessionResponse(
     val success: Boolean,
     @SerializedName("session_id") val sessionId: Int,
+    // True when a retry recovered the already-open server session instead of creating
+    // another one. The Child must not back-fill the same offline head in that case.
+    val reused: Boolean = false,
     val message: String?
 )
 
@@ -64,10 +67,11 @@ data class TopFactor(
 
 data class Prediction(
     @SerializedName("risk_label") val riskLabel: String,
-    @SerializedName("risk_score") val riskScore: Double,
+    @SerializedName("risk_score") val riskScore: Double?,
     @SerializedName("behavior_score") val behaviorScore: Double,
     @SerializedName("chat_score") val chatScore: Double,
     @SerializedName("voice_score") val voiceScore: Double,
+    val modalities: Modalities? = null,
     val recommendations: List<String>?,
     @SerializedName("top_factors") val topFactors: List<TopFactor>?,
     @SerializedName("observation_mode") val observationMode: Boolean?,
@@ -75,18 +79,31 @@ data class Prediction(
     @SerializedName("short_session_note") val shortSessionNote: String?
 )
 
+data class Modalities(
+    val behavior: Boolean? = null,
+    val chat: Boolean? = null,
+    val voice: Boolean? = null
+)
+
 data class UserDashboard(
     val success: Boolean,
     val stats: DashboardStats?,
     @SerializedName("recent_sessions") val recentSessions: List<SessionSummary>?,
-    @SerializedName("trend_data") val trendData: List<TrendPoint>?
+    @SerializedName("trend_data") val trendData: List<TrendPoint>?,
+    // Nullable for compatibility with older backend deployments.
+    @SerializedName("risk_thresholds") val riskThresholds: RiskThresholds? = null,
+)
+
+data class RiskThresholds(
+    @SerializedName("some_concern") val someConcern: Double? = null,
+    @SerializedName("high_concern") val highConcern: Double? = null,
 )
 
 data class DashboardStats(
     @SerializedName("total_sessions") val totalSessions: Int,
     @SerializedName("total_hours") val totalHours: Double,
-    @SerializedName("current_risk") val currentRisk: String,
-    @SerializedName("risk_score") val riskScore: Double,
+    @SerializedName("current_risk") val currentRisk: String? = null,
+    @SerializedName("risk_score") val riskScore: Double? = null,
     @SerializedName("avg_daily_hours") val avgDailyHours: Double,
     // Nullable defaults keep compatibility with servers predating the canonical
     // latest-active-day risk contract.
@@ -118,6 +135,7 @@ data class TrendPoint(
 
 data class VoiceResponse(
     val success: Boolean,
+    val captured: Boolean? = null,
     val emotion: String?,
     val score: Double?
 )
@@ -139,6 +157,7 @@ data class VerifyPinResponse(val success: Boolean, val valid: Boolean)
 
 data class ChildEnrichedResponse(
     val success: Boolean,
+    @SerializedName("child_name") val childName: String?,
     val streak: StreakInfo?,
     @SerializedName("limit_status") val limitStatus: LimitStatus?,
     @SerializedName("played_today_hours") val playedTodayHours: Double?,

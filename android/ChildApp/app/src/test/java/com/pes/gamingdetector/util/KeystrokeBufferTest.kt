@@ -95,4 +95,22 @@ class KeystrokeBufferTest {
         kb.flush()
         assertEquals(listOf("hello there", "okay"), out)
     }
+
+    @Test
+    fun `idle timeout follows injected monotonic clock`() {
+        var nowElapsed = 1_000L
+        val out = mutableListOf<String>()
+        val kb = KeystrokeBuffer(
+            flushIdleMs = 2_500L,
+            nowElapsedMs = { nowElapsed },
+            onFlush = { out.add(it) },
+        )
+        listOf("h", "e", "l", "l", "o").forEach(kb::handleKey)
+
+        nowElapsed += 2_499L
+        assertEquals(false, kb.flushIfIdle())
+        nowElapsed += 1L
+        assertEquals(true, kb.flushIfIdle())
+        assertEquals(listOf("hello"), out)
+    }
 }

@@ -5,6 +5,7 @@ import android.app.Service
 import android.content.Intent
 import android.os.IBinder
 import android.os.PowerManager
+import android.os.SystemClock
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
 import com.pes.gamingdetector.R
@@ -12,6 +13,7 @@ import com.pes.gamingdetector.api.ApiClient
 import com.pes.gamingdetector.activities.SessionActivity
 import com.pes.gamingdetector.util.Constants
 import com.pes.gamingdetector.util.PrefsManager
+import com.pes.gamingdetector.util.SessionDurationClock
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -35,6 +37,8 @@ class GameMonitorService : Service() {
     private var wakeLock: PowerManager.WakeLock? = null
     private val scope = CoroutineScope(Dispatchers.Default + SupervisorJob())
     private var nudgeJob: Job? = null
+    private var durationClockSessionId = -1
+    private var durationClock: SessionDurationClock? = null
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         prefs = PrefsManager(this)
@@ -44,8 +48,14 @@ class GameMonitorService : Service() {
         gameName  = intent?.getStringExtra("game_name").orEmpty().ifEmpty { prefs.activeSessionGame }
         serverUrl = intent?.getStringExtra("server_url") ?: prefs.serverUrl
 
-        acquireWakeLock()
         startForeground(Constants.NOTIF_MONITORING, buildNotification())
+        // A sticky restart can arrive after logout, consent expiry, or a successful end.
+        // Promote immediately to satisfy the 5-second contract, then fail closed.
+        if (!prefs.canMonitor() || sessionId <= 0 || sessionId != prefs.activeSessionId) {
+            stopSelf()
+            return START_NOT_STICKY
+        }
+        acquireWakeLock()
         startVoiceService()
         startBreakNudges()
         return START_STICKY
@@ -63,9 +73,12 @@ class GameMonitorService : Service() {
             while (isActive) {
                 val start = prefs.activeSessionStart
                 if (start > 0L) {
-                    val mins = (System.currentTimeMillis() - start) / 60_000
+                    val mins = currentSessionElapsedMs(start) / 60_000
                     if (mins >= 120 && !sent120) {
                         sent120 = true
+                        // A service restarted after two hours must not send the older
+                        // 90-minute reminder one minute after the 2-hour reminder.
+                        sent90 = true
                         sendBreakNudge("2-Hour Reminder",
                             "2 hours of gaming done! Time to take a proper break and rest your eyes.")
                     } else if (mins >= 90 && !sent90) {
@@ -97,11 +110,23 @@ class GameMonitorService : Service() {
         val b = resp.body()
         val limit = b?.dailyGoalHours
         if (resp.isSuccessful && b?.success == true && b.goalIsParentSet == true && limit != null) {
-            val sessionHrs = (System.currentTimeMillis() - sessionStart) / 3_600_000.0
+            val sessionHrs = currentSessionElapsedMs(sessionStart) / 3_600_000.0
             val totalToday = (b.playedTodayHours ?: 0.0) + sessionHrs
             if (totalToday >= limit) limit else null
         } else null
     } catch (_: Exception) { null }
+
+    private fun currentSessionElapsedMs(sessionStartEpochMs: Long): Long {
+        if (durationClock == null || durationClockSessionId != sessionId) {
+            durationClockSessionId = sessionId
+            durationClock = SessionDurationClock(
+                sessionStartedAtEpochMs = sessionStartEpochMs,
+                createdAtEpochMs = System.currentTimeMillis(),
+                createdAtElapsedMs = SystemClock.elapsedRealtime(),
+            )
+        }
+        return durationClock!!.elapsedMs(SystemClock.elapsedRealtime())
+    }
 
     private fun sendBreakNudge(title: String, message: String) {
         try {
@@ -143,6 +168,9 @@ class GameMonitorService : Service() {
         .build()
 
     private fun startVoiceService() {
+        // Until VoiceRecorder proves the whole record+upload path is working, expose
+        // it as unavailable rather than retaining a stale "active" value.
+        prefs.voiceCaptureActive = false
         val intent = Intent(this, VoiceRecorderService::class.java).apply {
             putExtra("session_id", sessionId)
             putExtra("server_url", serverUrl)
@@ -150,8 +178,9 @@ class GameMonitorService : Service() {
         // Voice capture is best-effort: Android 14+ may refuse a mic foreground
         // service started from the background. Never let that take down monitoring.
         try {
-            startService(intent)
+            androidx.core.content.ContextCompat.startForegroundService(this, intent)
         } catch (e: Exception) {
+            prefs.voiceCaptureActive = false
             android.util.Log.w("GameMonitor", "Voice service start skipped: ${e.message}")
         }
     }
@@ -159,7 +188,16 @@ class GameMonitorService : Service() {
     override fun onDestroy() {
         scope.cancel()
         wakeLock?.takeIf { it.isHeld }?.release()
-        stopService(Intent(this, VoiceRecorderService::class.java))
+        // Ask voice capture to close the recorder and drain its bounded final segment.
+        // Unauthorized/logout paths still stop VoiceRecorderService directly for privacy.
+        try {
+            startService(
+                Intent(this, VoiceRecorderService::class.java)
+                    .setAction(VoiceRecorderService.ACTION_STOP)
+            )
+        } catch (_: Exception) {
+            stopService(Intent(this, VoiceRecorderService::class.java))
+        }
         super.onDestroy()
     }
 

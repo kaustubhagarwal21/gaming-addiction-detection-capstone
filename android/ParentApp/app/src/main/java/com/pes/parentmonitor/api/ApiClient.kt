@@ -6,34 +6,43 @@ import okhttp3.OkHttpClient
 import okhttp3.logging.HttpLoggingInterceptor
 import retrofit2.Retrofit
 import retrofit2.converter.gson.GsonConverterFactory
+import com.pes.parentmonitor.util.ServerOrigin
+import com.pes.parentmonitor.util.ServerUrl
 import java.util.concurrent.TimeUnit
 
 object ApiClient {
+    private const val SKIP_AUTH_HEADER = "X-Parent-Skip-Auth"
     private var retrofit: Retrofit? = null
     private var currentBaseUrl: String = ""
+    private val authSessions = AuthSessionStore()
 
-    // Signed bearer token from login. Kept in sync with persistent storage by
-    // PrefsManager (set on login, refreshed whenever a PrefsManager is created,
-    // cleared on logout). The interceptor attaches it to every request.
-    @Volatile
-    var authToken: String? = null
-        set(value) {
-            field = value
-            if (!value.isNullOrEmpty()) unauthorizedSignaled = false  // fresh login re-arms
-        }
+    fun installAuthSession(token: String?, baseUrlOrOrigin: String?) {
+        authSessions.install(token, ServerOrigin.normalize(baseUrlOrOrigin))
+    }
+
+    fun restoreAuthSession(token: String?, baseUrlOrOrigin: String?) {
+        authSessions.restore(token, ServerOrigin.normalize(baseUrlOrOrigin))
+    }
+
+    fun clearAuthSession() = authSessions.clear()
 
     // Invoked once when the server rejects a token we sent with 401 (session expired
     // after the 30-day TTL, or the signing secret changed). Without this the dashboard
     // would just fail to load with no way back to sign-in. The Application sets it.
     @Volatile
-    var onUnauthorized: (() -> Unit)? = null
-    @Volatile
-    private var unauthorizedSignaled = false
+    var onUnauthorized: ((Long) -> Unit)? = null
+
+    /** The main-thread callback must re-check this before clearing persistent state. */
+    fun isCurrentUnauthorized(revision: Long): Boolean =
+        authSessions.isCurrentInvalidation(revision)
 
     @Synchronized
     fun getInstance(baseUrl: String): ApiService {
-        if (retrofit == null || currentBaseUrl != baseUrl) {
-            currentBaseUrl = baseUrl
+        val normalizedBaseUrl = ServerUrl.normalize(baseUrl, BuildConfig.DEBUG)
+            ?: throw IllegalArgumentException("Invalid server base URL")
+        if (retrofit == null || currentBaseUrl != normalizedBaseUrl) {
+            currentBaseUrl = normalizedBaseUrl
+            val clientOrigin = ServerOrigin.normalize(normalizedBaseUrl)
             // BASIC logs method/URL/status only — no PIN or FCM token bodies.
             // NONE in release so nothing reaches logcat.
             val logging = HttpLoggingInterceptor().apply {
@@ -41,20 +50,22 @@ object ApiClient {
                         else HttpLoggingInterceptor.Level.NONE
             }
             val auth = Interceptor { chain ->
-                val tok = authToken
-                val req = if (!tok.isNullOrEmpty())
-                    chain.request().newBuilder()
-                        .header("Authorization", "Bearer $tok").build()
-                else chain.request()
+                val original = chain.request()
+                val skipAuth = original.header(SKIP_AUTH_HEADER).equals("true", ignoreCase = true)
+                val snapshot = if (skipAuth) null else authSessions.snapshotFor(clientOrigin)
+                val req = original.newBuilder()
+                    .removeHeader(SKIP_AUTH_HEADER)
+                    .apply {
+                        snapshot?.let { header("Authorization", "Bearer ${it.token}") }
+                    }
+                    .build()
                 val response = chain.proceed(req)
-                // A 401 on a request that carried a token (never the login call) means
-                // the token is dead. Signal exactly once so the app can clear the
-                // session and return to sign-in instead of failing silently.
-                if (response.code == 401 && !tok.isNullOrEmpty() &&
-                    !req.url.encodedPath.contains("login") && !unauthorizedSignaled) {
-                    unauthorizedSignaled = true
-                    authToken = null
-                    onUnauthorized?.invoke()
+                // Only the exact auth revision carried by this request may be invalidated.
+                // A slow 401 from an older login/origin is ignored.
+                if (response.code == 401 && snapshot != null) {
+                    authSessions.invalidateIfCurrent(snapshot)?.let { revision ->
+                        onUnauthorized?.invoke(revision)
+                    }
                 }
                 response
             }
@@ -67,7 +78,7 @@ object ApiClient {
                 .build()
 
             retrofit = Retrofit.Builder()
-                .baseUrl(baseUrl)
+                .baseUrl(normalizedBaseUrl)
                 .client(client)
                 .addConverterFactory(GsonConverterFactory.create())
                 .build()

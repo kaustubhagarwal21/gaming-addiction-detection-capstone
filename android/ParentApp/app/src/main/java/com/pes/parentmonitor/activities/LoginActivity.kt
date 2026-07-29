@@ -10,7 +10,9 @@ import com.google.firebase.messaging.FirebaseMessaging
 import com.pes.parentmonitor.api.ApiClient
 import com.pes.parentmonitor.api.LoginRequest
 import com.pes.parentmonitor.databinding.ActivityLoginBinding
+import com.pes.parentmonitor.service.FcmTokenSyncWorker
 import com.pes.parentmonitor.util.PrefsManager
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
 
 class LoginActivity : AppCompatActivity() {
@@ -30,17 +32,18 @@ class LoginActivity : AppCompatActivity() {
     }
 
     private fun registerFcmToken(prefs: PrefsManager) {
+        // The cached token is useful immediately; token retrieval below may take time.
+        prefs.fcmToken.takeIf { it.isNotBlank() }?.let {
+            FcmTokenSyncWorker.enqueueRegistration(this, it)
+        }
         try {
             FirebaseMessaging.getInstance().token.addOnSuccessListener { token ->
                 if (token.isNullOrEmpty()) return@addOnSuccessListener
                 prefs.fcmToken = token
-                lifecycleScope.launch {
-                    try {
-                        val api  = ApiClient.getInstance(prefs.serverUrl)
-                        val body = mapOf<String, Any>("user_id" to prefs.parentId, "fcm_token" to token)
-                        api.updateFcmToken(body)
-                    } catch (_: Exception) {}
-                }
+                // The Login Activity finishes immediately after this callback is
+                // registered, so lifecycleScope work was often cancelled. WorkManager
+                // persists the update and retries it when the network returns.
+                FcmTokenSyncWorker.enqueueRegistration(applicationContext, token)
             }
         } catch (_: Exception) {
             // Firebase not configured — FCM push disabled, polling still works
@@ -69,7 +72,21 @@ class LoginActivity : AppCompatActivity() {
                     LoginRequest(pin = pin, role = "parent", familyCode = familyCode))
                 if (resp.isSuccessful && resp.body()?.success == true) {
                     val body = resp.body()!!
-                    prefs.authToken = body.token   // set first so following calls are authenticated
+                    val token = body.token?.trim()?.takeIf { it.isNotEmpty() }
+                    if (token == null || body.userId <= 0 ||
+                        !body.role.equals("parent", ignoreCase = true)
+                    ) {
+                        Toast.makeText(
+                            this@LoginActivity,
+                            "Server returned an invalid login session",
+                            Toast.LENGTH_LONG
+                        ).show()
+                        return@launch
+                    }
+                    // Bind future data-only pushes to this family. If an older backend
+                    // omits the field, push is ignored safely and polling remains active.
+                    prefs.familyCode = body.familyCode.orEmpty()
+                    prefs.authToken = token   // set first so following calls are authenticated
                     prefs.parentId = body.userId
                     prefs.parentName = body.name
                     registerFcmToken(prefs)
@@ -77,7 +94,7 @@ class LoginActivity : AppCompatActivity() {
                     val children = body.children
                     if (!children.isNullOrEmpty()) {
                         val parcels = ArrayList(children.map {
-                            ChildSelectActivity.ChildInfoParcel(it.userId, it.name, it.age ?: 0)
+                            ChildSelectActivity.ChildInfoParcel(it.userId, it.name, it.age)
                         })
                         if (parcels.size == 1) {
                             prefs.childUserId = parcels[0].userId
@@ -96,6 +113,8 @@ class LoginActivity : AppCompatActivity() {
                 } else {
                     Toast.makeText(this@LoginActivity, "Invalid PIN or not a parent account", Toast.LENGTH_SHORT).show()
                 }
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
                 Toast.makeText(this@LoginActivity, "Cannot reach server: ${e.message}", Toast.LENGTH_LONG).show()
             } finally {

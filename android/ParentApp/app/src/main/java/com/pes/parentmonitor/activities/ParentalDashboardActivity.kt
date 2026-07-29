@@ -14,7 +14,6 @@ import android.view.View
 import android.widget.EditText
 import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
 import androidx.core.content.FileProvider
 import androidx.lifecycle.lifecycleScope
@@ -26,17 +25,24 @@ import com.github.mikephil.charting.formatter.ValueFormatter
 import com.pes.parentmonitor.R
 import com.pes.parentmonitor.api.ApiClient
 import com.pes.parentmonitor.api.ParentalDashboard
+import com.pes.parentmonitor.api.RiskThresholds
 import com.pes.parentmonitor.api.TrendPoint
 import com.pes.parentmonitor.databinding.ActivityParentalDashboardBinding
 import com.pes.parentmonitor.service.AlertPollingService
+import com.pes.parentmonitor.util.AlertCounts
+import com.pes.parentmonitor.util.AuthNavigation
 import com.pes.parentmonitor.util.PrefsManager
 import com.pes.parentmonitor.util.RiskPresentation
+import com.pes.parentmonitor.util.SessionManager
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.File
+import kotlin.math.roundToInt
 
-class ParentalDashboardActivity : AppCompatActivity() {
+class ParentalDashboardActivity : AuthenticatedActivity() {
     private lateinit var binding: ActivityParentalDashboardBinding
     private lateinit var prefs: PrefsManager
 
@@ -54,6 +60,9 @@ class ParentalDashboardActivity : AppCompatActivity() {
     // Last payload actually rendered — a silent tick that returns identical data is a no-op,
     // so the screen (and the chart) stays perfectly still unless something really changed.
     private var lastDash: ParentalDashboard? = null
+    private var dashboardJob: Job? = null
+    private var dashboardGeneration = 0
+    private var displayedChildId = -1
 
     private val notifPermLauncher = registerForActivityResult(
         ActivityResultContracts.RequestPermission()
@@ -64,6 +73,7 @@ class ParentalDashboardActivity : AppCompatActivity() {
         binding = ActivityParentalDashboardBinding.inflate(layoutInflater)
         setContentView(binding.root)
         prefs = PrefsManager(this)
+        if (!AuthNavigation.ensureAuthenticated(this, prefs)) return
 
         requestNotificationPermissionIfNeeded()
         setSupportActionBar(binding.toolbar)
@@ -95,8 +105,7 @@ class ParentalDashboardActivity : AppCompatActivity() {
         // avoids a redundant double fetch + double spinner on launch.
     }
 
-    override fun onResume() {
-        super.onResume()
+    override fun onAuthenticatedResume() {
         loadDashboard()
         uiHandler.postDelayed(dashRefresh, DASH_REFRESH_MS)
     }
@@ -121,7 +130,7 @@ class ParentalDashboardActivity : AppCompatActivity() {
             putExtra("child_user_id", prefs.childUserId)
             putExtra("server_url", prefs.serverUrl)
         }
-        startService(intent)
+        ContextCompat.startForegroundService(this, intent)
     }
 
     // ── Send a nudge to the child (pops up as a notification on their phone) ──
@@ -169,6 +178,8 @@ class ParentalDashboardActivity : AppCompatActivity() {
                 Toast.makeText(this@ParentalDashboardActivity,
                     if (ok) "Nudge sent to your child 👍" else "Couldn't send nudge",
                     Toast.LENGTH_SHORT).show()
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
                 Toast.makeText(this@ParentalDashboardActivity, "Network error", Toast.LENGTH_SHORT).show()
             }
@@ -176,15 +187,27 @@ class ParentalDashboardActivity : AppCompatActivity() {
     }
 
     private fun loadDashboard(silent: Boolean = false) {
-        if (!silent) binding.progressBar.visibility = View.VISIBLE
+        if (silent && dashboardJob?.isActive == true) return
+        if (!silent) dashboardJob?.cancel()
+        val generation = ++dashboardGeneration
         // Bind this request to the child selected NOW. A slow response for child A must not
         // overwrite the screen after the parent has switched to child B (the fetch is async
         // and childUserId is mutable), which showed one child's data under another's name.
         val reqChild = prefs.childUserId
-        lifecycleScope.launch {
+        val reqServer = prefs.serverUrl
+        prepareDashboardForChild(reqChild)
+        if (!silent) binding.progressBar.visibility = View.VISIBLE
+        if (reqChild <= 0) {
+            binding.progressBar.visibility = View.GONE
+            binding.swipeRefresh.isRefreshing = false
+            if (!silent) Toast.makeText(this, "No child selected", Toast.LENGTH_SHORT).show()
+            return
+        }
+        dashboardJob = lifecycleScope.launch {
             try {
-                val api  = ApiClient.getInstance(prefs.serverUrl)
+                val api  = ApiClient.getInstance(reqServer)
                 val resp = api.getParentalDashboard(reqChild)
+                if (generation != dashboardGeneration) return@launch
                 if (reqChild != prefs.childUserId) return@launch   // selection changed mid-flight — drop
                 if (resp.isSuccessful && resp.body()?.success == true) {
                     val body = resp.body()!!
@@ -193,20 +216,65 @@ class ParentalDashboardActivity : AppCompatActivity() {
                     if (silent && body == lastDash) return@launch
                     lastDash = body
                     renderDashboard(body, animate = !silent)
+                } else if (!silent) {
+                    Toast.makeText(
+                        this@ParentalDashboardActivity,
+                        "Dashboard data is unavailable (${resp.code()})",
+                        Toast.LENGTH_SHORT
+                    ).show()
                 }
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
                 // Don't interrupt the user with a toast on a silent background tick.
                 if (!silent) {
                     val msg = if (e is java.io.IOException)
-                        "Cannot reach server at ${prefs.serverUrl} — go to Settings and verify the address."
+                        "Cannot reach server at $reqServer — go to Settings and verify the address."
                     else "Load failed: ${e.message}"
                     Toast.makeText(this@ParentalDashboardActivity, msg, Toast.LENGTH_LONG).show()
                 }
             } finally {
-                if (!silent) binding.progressBar.visibility = View.GONE
-                binding.swipeRefresh.isRefreshing = false
+                if (generation == dashboardGeneration) {
+                    if (!silent) binding.progressBar.visibility = View.GONE
+                    binding.swipeRefresh.isRefreshing = false
+                    dashboardJob = null
+                }
             }
         }
+    }
+
+    /**
+     * Remove the previous sibling's payload before starting a request for the newly
+     * selected child. A failed/slow request must never leave child A's risk under child B.
+     */
+    private fun prepareDashboardForChild(childId: Int) {
+        if (displayedChildId == childId) return
+        displayedChildId = childId
+        lastDash = null
+
+        binding.tvChildName.text = prefs.childName.ifBlank { "Your Child" }
+        binding.tvCurrentRisk.text = "Unknown"
+        binding.tvRiskScore.text = "—"
+        binding.tvRiskPeriod.text = "Waiting for daily risk data"
+        binding.tvRiskPeriod.visibility = View.VISIBLE
+        binding.riskIndicatorBar.setBackgroundColor(getColor(R.color.text_secondary))
+        binding.tvCurrentRisk.setTextColor(android.graphics.Color.WHITE)
+        binding.tvWeeklyHours.text = "—"
+        binding.tvLateNight.text = "—"
+        binding.btnAlerts.text = "Alerts"
+        binding.tvObservationBanner.visibility = View.GONE
+        binding.tvLiveStatus.visibility = View.GONE
+        binding.cardAnomaly.visibility = View.GONE
+        binding.tvRecommendationPreview.text = ""
+        binding.tvRecommendationPreview.visibility = View.GONE
+        binding.cardTimeLimitSuggestion.visibility = View.GONE
+        binding.cardPeerComparison.visibility = View.GONE
+        binding.cardSleepImpact.visibility = View.GONE
+        binding.cardRiskExplanation.visibility = View.GONE
+        binding.cardStreak.visibility = View.GONE
+        binding.btnSetLimit.text = "Set Daily Limit"
+        setupTrendChart(emptyList(), animate = false)
+        setupTopGamesText(emptyList(), emptyList())
     }
 
     private fun renderDashboard(dash: ParentalDashboard, animate: Boolean = true) {
@@ -230,8 +298,8 @@ class ParentalDashboardActivity : AppCompatActivity() {
             binding.tvObservationBanner.visibility = View.GONE
         }
 
-        val risk  = dash.currentRisk ?: "unknown"
-        val score = dash.riskScore ?: 0.0
+        val risk  = dash.currentRisk
+        val score = dash.riskScore
         // Screening label (e.g. "High concern") rather than the clinical category key.
         binding.tvCurrentRisk.text  = RiskPresentation.displayLabel(risk, dash.riskLabel)
         binding.tvRiskScore.text    = RiskPresentation.scoreText(score)
@@ -276,6 +344,13 @@ class ParentalDashboardActivity : AppCompatActivity() {
                     false -> liveBits += "⚠️ Not uninstall-protected — enable Device Admin on the child phone"
                     null  -> { /* unknown (older child app) — say nothing */ }
                 }
+                // Recorder state is session-specific. Idle between games is not a
+                // degradation, so show it only while a game is actually active.
+                if (dash.liveStatus?.isPlaying == true) when (m.voiceCapture) {
+                    true -> liveBits += "🎙️ Voice capture active"
+                    false -> liveBits += "⚠️ Voice capture unavailable — Android may block background microphone start; use the available behavior/chat signals"
+                    null -> liveBits += "ℹ️ Voice capture status unknown for this session"
+                }
                 // Capture-permission health: the app can be RUNNING yet collecting nothing
                 // useful if the child revoked a permission. Name which capability is off so
                 // the parent can fix it, rather than trusting a green "Monitoring active".
@@ -298,7 +373,7 @@ class ParentalDashboardActivity : AppCompatActivity() {
             binding.tvLiveStatus.visibility = View.GONE
         }
 
-        val color = when (risk.lowercase()) {
+        val color = when (risk?.lowercase()) {
             "casual"   -> getColor(R.color.risk_low)
             "at_risk"  -> getColor(R.color.risk_medium)
             "addicted" -> getColor(R.color.risk_high)
@@ -321,26 +396,27 @@ class ParentalDashboardActivity : AppCompatActivity() {
         }
 
         val alerts     = dash.alerts ?: emptyList()
-        val unreadCount = alerts.count { !it.read }
+        val unreadCount = AlertCounts.unread(dash.unreadAlertCount, alerts)
         binding.btnAlerts.text = if (unreadCount > 0) "Alerts ($unreadCount)" else "Alerts"
 
-        dash.trendData?.let { setupTrendChart(it, animate) }
-        dash.topGames?.let  { setupTopGamesText(it, dash.recentGames) }
+        setupTrendChart(dash.trendData.orEmpty(), animate, dash.riskThresholds)
+        setupTopGamesText(dash.topGames.orEmpty(), dash.recentGames)
 
         val rec = dash.recommendations ?: emptyList()
         if (rec.isNotEmpty()) {
             binding.tvRecommendationPreview.text       = rec.firstOrNull() ?: ""
             binding.tvRecommendationPreview.visibility = View.VISIBLE
+        } else {
+            binding.tvRecommendationPreview.text = ""
+            binding.tvRecommendationPreview.visibility = View.GONE
         }
 
-        // Deliberately NOT writing prefs.lastRiskLevel here. That value belongs to
-        // AlertPollingService, which compares it against /api/child/status (latest-
-        // session risk). This dashboard's headline is the DAY roll-up — a different
-        // aggregation — and writing it here made the two fight whenever they fell in
-        // different bands (roll-up "casual" vs latest "at_risk"), so every poll saw a
-        // "change" and re-fired the Risk Level Changed notification in a loop.
+        // Notification dedup is driven by durable alert ids, not by comparing this
+        // daily roll-up with a latest-session category. Keeping those scopes separate
+        // prevents false "risk changed" notifications when their bands differ.
 
         // ── Time limit suggestion ──────────────────────────────
+        binding.cardTimeLimitSuggestion.visibility = View.GONE
         dash.timeLimitSuggestion?.let { tl ->
             binding.cardTimeLimitSuggestion.visibility = View.VISIBLE
             binding.tvSuggestedLimit.text = "${tl.suggestedDailyHours}h / day"
@@ -362,6 +438,7 @@ class ParentalDashboardActivity : AppCompatActivity() {
         }
 
         // ── Peer comparison ────────────────────────────────────
+        binding.cardPeerComparison.visibility = View.GONE
         dash.peerComparison?.let { pc ->
             binding.cardPeerComparison.visibility = View.VISIBLE
             // percentile = "plays more than X% of peers", so X=90 is the TOP 10%. Label it
@@ -377,6 +454,7 @@ class ParentalDashboardActivity : AppCompatActivity() {
         }
 
         // ── Sleep impact ───────────────────────────────────────
+        binding.cardSleepImpact.visibility = View.GONE
         dash.sleepImpact?.let { si ->
             if (si.available == true) {
                 binding.cardSleepImpact.visibility = View.VISIBLE
@@ -389,9 +467,13 @@ class ParentalDashboardActivity : AppCompatActivity() {
         // ── Explainable risk + which signals were analysed ─────
         val factors = dash.riskExplanation ?: emptyList()
         val sig = dash.latestSignals
+        binding.cardRiskExplanation.visibility = View.GONE
         if (factors.isNotEmpty() || sig != null) {
             binding.cardRiskExplanation.visibility = View.VISIBLE
             val sb = StringBuilder()
+            if (factors.isNotEmpty()) {
+                sb.append("Latest completed-session factors (may differ from the daily headline):\n")
+            }
             factors.forEach { f ->
                 // SHAP direction: ▲ raises the score, ▼ lowers it.
                 val arrow = when (f.direction) { "raises" -> "▲"; "lowers" -> "▼"; else -> "•" }
@@ -402,16 +484,20 @@ class ParentalDashboardActivity : AppCompatActivity() {
             // text chat, or a silent session) — so a 0 there isn't a clean result,
             // it's an absent one, and the score relied on the remaining signals.
             if (sig != null) {
-                fun mark(b: Boolean?) = if (b == true) "✓ analysed" else "— not captured"
+                fun mark(b: Boolean?) = when (b) {
+                    true -> "✓ analysed"
+                    false -> "— not captured"
+                    null -> "? availability unknown"
+                }
                 if (sb.isNotEmpty()) sb.append("\n")
-                val sigHdr = dash.riskPeriod?.label?.let { "Signals analysed ($it):" }
-                    ?: "Signals used for this score:"
-                sb.append("$sigHdr\n")
+                sb.append("Daily roll-up signal availability:\n")
                 sb.append("• Behaviour: ${mark(sig.behavior)}\n")
                 sb.append("• Chat: ${mark(sig.chat)}\n")
                 sb.append("• Voice: ${mark(sig.voice)}\n")
-                if (sig.chat != true || sig.voice != true) {
+                if (sig.chat == false || sig.voice == false) {
                     sb.append("Some games have no in-game text chat or voice; the score then relies only on the signals that were available.\n")
+                } else if (sig.chat == null || sig.voice == null || sig.behavior == null) {
+                    sb.append("Signal availability was not reported for every source; unknown does not mean absent or clean.\n")
                 }
             }
             dash.disclaimer?.let { sb.append("\nℹ ${it}") }
@@ -419,6 +505,7 @@ class ParentalDashboardActivity : AppCompatActivity() {
         }
 
         // ── Healthy streak ─────────────────────────────────────
+        binding.cardStreak.visibility = View.GONE
         dash.streak?.let { s ->
             binding.cardStreak.visibility = View.VISIBLE
             binding.tvStreakCurrent.text  = "${s.currentStreak} days"
@@ -452,6 +539,8 @@ class ParentalDashboardActivity : AppCompatActivity() {
                                 "Limit set to ${hours}h/day", Toast.LENGTH_SHORT).show()
                             loadDashboard()
                         }
+                    } catch (e: CancellationException) {
+                        throw e
                     } catch (e: Exception) {
                         Toast.makeText(this@ParentalDashboardActivity,
                             "Failed to set limit: ${e.message}", Toast.LENGTH_SHORT).show()
@@ -463,14 +552,21 @@ class ParentalDashboardActivity : AppCompatActivity() {
     }
 
     private fun downloadPdfReport() {
+        val childId = prefs.childUserId
+        val childName = prefs.childName
+        val serverUrl = prefs.serverUrl
+        if (childId <= 0) {
+            Toast.makeText(this, "No child selected", Toast.LENGTH_SHORT).show()
+            return
+        }
         binding.progressBar.visibility = View.VISIBLE
         lifecycleScope.launch {
             try {
-                val api  = ApiClient.getInstance(prefs.serverUrl)
-                val resp = api.downloadWeeklyReportPdf(prefs.childUserId)
+                val api  = ApiClient.getInstance(serverUrl)
+                val resp = api.downloadWeeklyReportPdf(childId)
                 if (resp.isSuccessful && resp.body() != null) {
                     val bytes = withContext(Dispatchers.IO) { resp.body()!!.bytes() }
-                    val file  = File(cacheDir, "gaming_report_${prefs.childUserId}.pdf")
+                    val file  = File(cacheDir, "gaming_report_$childId.pdf")
                     withContext(Dispatchers.IO) { file.writeBytes(bytes) }
 
                     val uri = FileProvider.getUriForFile(
@@ -481,7 +577,7 @@ class ParentalDashboardActivity : AppCompatActivity() {
                     val shareIntent = Intent(Intent.ACTION_SEND).apply {
                         type = "application/pdf"
                         putExtra(Intent.EXTRA_STREAM, uri)
-                        putExtra(Intent.EXTRA_SUBJECT, "Gaming Health Report — ${prefs.childName}")
+                        putExtra(Intent.EXTRA_SUBJECT, "Gaming Health Report — $childName")
                         addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
                     }
                     startActivity(Intent.createChooser(shareIntent, "Share PDF Report"))
@@ -489,6 +585,8 @@ class ParentalDashboardActivity : AppCompatActivity() {
                     Toast.makeText(this@ParentalDashboardActivity,
                         "PDF not available on server", Toast.LENGTH_SHORT).show()
                 }
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
                 Toast.makeText(this@ParentalDashboardActivity,
                     "Download failed: ${e.message}", Toast.LENGTH_LONG).show()
@@ -498,8 +596,33 @@ class ParentalDashboardActivity : AppCompatActivity() {
         }
     }
 
-    private fun setupTrendChart(trendData: List<TrendPoint>, animate: Boolean = true) {
-        if (trendData.isEmpty()) return
+    private fun setupTrendChart(
+        trendData: List<TrendPoint>,
+        animate: Boolean = true,
+        thresholds: RiskThresholds? = null
+    ) {
+        val suppliedSome = thresholds?.someConcern
+            ?.takeIf { it.isFinite() && it in 0.0..1.0 }
+        val suppliedHigh = thresholds?.highConcern
+            ?.takeIf { it.isFinite() && it in 0.0..1.0 }
+        val (someCutoff, highCutoff) =
+            if (suppliedSome != null && suppliedHigh != null && suppliedSome < suppliedHigh) {
+                suppliedSome to suppliedHigh
+            } else {
+                // Older servers did not expose their configured thresholds.
+                0.33 to 0.67
+            }
+        val somePct = (someCutoff * 100).roundToInt()
+        val highPct = (highCutoff * 100).roundToInt()
+        binding.tvTrendCaption.text =
+            "Daily risk score (0–100%, vertical) per day (date, horizontal). " +
+            "Some concern begins at $somePct%; High concern begins at $highPct%."
+
+        if (trendData.isEmpty()) {
+            binding.lineChart.clear()
+            binding.lineChart.invalidate()
+            return
+        }
         val points  = trendData.takeLast(14)
         val entries = points.mapIndexed { i, p -> Entry(i.toFloat(), (p.score * 100).toFloat()) }
         val labels  = points.map { it.date.takeLast(5) }
@@ -539,11 +662,11 @@ class ParentalDashboardActivity : AppCompatActivity() {
                     override fun getFormattedValue(value: Float) = "${value.toInt()}%"
                 }
                 removeAllLimitLines()
-                addLimitLine(LimitLine(33f, "Some concern").apply {
+                addLimitLine(LimitLine((someCutoff * 100).toFloat(), "Some concern").apply {
                     lineColor = getColor(R.color.risk_medium); lineWidth = 1.2f
                     textColor = getColor(R.color.risk_medium); textSize = 9f
                 })
-                addLimitLine(LimitLine(67f, "High concern").apply {
+                addLimitLine(LimitLine((highCutoff * 100).toFloat(), "High concern").apply {
                     lineColor = getColor(R.color.risk_high); lineWidth = 1.2f
                     textColor = getColor(R.color.risk_high); textSize = 9f
                 })
@@ -611,22 +734,8 @@ class ParentalDashboardActivity : AppCompatActivity() {
      *  device's push token (so a logged-out phone stops receiving the family's alerts),
      *  THEN clear the session. */
     private fun doLogout() {
-        stopService(Intent(this, AlertPollingService::class.java))
-        val token     = prefs.fcmToken
-        val serverUrl = prefs.serverUrl
-        if (token.isNotBlank()) {
-            // Fire-and-forget on a process-independent scope: prefs.logout() clears the
-            // token immediately, so capture it first and don't tie the call to this Activity.
-            kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.IO).launch {
-                try {
-                    ApiClient.getInstance(serverUrl)
-                        .unregisterFcmToken(mapOf("fcm_token" to token))
-                } catch (_: Exception) {}
-            }
-        }
-        prefs.logout()
-        startActivity(Intent(this, LoginActivity::class.java))
-        finishAffinity()
+        SessionManager.logout(this, prefs)
+        AuthNavigation.openLogin(this)
     }
 
     /** Switch to another child in the same family WITHOUT re-entering the family code —
@@ -636,7 +745,11 @@ class ParentalDashboardActivity : AppCompatActivity() {
             val list = try {
                 val resp = ApiClient.getInstance(prefs.serverUrl).getChildren()
                 if (resp.isSuccessful) resp.body()?.children.orEmpty() else emptyList()
-            } catch (e: Exception) { emptyList() }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                emptyList()
+            }
             when {
                 list.isEmpty() ->
                     Toast.makeText(this@ParentalDashboardActivity,
@@ -655,11 +768,9 @@ class ParentalDashboardActivity : AppCompatActivity() {
                             if (chosen.userId != prefs.childUserId) {
                                 prefs.childUserId = chosen.userId
                                 prefs.childName   = chosen.name
-                                binding.tvChildName.text = chosen.name
-                                // Drop the cached payload so the new child always re-renders
-                                // (the silent-tick equality check would otherwise skip it if
-                                // the two children happened to match), and so stale cards clear.
-                                lastDash = null
+                                // Clear child A synchronously; child B's request may be
+                                // slow or fail and must not leave A's data visible.
+                                prepareDashboardForChild(chosen.userId)
                                 // Re-target the background poller too — otherwise it
                                 // keeps notifying about the PREVIOUS child until the
                                 // app is killed and restarted.

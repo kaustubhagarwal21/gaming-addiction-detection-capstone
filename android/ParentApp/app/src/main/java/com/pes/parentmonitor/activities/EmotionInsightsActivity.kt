@@ -3,58 +3,81 @@ package com.pes.parentmonitor.activities
 import android.os.Bundle
 import android.view.View
 import android.widget.Toast
-import androidx.appcompat.app.AppCompatActivity
 import androidx.lifecycle.lifecycleScope
 import com.pes.parentmonitor.api.ApiClient
 import com.pes.parentmonitor.databinding.ActivityEmotionInsightsBinding
+import com.pes.parentmonitor.util.AuthNavigation
 import com.pes.parentmonitor.util.PrefsManager
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 import org.json.JSONObject
 
-class EmotionInsightsActivity : AppCompatActivity() {
+class EmotionInsightsActivity : AuthenticatedActivity() {
     private lateinit var binding: ActivityEmotionInsightsBinding
     private lateinit var prefs: PrefsManager
+    private var loadJob: Job? = null
+    private var loadGeneration = 0
+    private var displayedChildId = -1
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         binding = ActivityEmotionInsightsBinding.inflate(layoutInflater)
         setContentView(binding.root)
         prefs = PrefsManager(this)
+        if (!AuthNavigation.ensureAuthenticated(this, prefs)) return
 
         setSupportActionBar(binding.toolbar)
         supportActionBar?.setDisplayHomeAsUpEnabled(true)
         supportActionBar?.title = "Emotion Insights"
 
         binding.swipeRefresh.setOnRefreshListener { loadEmotions() }
+    }
+
+    override fun onAuthenticatedResume() {
         loadEmotions()
     }
 
     private fun loadEmotions() {
+        loadJob?.cancel()
+        val generation = ++loadGeneration
+        val childId = prefs.childUserId
+        val serverUrl = prefs.serverUrl
+        prepareForChild(childId)
         binding.progressBar.visibility = View.VISIBLE
-        lifecycleScope.launch {
+        if (childId <= 0) {
+            showUnavailable()
+            binding.progressBar.visibility = View.GONE
+            binding.swipeRefresh.isRefreshing = false
+            Toast.makeText(this, "No child selected", Toast.LENGTH_SHORT).show()
+            return
+        }
+        loadJob = lifecycleScope.launch {
             try {
-                val api  = ApiClient.getInstance(prefs.serverUrl)
+                val api  = ApiClient.getInstance(serverUrl)
                 // Dedicated emotion analytics from real voice-event data.
-                val resp = api.getEmotions(prefs.childUserId)
+                val resp = api.getEmotions(childId)
+                if (generation != loadGeneration || childId != prefs.childUserId) return@launch
                 if (resp.isSuccessful && resp.body()?.success == true) {
                     val data = resp.body()!!
                     val dist = data.emotionDistribution ?: emptyList()
                     val recent = data.recentSessions ?: emptyList()
 
-                    if (dist.isEmpty() && recent.isEmpty()) {
+                    val totalSamples = dist.sumOf { it.n }
+                    if (dist.isEmpty() || totalSamples <= 0) {
                         binding.tvRiskContext.text = "No voice data yet"
                         binding.tvEmotionByGame.text =
                             "Voice emotion analysis appears here once your child plays with voice monitoring on " +
                             "and actually speaks during gameplay. Silent or single-player sessions produce no " +
                             "voice data, and that's expected."
                         binding.tvEmotionTrend.text = ""
-                        binding.tvEmotionAdvice.text = buildEmotionAdvice("casual")
+                        binding.tvEmotionAdvice.text = "Voice emotion guidance is unavailable until speech is captured. " +
+                            "No voice data does not mean the session was emotionally healthy or unhealthy."
                         return@launch
                     }
 
                     // Dominant emotion overall (most frequent)
                     val dominant = dist.maxByOrNull { it.n }?.emotion ?: "neutral"
-                    val totalSamples = dist.sumOf { it.n }
                     binding.tvRiskContext.text =
                         "Dominant emotion: ${dominant.replaceFirstChar { it.uppercase() }}  ($totalSamples voice samples)"
 
@@ -88,14 +111,44 @@ class EmotionInsightsActivity : AppCompatActivity() {
                         else         -> "casual"
                     }
                     binding.tvEmotionAdvice.text = buildEmotionAdvice(pseudoRisk)
+                } else {
+                    showUnavailable()
+                    Toast.makeText(
+                        this@EmotionInsightsActivity,
+                        "Emotion insights are unavailable (${resp.code()})",
+                        Toast.LENGTH_SHORT
+                    ).show()
                 }
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
+                if (generation != loadGeneration || childId != prefs.childUserId) return@launch
+                showUnavailable()
                 Toast.makeText(this@EmotionInsightsActivity, "Load failed: ${e.message}", Toast.LENGTH_SHORT).show()
             } finally {
-                binding.progressBar.visibility = View.GONE
-                binding.swipeRefresh.isRefreshing = false
+                if (generation == loadGeneration) {
+                    binding.progressBar.visibility = View.GONE
+                    binding.swipeRefresh.isRefreshing = false
+                    loadJob = null
+                }
             }
         }
+    }
+
+    private fun prepareForChild(childId: Int) {
+        if (displayedChildId == childId) return
+        displayedChildId = childId
+        supportActionBar?.subtitle = prefs.childName.takeIf { it.isNotBlank() }
+        showUnavailable()
+    }
+
+    private fun showUnavailable() {
+        binding.tvRiskContext.text = "Voice emotion data unavailable"
+        binding.tvEmotionByGame.text =
+            "Emotion insights are unavailable until data for the selected child loads."
+        binding.tvEmotionTrend.text = ""
+        binding.tvEmotionAdvice.text =
+            "No emotional-state guidance is inferred while voice data is unavailable."
     }
 
     private fun emojiFor(emotion: String?): String = when (emotion?.lowercase()) {

@@ -24,6 +24,7 @@ data class LoginResponse(
     @SerializedName("user_id") val userId: Int,
     val name: String,
     val role: String,
+    @SerializedName("family_code") val familyCode: String?,
     @SerializedName("child_user_id") val childUserId: Int?,
     val children: List<ChildInfo>?,
     val token: String?,
@@ -82,6 +83,7 @@ data class ParentalDashboard(
     val disclaimer: String?,
     @SerializedName("risk_score") val riskScore: Double?,
     val alerts: List<Alert>?,
+    @SerializedName("unread_alert_count") val unreadAlertCount: Int?,
     @SerializedName("trend_data") val trendData: List<TrendPoint>?,
     @SerializedName("top_games") val topGames: List<TopGame>?,
     // This week only (top_games is the all-time leaderboard) — used by the Weekly Report.
@@ -104,6 +106,8 @@ data class ParentalDashboard(
     @SerializedName("latest_signals") val latestSignals: SignalAvailability?,
     // The headline risk is a per-day roll-up; this says which day and how many sessions.
     @SerializedName("risk_period") val riskPeriod: RiskPeriod?,
+    // Server-configured band cutoffs; nullable for backward compatibility.
+    @SerializedName("risk_thresholds") val riskThresholds: RiskThresholds? = null,
     // Live strip: is the child playing right now / is the monitoring app checking in.
     @SerializedName("live_status") val liveStatus: LiveStatus? = null,
     val monitoring: MonitoringStatus? = null
@@ -126,7 +130,10 @@ data class MonitoringStatus(
     // null = unknown (old app).
     @SerializedName("perm_usage") val permUsage: Boolean? = null,
     @SerializedName("perm_accessibility") val permAccessibility: Boolean? = null,
-    @SerializedName("perm_keyboard") val permKeyboard: Boolean? = null
+    @SerializedName("perm_keyboard") val permKeyboard: Boolean? = null,
+    // Actual recorder/capture state, not merely RECORD_AUDIO permission.
+    // null = older child app / unknown, false = unavailable, true = active.
+    @SerializedName("voice_capture") val voiceCapture: Boolean? = null
 )
 
 // Describes the day the headline risk aggregates over: "Today" / "Yesterday" / "Jun 03".
@@ -134,6 +141,12 @@ data class RiskPeriod(
     val label: String?,
     val date: String?,
     val sessions: Int?
+)
+
+/** Cutoffs used by the backend deployment for the three screening bands. */
+data class RiskThresholds(
+    @SerializedName("some_concern") val someConcern: Double?,
+    @SerializedName("high_concern") val highConcern: Double?
 )
 
 // Which of the three signals were actually captured for the latest scored session.
@@ -154,7 +167,7 @@ data class Alert(
     // Age computed server-side (same clock as created_at), so the app can render an
     // accurate "2h ago" without knowing the server's timezone.
     @SerializedName("age_minutes") val ageMinutes: Long? = null,
-    val read: Boolean,
+    var read: Boolean,
     // Parent verdict already given on this alert (null = not yet rated). Mutable so the
     // list can reflect a just-submitted rating without a server round-trip.
     var feedback: String? = null

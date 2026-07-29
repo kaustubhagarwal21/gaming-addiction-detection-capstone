@@ -70,6 +70,17 @@ class AlertTriageTest {
     }
 
     @Test
+    fun `feedback covers every model assessment but not operational events`() {
+        listOf("risk", "RISK_REVISION", "toxicity", "toxicity_streak").forEach {
+            assertTrue("$it should be rateable", AlertTriage.isFeedbackEligible(it))
+        }
+        listOf("session_start", "login", "offline", "permission", "tamper", "").forEach {
+            assertFalse("$it is factual, not a model assessment",
+                AlertTriage.isFeedbackEligible(it))
+        }
+    }
+
+    @Test
     fun `cooldown suppresses re-notification inside the window and allows it after`() {
         val notifiedAt = 1_750_000_000_000L   // a realistic wall-clock ms timestamp
         val window = AlertTriage.RISK_RENOTIFY_MS

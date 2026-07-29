@@ -6,12 +6,15 @@ import retrofit2.http.*
 
 interface ApiService {
 
+    @Headers("X-Parent-Skip-Auth: true")
     @GET("api/health")
     suspend fun health(): Response<HealthResponse>
 
+    @Headers("X-Parent-Skip-Auth: true")
     @GET("api/model_card")
     suspend fun getModelCard(): Response<ModelCard>
 
+    @Headers("X-Parent-Skip-Auth: true")
     @POST("api/user/login")
     suspend fun login(@Body request: LoginRequest): Response<LoginResponse>
 
@@ -47,6 +50,7 @@ interface ApiService {
 
     // Deregister this device's push token on logout so it stops receiving the family's
     // alerts (otherwise a logged-out phone keeps getting them until the token is reused).
+    @Headers("X-Parent-Skip-Auth: true")
     @POST("api/user/fcm_token/unregister")
     suspend fun unregisterFcmToken(@Body body: @JvmSuppressWildcards Map<String, Any>): Response<GenericResponse>
 

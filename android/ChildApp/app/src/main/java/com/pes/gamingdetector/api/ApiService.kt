@@ -15,7 +15,9 @@ interface ApiService {
     // Liveness ping so the server can flag the parent if monitoring goes silent
     // (uninstalled / force-stopped / killed / offline).
     @POST("api/child/heartbeat")
-    suspend fun heartbeat(@Body body: Map<String, Int>): Response<GenericResponse>
+    suspend fun heartbeat(
+        @Body body: @JvmSuppressWildcards Map<String, Any>
+    ): Response<GenericResponse>
 
     // Report a child-initiated tamper event (e.g. logout) so the parent is alerted.
     @POST("api/child/tamper")
@@ -65,6 +67,11 @@ interface ApiService {
 
     @GET("api/child/nudges")
     suspend fun getNudges(@Query("user_id") userId: Int): Response<NudgesResponse>
+
+    @POST("api/child/nudges/ack")
+    suspend fun ackNudges(
+        @Body body: @JvmSuppressWildcards Map<String, Any>
+    ): Response<GenericResponse>
 
     @POST("api/child/screen_event")
     suspend fun postScreenEvent(@Body body: Map<String, String>): Response<GenericResponse>

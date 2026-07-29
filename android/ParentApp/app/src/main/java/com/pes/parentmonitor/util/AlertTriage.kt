@@ -32,6 +32,20 @@ object AlertTriage {
     fun isNotifyWorthyRisk(risk: String): Boolean =
         risk.lowercase() in listOf("at_risk", "addicted")
 
+    /**
+     * Parent verdicts are useful only for alerts that contain a model/heuristic
+     * assessment. Include aggregate streak alerts and late risk revisions as well as
+     * their original one-event forms; operational events (login, offline, permission,
+     * tamper, session start) are facts and must not ask "Was this accurate?".
+     */
+    fun isFeedbackEligible(type: String): Boolean =
+        type.lowercase() in setOf(
+            "risk",
+            "risk_revision",
+            "toxicity",
+            "toxicity_streak",
+        )
+
     /** Consecutive sessions either side of a band cut-off flip the level back and
      *  forth; the cooldown stops that turning into notification spam. */
     fun riskCooldownPassed(lastNotifiedAt: Long, now: Long): Boolean =

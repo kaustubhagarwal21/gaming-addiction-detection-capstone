@@ -11,6 +11,8 @@ import com.pes.gamingdetector.api.ApiClient
 import com.pes.gamingdetector.api.RegisterRequest
 import com.pes.gamingdetector.databinding.ActivityRegisterBinding
 import com.pes.gamingdetector.util.PrefsManager
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 
 /**
@@ -76,11 +78,15 @@ class RegisterActivity : AppCompatActivity() {
                     val msg = body?.message ?: serverMessage(resp) ?: "Couldn't create account (${resp.code()})"
                     Toast.makeText(this@RegisterActivity, msg, Toast.LENGTH_LONG).show()
                 }
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
                 Toast.makeText(this@RegisterActivity, "Cannot reach server: ${e.message}", Toast.LENGTH_LONG).show()
             } finally {
-                binding.btnRegister.isEnabled = true
-                binding.progressBar.visibility = View.GONE
+                if (isActive && !isFinishing && !isDestroyed) {
+                    binding.btnRegister.isEnabled = true
+                    binding.progressBar.visibility = View.GONE
+                }
             }
         }
     }

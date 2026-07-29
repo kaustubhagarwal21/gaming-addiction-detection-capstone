@@ -1,5 +1,7 @@
 package com.pes.gamingdetector.util
 
+import android.os.SystemClock
+
 /**
  * Process-local cache of the current foreground app, populated by
  * ChatAccessibilityService's TYPE_WINDOW_STATE_CHANGED events.
@@ -30,7 +32,7 @@ object ForegroundTracker {
         if (pkg.isNullOrEmpty() || pkg == "android") return
         if (IGNORE_PREFIXES.any { pkg.startsWith(it) }) return
         currentPkg = pkg
-        lastChangeAt = System.currentTimeMillis()
+        lastChangeAt = SystemClock.elapsedRealtime()
     }
 
     fun current(): String? = currentPkg

@@ -14,7 +14,8 @@ class RiskPresentationTest {
         assertEquals("High concern", RiskPresentation.displayLabel("addicted"))
         assertEquals("Some concern", RiskPresentation.displayLabel("AT-RISK"))
         assertEquals("High concern", RiskPresentation.displayLabel(null, "High concern"))
-        assertEquals("Some concern", RiskPresentation.displayLabel("casual", "Some concern"))
+        assertEquals("Low concern", RiskPresentation.displayLabel("casual", "Some concern"))
+        assertEquals("Some concern", RiskPresentation.displayLabel("at_risk", "Low concern"))
         assertEquals("Unknown", RiskPresentation.displayLabel(null, null))
         assertEquals("Unknown", RiskPresentation.displayLabel("  ", ""))
         assertEquals("Mystery", RiskPresentation.displayLabel("mystery"))
@@ -23,8 +24,11 @@ class RiskPresentationTest {
     @Test
     fun `score texts round and tolerate null`() {
         assertEquals("34%", RiskPresentation.scoreText(0.336))
-        assertEquals("0%", RiskPresentation.scoreText(null))
+        assertEquals("—", RiskPresentation.scoreText(null))
+        assertEquals("—", RiskPresentation.scoreText(Double.NaN))
+        assertEquals("—", RiskPresentation.scoreText(1.01))
         assertEquals("25% risk score", RiskPresentation.riskScoreText(0.25))
+        assertEquals("Risk score unavailable", RiskPresentation.riskScoreText(null))
     }
 
     @Test
@@ -41,6 +45,7 @@ class RiskPresentationTest {
         assertEquals("34% risk score · Yesterday · 2 sessions",
             RiskPresentation.detailText(0.34, "Yesterday", 2))
         assertEquals("34% risk score", RiskPresentation.detailText(0.34, null, null))
+        assertEquals("Risk score unavailable", RiskPresentation.detailText(null, null, null))
         assertEquals("This session: Low concern · 25%",
             RiskPresentation.scopedRiskText("This session", "casual", 0.25))
         assertEquals("Live session: Some concern",

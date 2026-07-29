@@ -5,20 +5,20 @@ import android.os.Build
 import android.os.Bundle
 import android.view.ViewGroup
 import android.widget.TextView
-import androidx.appcompat.app.AppCompatActivity
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import com.google.android.material.card.MaterialCardView
 import com.pes.parentmonitor.R
-import com.pes.parentmonitor.api.ChildInfo
+import com.pes.parentmonitor.util.AuthNavigation
 import com.pes.parentmonitor.util.PrefsManager
 
-class ChildSelectActivity : AppCompatActivity() {
+class ChildSelectActivity : AuthenticatedActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
         val prefs = PrefsManager(this)
+        if (!AuthNavigation.ensureAuthenticated(this, prefs)) return
         val children: ArrayList<ChildInfoParcel> = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             intent.getParcelableArrayListExtra("children", ChildInfoParcel::class.java)
         } else {
@@ -49,13 +49,13 @@ class ChildSelectActivity : AppCompatActivity() {
     data class ChildInfoParcel(
         val userId: Int,
         val name: String,
-        val age: Int
+        val age: Int?
     ) : android.os.Parcelable {
         constructor(parcel: android.os.Parcel) : this(
-            parcel.readInt(), parcel.readString() ?: "", parcel.readInt()
+            parcel.readInt(), parcel.readString() ?: "", parcel.readInt().takeIf { it >= 0 }
         )
         override fun writeToParcel(parcel: android.os.Parcel, flags: Int) {
-            parcel.writeInt(userId); parcel.writeString(name); parcel.writeInt(age)
+            parcel.writeInt(userId); parcel.writeString(name); parcel.writeInt(age ?: -1)
         }
         override fun describeContents() = 0
         companion object CREATOR : android.os.Parcelable.Creator<ChildInfoParcel> {
@@ -83,7 +83,7 @@ class ChildSelectActivity : AppCompatActivity() {
         override fun onBindViewHolder(holder: VH, position: Int) {
             val child = children[position]
             holder.tvName.text = child.name
-            holder.tvAge.text = "Age ${child.age}"
+            holder.tvAge.text = child.age?.let { "Age $it" } ?: "Age not provided"
             holder.tvInitial.text = child.name.firstOrNull()?.uppercase() ?: "?"
             holder.card.setOnClickListener { onClick(child) }
         }

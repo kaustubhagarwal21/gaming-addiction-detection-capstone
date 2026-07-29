@@ -1,5 +1,6 @@
 package com.pes.parentmonitor.activities
 
+import android.content.Intent
 import android.os.Bundle
 import android.view.LayoutInflater
 import android.view.View
@@ -7,7 +8,6 @@ import android.view.ViewGroup
 import android.widget.LinearLayout
 import android.widget.TextView
 import android.widget.Toast
-import androidx.appcompat.app.AppCompatActivity
 import androidx.lifecycle.lifecycleScope
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
@@ -18,13 +18,21 @@ import com.pes.parentmonitor.api.ApiClient
 import com.pes.parentmonitor.api.FeedbackRequest
 import com.pes.parentmonitor.api.MarkReadRequest
 import com.pes.parentmonitor.databinding.ActivityAlertsBinding
+import com.pes.parentmonitor.util.AlertTriage
+import com.pes.parentmonitor.util.AuthNavigation
+import com.pes.parentmonitor.util.Constants
 import com.pes.parentmonitor.util.PrefsManager
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
 
-class AlertsActivity : AppCompatActivity() {
+class AlertsActivity : AuthenticatedActivity() {
     private lateinit var binding: ActivityAlertsBinding
     private lateinit var prefs: PrefsManager
     private val alerts = mutableListOf<Alert>()
+    private var loadJob: Job? = null
+    private var loadGeneration = 0
+    private var displayedChildId = -1
 
     // Auto-refresh while the screen is open so new alerts appear without a manual pull.
     private val uiHandler = android.os.Handler(android.os.Looper.getMainLooper())
@@ -41,20 +49,22 @@ class AlertsActivity : AppCompatActivity() {
         binding = ActivityAlertsBinding.inflate(layoutInflater)
         setContentView(binding.root)
         prefs = PrefsManager(this)
+        if (!AuthNavigation.ensureAuthenticated(this, prefs)) return
 
         setSupportActionBar(binding.toolbar)
         supportActionBar?.setDisplayHomeAsUpEnabled(true)
         supportActionBar?.title = "Alerts"
+        applyNotificationTarget(intent)
 
         binding.rvAlerts.layoutManager = LinearLayoutManager(this)
         binding.rvAlerts.adapter = AlertAdapter()
 
         binding.swipeRefresh.setOnRefreshListener { loadAlerts() }
-        loadAlerts()
     }
 
-    override fun onResume() {
-        super.onResume()
+    override fun onAuthenticatedResume() {
+        loadAlerts()
+        uiHandler.removeCallbacks(autoRefresh)
         uiHandler.postDelayed(autoRefresh, REFRESH_MS)
     }
 
@@ -63,11 +73,50 @@ class AlertsActivity : AppCompatActivity() {
         uiHandler.removeCallbacks(autoRefresh)
     }
 
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        if (!AuthNavigation.ensureAuthenticated(this, prefs)) return
+        if (applyNotificationTarget(intent)) {
+            loadJob?.cancel()
+            alerts.clear()
+            binding.rvAlerts.adapter?.notifyDataSetChanged()
+            binding.tvFeedbackSummary.visibility = View.GONE
+            loadAlerts()
+        }
+    }
+
+    /** Select the child named by a push/poll notification before fetching alerts. */
+    private fun applyNotificationTarget(source: Intent): Boolean {
+        val childId = source.getIntExtra(Constants.EXTRA_CHILD_USER_ID, -1)
+        if (childId <= 0) return false
+        val changed = childId != prefs.childUserId
+        prefs.childUserId = childId
+        source.getStringExtra(Constants.EXTRA_CHILD_NAME)
+            ?.takeIf { it.isNotBlank() }
+            ?.let { prefs.childName = it }
+        supportActionBar?.title = prefs.childName.takeIf { it.isNotBlank() }
+            ?.let { "Alerts · $it" } ?: "Alerts"
+        return changed
+    }
+
     private fun loadAlerts(silent: Boolean = false) {
-        lifecycleScope.launch {
+        if (silent && loadJob?.isActive == true) return
+        if (!silent) loadJob?.cancel()
+        val generation = ++loadGeneration
+        val childId = prefs.childUserId
+        val serverUrl = prefs.serverUrl
+        prepareForChild(childId)
+        if (childId <= 0) {
+            binding.swipeRefresh.isRefreshing = false
+            if (!silent) Toast.makeText(this, "No child selected", Toast.LENGTH_SHORT).show()
+            return
+        }
+        loadJob = lifecycleScope.launch {
             try {
-                val api = ApiClient.getInstance(prefs.serverUrl)
-                val resp = api.getAlerts(prefs.childUserId)
+                val api = ApiClient.getInstance(serverUrl)
+                val resp = api.getAlerts(childId)
+                if (generation != loadGeneration || childId != prefs.childUserId) return@launch
                 if (resp.isSuccessful && resp.body()?.success == true) {
                     val body = resp.body()!!
                     val incoming = body.alerts ?: emptyList()
@@ -75,8 +124,7 @@ class AlertsActivity : AppCompatActivity() {
                     // (avoids flicker / losing scroll position while the parent reads).
                     // Compare id + feedback + read so a row marked read server-side also
                     // refreshes (drops its unread highlight) on the next tick.
-                    val changed = incoming.map { Triple(it.id, it.feedback, it.read) } !=
-                                  alerts.map { Triple(it.id, it.feedback, it.read) }
+                    val changed = incoming != alerts
                     if (!silent || changed) {
                         alerts.clear()
                         alerts.addAll(incoming)
@@ -85,23 +133,53 @@ class AlertsActivity : AppCompatActivity() {
                     }
                     val unreadIds = incoming.filter { !it.read }.map { it.id }
                     if (unreadIds.isNotEmpty()) {
-                        api.markAlertsRead(MarkReadRequest(unreadIds))
+                        val marked = api.markAlertsRead(MarkReadRequest(unreadIds))
+                        if (generation != loadGeneration || childId != prefs.childUserId) {
+                            return@launch
+                        }
+                        if (marked.isSuccessful && marked.body()?.success == true) {
+                            val ids = unreadIds.toHashSet()
+                            alerts.filter { it.id in ids }.forEach { it.read = true }
+                            binding.rvAlerts.adapter?.notifyDataSetChanged()
+                        }
                     }
                 }
-                loadFeedbackSummary(api)
+                loadFeedbackSummary(api, childId, generation)
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
                 if (!silent) Toast.makeText(this@AlertsActivity, "Failed to load alerts", Toast.LENGTH_SHORT).show()
             } finally {
-                if (!silent) binding.swipeRefresh.isRefreshing = false
+                if (generation == loadGeneration) {
+                    if (!silent) binding.swipeRefresh.isRefreshing = false
+                    loadJob = null
+                }
             }
         }
     }
 
+    private fun prepareForChild(childId: Int) {
+        if (displayedChildId == childId) return
+        displayedChildId = childId
+        loadJob?.cancel()
+        alerts.clear()
+        binding.rvAlerts.adapter?.notifyDataSetChanged()
+        binding.tvEmpty.visibility = View.VISIBLE
+        binding.tvFeedbackSummary.visibility = View.GONE
+        supportActionBar?.title = prefs.childName.takeIf { it.isNotBlank() }
+            ?.let { "Alerts · $it" } ?: "Alerts"
+    }
+
     /** Surface the agreement rate built from the parent's own verdicts — the system's
      *  real-world accuracy signal — once at least one verdict exists. */
-    private suspend fun loadFeedbackSummary(api: com.pes.parentmonitor.api.ApiService) {
+    private suspend fun loadFeedbackSummary(
+        api: com.pes.parentmonitor.api.ApiService,
+        childId: Int,
+        generation: Int
+    ) {
         try {
-            val resp = api.getFeedbackSummary(prefs.childUserId)
+            val resp = api.getFeedbackSummary(childId)
+            if (generation != loadGeneration || childId != prefs.childUserId) return
             val body = resp.body()
             val acc  = body?.counts?.get("accurate") ?: 0
             val fa   = body?.counts?.get("false_alarm") ?: 0
@@ -116,7 +194,11 @@ class AlertsActivity : AppCompatActivity() {
             } else {
                 binding.tvFeedbackSummary.visibility = View.GONE
             }
-        } catch (_: Exception) { /* summary is optional — leave hidden */ }
+        } catch (e: CancellationException) {
+            throw e
+        } catch (_: Exception) {
+            // Summary is optional — leave hidden.
+        }
     }
 
     /** "Just now" / "12m ago" / "3h ago" / "2d ago", from the server-computed age (the
@@ -170,10 +252,10 @@ class AlertsActivity : AppCompatActivity() {
         }
 
         private fun bindFeedback(holder: VH, alert: Alert) {
-            // "Was this accurate?" feedback only makes sense for model *assessments*
-            // (risk / toxicity). Informational alerts like "started playing" carry no
-            // judgement to rate, so we hide the prompt for them.
-            if (alert.type.lowercase() !in setOf("risk", "toxicity")) {
+            // "Was this accurate?" feedback only makes sense for model assessments.
+            // This includes aggregate toxicity streaks and late risk revisions;
+            // informational alerts like "started playing" carry no judgement to rate.
+            if (!AlertTriage.isFeedbackEligible(alert.type)) {
                 holder.feedbackPrompt.visibility = View.GONE
                 holder.tvFeedbackGiven.visibility = View.GONE
                 return
@@ -192,35 +274,46 @@ class AlertsActivity : AppCompatActivity() {
                 holder.tvFeedbackGiven.visibility = View.GONE
                 holder.btnAccurate.isEnabled = true        // reset recycled state
                 holder.btnFalseAlarm.isEnabled = true
-                holder.btnAccurate.setOnClickListener { sendFeedback(alert, "accurate", holder) }
-                holder.btnFalseAlarm.setOnClickListener { sendFeedback(alert, "false_alarm", holder) }
+                holder.btnAccurate.setOnClickListener {
+                    holder.btnAccurate.isEnabled = false
+                    holder.btnFalseAlarm.isEnabled = false
+                    sendFeedback(alert.id, "accurate")
+                }
+                holder.btnFalseAlarm.setOnClickListener {
+                    holder.btnAccurate.isEnabled = false
+                    holder.btnFalseAlarm.isEnabled = false
+                    sendFeedback(alert.id, "false_alarm")
+                }
             }
         }
 
         override fun getItemCount() = alerts.size
     }
 
-    private fun sendFeedback(alert: Alert, label: String, holder: AlertAdapter.VH) {
-        holder.btnAccurate.isEnabled = false
-        holder.btnFalseAlarm.isEnabled = false
+    private fun sendFeedback(alertId: Int, label: String) {
+        val childId = prefs.childUserId
+        val serverUrl = prefs.serverUrl
         lifecycleScope.launch {
             try {
-                val api = ApiClient.getInstance(prefs.serverUrl)
+                val api = ApiClient.getInstance(serverUrl)
                 val resp = api.submitFeedback(
-                    FeedbackRequest(userId = prefs.childUserId, alertId = alert.id, label = label)
+                    FeedbackRequest(userId = childId, alertId = alertId, label = label)
                 )
-                if (resp.isSuccessful && resp.body()?.success == true) {
-                    alert.feedback = label
-                    binding.rvAlerts.adapter?.notifyItemChanged(holder.adapterPosition)
+                if (childId != prefs.childUserId) return@launch
+                val index = alerts.indexOfFirst { it.id == alertId }
+                if (resp.isSuccessful && resp.body()?.success == true && index >= 0) {
+                    alerts[index].feedback = label
+                    binding.rvAlerts.adapter?.notifyItemChanged(index)
                 } else {
                     Toast.makeText(this@AlertsActivity, "Couldn't save feedback", Toast.LENGTH_SHORT).show()
-                    holder.btnAccurate.isEnabled = true
-                    holder.btnFalseAlarm.isEnabled = true
+                    if (index >= 0) binding.rvAlerts.adapter?.notifyItemChanged(index)
                 }
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
                 Toast.makeText(this@AlertsActivity, "Couldn't save feedback", Toast.LENGTH_SHORT).show()
-                holder.btnAccurate.isEnabled = true
-                holder.btnFalseAlarm.isEnabled = true
+                val index = alerts.indexOfFirst { it.id == alertId }
+                if (index >= 0) binding.rvAlerts.adapter?.notifyItemChanged(index)
             }
         }
     }

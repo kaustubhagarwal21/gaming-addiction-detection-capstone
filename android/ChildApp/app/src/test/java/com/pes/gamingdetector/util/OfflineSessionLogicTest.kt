@@ -35,6 +35,26 @@ class OfflineSessionLogicTest {
     }
 
     @Test
+    fun `only retryable start responses create an offline marker`() {
+        assertTrue(OfflineSessionLogic.isTransientStartFailure(408))
+        assertTrue(OfflineSessionLogic.isTransientStartFailure(429))
+        assertTrue(OfflineSessionLogic.isTransientStartFailure(503))
+        assertFalse(OfflineSessionLogic.isTransientStartFailure(400))
+        assertFalse(OfflineSessionLogic.isTransientStartFailure(401))
+        assertFalse(OfflineSessionLogic.isTransientStartFailure(404))
+    }
+
+    @Test
+    fun `restored marker end is capped near its last foreground observation`() {
+        val start = 1_000L
+        val lastSeen = 31_000L
+        assertEquals(36_000L,
+            OfflineSessionLogic.boundedEnd(start, lastSeen, 3_600_000L, 5_000L))
+        assertEquals(33_000L,
+            OfflineSessionLogic.boundedEnd(start, lastSeen, 33_000L, 5_000L))
+    }
+
+    @Test
     fun `buffer is bounded oldest-first`() {
         val arr = JSONArray()
         for (i in 0 until OfflineSessionLogic.MAX_ENTRIES + 2)

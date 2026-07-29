@@ -34,9 +34,11 @@ import com.pes.gamingdetector.services.PassiveMonitorService
 import com.pes.gamingdetector.services.VoiceRecorderService
 import com.pes.gamingdetector.util.PrefsManager
 import com.pes.gamingdetector.util.PrivacyText
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 
-class HomeActivity : AppCompatActivity() {
+class HomeActivity : AuthenticatedActivity() {
     private lateinit var binding: ActivityHomeBinding
     private lateinit var prefs: PrefsManager
 
@@ -52,6 +54,8 @@ class HomeActivity : AppCompatActivity() {
 
     private val uiHandler = Handler(Looper.getMainLooper())
     private val TODAY_REFRESH_MS = 12_000L      // how often Home re-pulls today's snapshot (instant-feel)
+    private var todayLoadJob: Job? = null
+    private var todayLoadGeneration = 0L
     private val bannerRefresh = object : Runnable {
         override fun run() {
             refreshBanner()
@@ -71,6 +75,7 @@ class HomeActivity : AppCompatActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        if (!ensureAuthenticatedOnCreate()) return
         binding = ActivityHomeBinding.inflate(layoutInflater)
         setContentView(binding.root)
         prefs = PrefsManager(this)
@@ -81,12 +86,10 @@ class HomeActivity : AppCompatActivity() {
         // Monitoring only starts after parental consent for the CURRENT policy
         // version. A bumped CONSENT_VERSION (policy changed) re-triggers consent
         // even on a device that previously agreed to an older version.
-        if (consentCurrent()) {
-            startMonitoring()
-            syncConsentIfPending()   // catch up if an earlier grant never reached the server
-        } else {
-            ensureConsent()
-        }
+        // Reconcile with the server whenever it is reachable. Local consent remains
+        // the offline fallback, but a server policy bump/revocation must be observed
+        // before this launch starts monitoring.
+        ensureConsent()
 
         binding.btnResume.setOnClickListener {
             if (prefs.hasActiveSession()) {
@@ -106,10 +109,13 @@ class HomeActivity : AppCompatActivity() {
         shuffleActivity()
     }
 
-    override fun onResume() {
-        super.onResume()
+    override fun onAuthenticatedResume() {
         refreshBanner()
         loadToday()
+        // Defensive de-dupe: lifecycle callbacks normally pair with onPause(), but
+        // keeping one scheduled copy avoids timer multiplication on unusual OEM flows.
+        uiHandler.removeCallbacks(bannerRefresh)
+        uiHandler.removeCallbacks(todayRefresh)
         uiHandler.postDelayed(bannerRefresh, 3_000L)
         uiHandler.postDelayed(todayRefresh, TODAY_REFRESH_MS)
         if (consentCurrent()) checkRequiredPermissions()
@@ -118,11 +124,28 @@ class HomeActivity : AppCompatActivity() {
     /** Self-awareness snapshot: how much the child has played today vs a healthy goal,
         their streak, and an encouraging line. One call, refreshed on every resume. */
     private fun loadToday() {
-        lifecycleScope.launch {
+        // The client permits a 90-second cloud cold start while this timer fires every
+        // 12 seconds. Keep one request in flight so slow responses cannot accumulate or
+        // arrive out of order and overwrite a newer snapshot.
+        if (todayLoadJob?.isActive == true) return
+        val generation = ++todayLoadGeneration
+        todayLoadJob = lifecycleScope.launch {
             try {
                 val resp = ApiClient.getInstance(prefs.serverUrl).getChildEnriched(prefs.userId)
                 val b = resp.body()
-                if (resp.isSuccessful && b?.success == true) {
+                if (generation == todayLoadGeneration &&
+                    resp.isSuccessful && b?.success == true
+                ) {
+                    // Parent-controlled profile edits must reach an already-signed-in
+                    // Child app. Older backends omit child_name, so keep the cached login
+                    // value unless a non-blank authoritative name is present.
+                    b.childName?.trim()?.takeIf { it.isNotEmpty() }?.let { currentName ->
+                        if (prefs.userName != currentName) prefs.userName = currentName
+                        val title = "Hi, $currentName"
+                        if (supportActionBar?.title?.toString() != title) {
+                            supportActionBar?.title = title
+                        }
+                    }
                     val played = b.playedTodayHours ?: 0.0
                     val goal   = (b.dailyGoalHours ?: 2.0).coerceAtLeast(0.1)
                     val over   = b.goalIsParentSet == true && played >= goal
@@ -148,6 +171,8 @@ class HomeActivity : AppCompatActivity() {
                         "🌱 Stay under your goal to start a healthy streak")
                     upd(binding.tvSelfAwareness, b.selfAwarenessMessage ?: "")
                 }
+            } catch (e: CancellationException) {
+                throw e
             } catch (_: Exception) { /* offline — keep last values */ }
         }
     }
@@ -207,21 +232,56 @@ class HomeActivity : AppCompatActivity() {
     private fun ensureConsent() {
         val uid = prefs.userId
         lifecycleScope.launch {
+            var serverResponded = false
             var needs = true
             try {
                 val resp = ApiClient.getInstance(prefs.serverUrl).getConsent(uid)
-                if (resp.isSuccessful) needs = resp.body()?.needsConsent ?: true
-            } catch (_: Exception) { /* offline — show consent to be safe */ }
-            if (!needs) {
+                if (resp.isSuccessful && resp.body()?.success == true) {
+                    serverResponded = true
+                    val status = resp.body()!!
+                    if (!PrivacyText.matchesServerVersion(status.currentVersion)) {
+                        showConsentVersionMismatch()
+                        return@launch
+                    }
+                    needs = status.needsConsent
+                }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (_: Exception) {
+                /* offline: use only an already-accepted local version */
+            }
+            if (serverResponded && !needs) {
                 // Server already holds consent → local state is authoritative AND synced.
-                prefs.consentDone = true
-                prefs.consentVersion = PrivacyText.CONSENT_VERSION
-                prefs.consentSynced = true
+                if (prefs.saveAcceptedConsent(PrivacyText.CONSENT_VERSION)) {
+                    startMonitoring()
+                } else {
+                    showConsentDialog()
+                }
+            } else if (!serverResponded && consentCurrent()) {
+                // Preserve deliberate offline monitoring only for a policy this APK
+                // already accepted locally. A successful server response always wins.
                 startMonitoring()
             } else {
                 showConsentDialog()
             }
         }
+    }
+
+    /**
+     * A server policy this APK does not bundle must never be silently treated as the
+     * local policy. Update the app, then review the matching text and consent normally.
+     */
+    private fun showConsentVersionMismatch() {
+        if (isFinishing || isDestroyed) return
+        AlertDialog.Builder(this)
+            .setTitle("App update required")
+            .setMessage(
+                "The server uses a different privacy policy version. Update the Child " +
+                    "app before monitoring can continue."
+            )
+            .setCancelable(false)
+            .setPositiveButton("Close") { _, _ -> finishAffinity() }
+            .show()
     }
 
     private fun showConsentDialog() {
@@ -233,47 +293,86 @@ class HomeActivity : AppCompatActivity() {
                 Toast.makeText(this, "Monitoring requires consent. Exiting.", Toast.LENGTH_LONG).show()
                 finishAffinity()
             }
-            .setPositiveButton("I Agree") { _, _ -> grantConsent() }
+            .setPositiveButton("Continue with parent") { _, _ -> promptParentConsentPin() }
             .show()
     }
 
-    private fun grantConsent() {
-        val uid = prefs.userId
-        lifecycleScope.launch {
-            var synced = false
-            try {
-                val resp = ApiClient.getInstance(prefs.serverUrl)
-                    .postConsent(mapOf("user_id" to uid, "version" to PrivacyText.CONSENT_VERSION))
-                synced = resp.isSuccessful
-            } catch (_: Exception) { /* offline — re-synced on a later launch (see below) */ }
-            prefs.consentDone = true
-            prefs.consentVersion = PrivacyText.CONSENT_VERSION
-            // The parent's consent is a recorded fact the SERVER must hold (audit trail).
-            // If the POST didn't land, remember that so we retry — previously the local
-            // flag alone made consentCurrent() true and the server was never told.
-            prefs.consentSynced = synced
-            startMonitoring()
+    private fun promptParentConsentPin() {
+        val input = EditText(this).apply {
+            inputType = InputType.TYPE_CLASS_NUMBER or InputType.TYPE_NUMBER_VARIATION_PASSWORD
+            hint = "Parent PIN"
         }
+        val dialog = AlertDialog.Builder(this)
+            .setTitle("Parent approval required")
+            .setMessage("Ask your parent to enter their 4–6 digit family PIN.")
+            .setView(input)
+            .setCancelable(false)
+            .setPositiveButton("Approve", null)
+            .setNegativeButton("Back") { _, _ -> showConsentDialog() }
+            .create()
+        dialog.setOnShowListener {
+            dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener {
+                val pin = input.text?.toString()?.trim().orEmpty()
+                if (!pin.matches(Regex("""\d{4,6}"""))) {
+                    input.error = "Enter the 4–6 digit parent PIN"
+                } else {
+                    dialog.getButton(AlertDialog.BUTTON_POSITIVE).isEnabled = false
+                    input.error = null
+                    grantConsent(pin, dialog, input)
+                }
+            }
+        }
+        dialog.show()
     }
 
-    /** Re-send consent to the server if a previous grant didn't reach it (offline at the
-     *  time). Cheap no-op once synced. */
-    private fun syncConsentIfPending() {
-        if (!prefs.consentDone || prefs.consentSynced) return
+    private fun grantConsent(
+        parentPin: String,
+        dialog: AlertDialog,
+        input: EditText,
+    ) {
         val uid = prefs.userId
         lifecycleScope.launch {
-            try {
+            val accepted = try {
                 val resp = ApiClient.getInstance(prefs.serverUrl)
-                    .postConsent(mapOf("user_id" to uid, "version" to prefs.consentVersion))
-                if (resp.isSuccessful) prefs.consentSynced = true
-            } catch (_: Exception) { /* still offline — try again next launch */ }
+                    .postConsent(
+                        mapOf(
+                            "user_id" to uid,
+                            "version" to PrivacyText.CONSENT_VERSION,
+                            "parent_pin" to parentPin,
+                        )
+                    )
+                resp.isSuccessful && resp.body()?.success == true
+            } catch (e: CancellationException) {
+                throw e
+            } catch (_: Exception) {
+                false
+            }
+            if (accepted && prefs.saveAcceptedConsent(PrivacyText.CONSENT_VERSION)) {
+                if (dialog.isShowing) dialog.dismiss()
+                startMonitoring()
+            } else {
+                // Keep the same blocking dialog open. Recursively creating a fresh pair
+                // of dialogs on every failed POST leaked windows during lifecycle changes.
+                if (!isFinishing && !isDestroyed && dialog.isShowing) {
+                    dialog.getButton(AlertDialog.BUTTON_POSITIVE).isEnabled = true
+                    input.error = "Approval failed — check the PIN and connection"
+                    Toast.makeText(
+                        this@HomeActivity,
+                        "Parent approval was not accepted.",
+                        Toast.LENGTH_LONG,
+                    ).show()
+                }
+            }
         }
     }
 
     override fun onPause() {
-        super.onPause()
         uiHandler.removeCallbacks(bannerRefresh)
         uiHandler.removeCallbacks(todayRefresh)
+        ++todayLoadGeneration
+        todayLoadJob?.cancel()
+        todayLoadJob = null
+        super.onPause()
     }
 
     override fun onDestroy() {
@@ -299,7 +398,9 @@ class HomeActivity : AppCompatActivity() {
     override fun onOptionsItemSelected(item: MenuItem): Boolean = when (item.itemId) {
         R.id.action_settings -> {
             requireParentPin("open settings") {
-                startActivity(Intent(this, SettingsActivity::class.java))
+                startActivity(Intent(this, SettingsActivity::class.java).apply {
+                    putExtra(SettingsActivity.EXTRA_PARENT_UNLOCKED, true)
+                })
             }
             true
         }
@@ -333,7 +434,11 @@ class HomeActivity : AppCompatActivity() {
                         val resp = ApiClient.getInstance(prefs.serverUrl)
                             .verifyParentPin(mapOf("user_id" to prefs.userId, "pin" to pin))
                         resp.isSuccessful && resp.body()?.valid == true
-                    } catch (_: Exception) { false }
+                    } catch (e: CancellationException) {
+                        throw e
+                    } catch (_: Exception) {
+                        false
+                    }
                     if (ok) onSuccess()
                     else Toast.makeText(this@HomeActivity,
                         "Incorrect parent PIN", Toast.LENGTH_SHORT).show()
@@ -354,19 +459,36 @@ class HomeActivity : AppCompatActivity() {
         val sid = prefs.activeSessionId
         val uid = prefs.userId          // capture before logout() clears it
         lifecycleScope.launch {
-            if (sid != -1) {
-                try { ApiClient.getInstance(prefs.serverUrl).endSession(sid) } catch (_: Exception) {}
+            try {
+                if (sid != -1) {
+                    try {
+                        ApiClient.getInstance(prefs.serverUrl).endSession(sid)
+                    } catch (e: CancellationException) {
+                        throw e
+                    } catch (_: Exception) {
+                        // Best effort; local logout still completes in finally.
+                    }
+                }
+                // Tell the parent the child signed out — while the token is still valid.
+                if (uid != -1) {
+                    try {
+                        ApiClient.getInstance(prefs.serverUrl)
+                            .reportTamper(mapOf("user_id" to uid, "event" to "logout"))
+                    } catch (e: CancellationException) {
+                        throw e
+                    } catch (_: Exception) {
+                        // Best effort; local logout still completes in finally.
+                    }
+                }
+            } finally {
+                // Non-suspending local cleanup must happen even if Activity destruction
+                // cancels one of the best-effort server notifications.
+                prefs.logout()
+                if (!isFinishing && !isDestroyed) {
+                    startActivity(Intent(this@HomeActivity, LoginActivity::class.java))
+                    finishAffinity()
+                }
             }
-            // Tell the parent the child signed out — while the token is still valid.
-            if (uid != -1) {
-                try {
-                    ApiClient.getInstance(prefs.serverUrl)
-                        .reportTamper(mapOf("user_id" to uid, "event" to "logout"))
-                } catch (_: Exception) {}
-            }
-            prefs.logout()
-            startActivity(Intent(this@HomeActivity, LoginActivity::class.java))
-            finishAffinity()
         }
     }
 
@@ -381,7 +503,7 @@ class HomeActivity : AppCompatActivity() {
                 title = "Allow Usage Access",
                 message = "This lets the app detect which game you're playing and start tracking automatically — no manual tapping needed.\n\nTap 'Open Settings', find this app in the list, and toggle it ON.",
                 settingsIntent = Intent(Settings.ACTION_USAGE_ACCESS_SETTINGS),
-                onSkip = { if (!isNotificationListenerEnabled()) showNotifListenerDialog() else showAccessibilityDialog() }
+                onSkip = { advanceAfterUsage() }
             )
             !isNotificationListenerEnabled() -> showNotifListenerDialog()
             !isAccessibilityEnabled() -> showAccessibilityDialog()
@@ -392,11 +514,11 @@ class HomeActivity : AppCompatActivity() {
             // (it only appeared on a later launch once the keyboard happened to be set).
             // The anti-uninstall protection is too important to be gated behind an
             // optional keyboard, so it now reliably appears during first setup.
-            (!isDeviceAdminActive() && !prefs.deviceAdminOffered) -> {
+            !isDeviceAdminActive() && !prefs.deviceAdminOffered -> {
                 prefs.deviceAdminOffered = true     // optional + offered once, so it doesn't nag
                 showDeviceAdminDialog()
             }
-            (!isBatteryExempt() && !prefs.batteryExemptOffered) -> {
+            !isBatteryExempt() && !prefs.batteryExemptOffered -> {
                 prefs.batteryExemptOffered = true   // ask once; declining shouldn't nag
                 showBatteryExemptDialog()
             }
@@ -424,9 +546,9 @@ class HomeActivity : AppCompatActivity() {
             .setCancelable(false)
             .setPositiveButton("Allow") { _, _ ->
                 try {
-                    startActivity(Intent(
-                        Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS,
-                        android.net.Uri.parse("package:$packageName")))
+                    val request = Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS)
+                        .setData(android.net.Uri.parse("package:$packageName"))
+                    startActivity(request)
                 } catch (_: Exception) {
                     // Some OEMs hide the direct prompt — fall back to the list screen.
                     try {
@@ -486,12 +608,29 @@ class HomeActivity : AppCompatActivity() {
         permDialog = null
     }
 
+    /** Skip-chain mirror of checkRequiredPermissions after Usage Access. Previously a
+     *  skip here jumped straight to the accessibility dialog even when accessibility
+     *  was already granted, re-prompting for something the child had already enabled. */
+    private fun advanceAfterUsage() {
+        when {
+            !isNotificationListenerEnabled() -> showNotifListenerDialog()
+            !isAccessibilityEnabled() -> showAccessibilityDialog()
+            else -> advanceAfterAccessibility()
+        }
+    }
+
     private fun showNotifListenerDialog() {
         showPermissionDialog(
             title = "Allow Notification Access",
             message = "Tracks gaming app notifications so the app can detect cravings and urges.\n\nTap 'Open Settings', find this app, and toggle it ON.",
             settingsIntent = Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS),
-            onSkip = { if (!isAccessibilityEnabled()) showAccessibilityDialog() }
+            // Continue past accessibility when it's already granted — the bare
+            // if-without-else used to dead-end the chain here, so the device-admin,
+            // battery and keyboard steps were silently never offered on this path.
+            onSkip = {
+                if (!isAccessibilityEnabled()) showAccessibilityDialog()
+                else advanceAfterAccessibility()
+            }
         )
     }
 

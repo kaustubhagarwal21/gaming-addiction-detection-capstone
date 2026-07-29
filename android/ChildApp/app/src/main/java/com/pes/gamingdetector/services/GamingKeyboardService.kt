@@ -7,10 +7,9 @@ import android.view.View
 import android.view.inputmethod.EditorInfo
 import com.pes.gamingdetector.R
 import com.pes.gamingdetector.api.ApiClient
+import com.pes.gamingdetector.util.CaptureTargetLogic
 import com.pes.gamingdetector.util.ChatQueueLogic
 import com.pes.gamingdetector.util.ChatUploadQueue
-import com.pes.gamingdetector.util.ForegroundResolver
-import com.pes.gamingdetector.util.GameDetector
 import com.pes.gamingdetector.util.PrefsManager
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -39,14 +38,13 @@ class GamingKeyboardService : InputMethodService(), KeyboardView.OnKeyboardActio
     private lateinit var keyboardView: KeyboardView
     private lateinit var qwerty: Keyboard
     private lateinit var symbols: Keyboard
-    private lateinit var prefs: PrefsManager
+    private val prefs by lazy { PrefsManager(this) }
 
     private var caps = false
     private val buffer = StringBuilder()
     private val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
 
     override fun onCreateInputView(): View {
-        prefs = PrefsManager(this)
         qwerty = Keyboard(this, R.xml.qwerty)
         symbols = Keyboard(this, R.xml.symbols)
         keyboardView = layoutInflater.inflate(R.layout.keyboard_view, null) as KeyboardView
@@ -84,13 +82,14 @@ class GamingKeyboardService : InputMethodService(), KeyboardView.OnKeyboardActio
                 keyboardView.invalidateAllKeys()
             }
             10 -> {                                 // enter / send
-                flushCapture()
                 val action = currentInputEditorInfo?.imeOptions?.and(EditorInfo.IME_MASK_ACTION)
                     ?: EditorInfo.IME_ACTION_UNSPECIFIED
                 if (action != EditorInfo.IME_ACTION_NONE && action != EditorInfo.IME_ACTION_UNSPECIFIED) {
+                    flushCapture()
                     sendDefaultEditorAction(true)   // "Send" on chat fields
                 } else {
                     ic.commitText("\n", 1)
+                    buffer.append('\n')
                 }
             }
             32 -> {                                 // space
@@ -121,7 +120,8 @@ class GamingKeyboardService : InputMethodService(), KeyboardView.OnKeyboardActio
     /** True when the field being typed into is a password / sensitive input, so its
      *  contents must never be captured (game account logins, recovery codes, etc.). */
     private fun isSensitiveField(): Boolean {
-        val t = currentInputEditorInfo?.inputType ?: return false
+        val t = currentInputEditorInfo?.inputType ?: return true
+        if (t == android.text.InputType.TYPE_NULL) return true
         val cls = t and android.text.InputType.TYPE_MASK_CLASS
         val variation = t and android.text.InputType.TYPE_MASK_VARIATION
         val textPw = cls == android.text.InputType.TYPE_CLASS_TEXT && (
@@ -144,9 +144,14 @@ class GamingKeyboardService : InputMethodService(), KeyboardView.OnKeyboardActio
         val text = buffer.toString().trim()
         buffer.setLength(0)
         if (text.length < 3) return
+        if (!prefs.canMonitor()) return
         val sid = prefs.activeSessionId
         if (sid == -1) return
-        if (!GameDetector.isGame(this, ForegroundResolver.current(this))) return
+        val trackedPackage = prefs.activeSessionPackage
+        val editorPackage = currentInputEditorInfo?.packageName
+        // EditorInfo identifies the real input target and avoids the UsageStats cache
+        // race while a just-ended game session is still inside its grace period.
+        if (!CaptureTargetLogic.isExactSessionTarget(trackedPackage, editorPackage)) return
         scope.launch {
             try {
                 val resp = ApiClient.getInstance(prefs.serverUrl)

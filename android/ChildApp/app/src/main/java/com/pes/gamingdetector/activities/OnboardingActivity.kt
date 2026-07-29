@@ -11,7 +11,10 @@ import androidx.core.content.ContextCompat
 import com.pes.gamingdetector.databinding.ActivityOnboardingBinding
 import com.pes.gamingdetector.util.PrefsManager
 
-class OnboardingActivity : AppCompatActivity() {
+class OnboardingActivity : AuthenticatedActivity() {
+    // First-launch education intentionally precedes registration/login.
+    override fun authenticationRequired(): Boolean = false
+
     private lateinit var binding: ActivityOnboardingBinding
 
     private val notifPermLauncher = registerForActivityResult(
@@ -20,6 +23,7 @@ class OnboardingActivity : AppCompatActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        if (!ensureAuthenticatedOnCreate()) return
         binding = ActivityOnboardingBinding.inflate(layoutInflater)
         setContentView(binding.root)
 

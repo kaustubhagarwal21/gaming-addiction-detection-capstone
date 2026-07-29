@@ -31,7 +31,7 @@ import kotlinx.coroutines.withContext
  * Only shows user-installed launchable apps that aren't already detected as games, since
  * those are exactly the candidates a parent might need to add.
  */
-class ManageGamesActivity : AppCompatActivity() {
+class ManageGamesActivity : AuthenticatedActivity() {
 
     private lateinit var binding: ActivityManageGamesBinding
     private lateinit var prefs: PrefsManager
@@ -43,6 +43,7 @@ class ManageGamesActivity : AppCompatActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        if (!ensureAuthenticatedOnCreate()) return
         binding = ActivityManageGamesBinding.inflate(layoutInflater)
         setContentView(binding.root)
         prefs = PrefsManager(this)

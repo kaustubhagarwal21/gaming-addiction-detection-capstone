@@ -4,8 +4,11 @@ import android.accessibilityservice.AccessibilityService
 import android.accessibilityservice.AccessibilityServiceInfo
 import android.os.Handler
 import android.os.Looper
+import android.os.SystemClock
 import android.view.accessibility.AccessibilityEvent
+import android.view.accessibility.AccessibilityNodeInfo
 import com.pes.gamingdetector.api.ApiClient
+import com.pes.gamingdetector.util.CaptureTargetLogic
 import com.pes.gamingdetector.util.ChatQueueLogic
 import com.pes.gamingdetector.util.ChatUploadQueue
 import com.pes.gamingdetector.util.Constants
@@ -27,9 +30,15 @@ class ChatAccessibilityService : AccessibilityService() {
     private var lastTextChangeAt: Long = 0L
     private val EDIT_IDLE_FLUSH_MS = 4_000L  // submit a finished message after this idle
 
+    // ONE PrefsManager for the service's lifetime. Constructing it per accessibility
+    // event rebuilt the encrypted store + re-restored the auth token on EVERY key tap,
+    // on the accessibility main thread — real input lag on low-end phones. PrefsManager
+    // holds no cached values (all getters read through), so a long-lived instance
+    // always observes current state.
+    private val prefs by lazy { PrefsManager(this) }
+
     // ── IME-keystroke capture state ──────────────────────────────────────
     private val keystrokeBuffer = KeystrokeBuffer { sentence ->
-        val prefs = PrefsManager(this)
         submitChat(prefs, sentence, source = "ime_keystroke")
     }
     private val idleHandler = Handler(Looper.getMainLooper())
@@ -40,10 +49,11 @@ class ChatAccessibilityService : AccessibilityService() {
             // or a Send click, so the final typed message has no "sent" signal. If the
             // field has sat unchanged for a few seconds, treat it as a completed message.
             if (lastText.length >= 3 &&
-                System.currentTimeMillis() - lastTextChangeAt > EDIT_IDLE_FLUSH_MS
+                SystemClock.elapsedRealtime() - lastTextChangeAt > EDIT_IDLE_FLUSH_MS
             ) {
-                val prefs = PrefsManager(this@ChatAccessibilityService)
-                if (prefs.hasActiveSession()) submitChat(prefs, lastText, source = "keyboard")
+                if (prefs.canMonitor() && isTrackedGameForeground(prefs)) {
+                    submitChat(prefs, lastText, source = "keyboard")
+                }
                 lastText = ""
             }
             idleHandler.postDelayed(this, 1_000L)
@@ -79,11 +89,15 @@ class ChatAccessibilityService : AccessibilityService() {
         // Window state changes feed the foreground tracker, regardless of session.
         if (event.eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) {
             ForegroundTracker.update(event.packageName?.toString())
+            ForegroundResolver.invalidate()
             return
         }
 
-        val prefs = PrefsManager(this)
-        if (!prefs.hasActiveSession()) return
+        if (!prefs.canMonitor() || !prefs.hasActiveSession()) {
+            keystrokeBuffer.clear()
+            lastText = ""
+            return
+        }
 
         val srcPkg = event.packageName?.toString()
 
@@ -95,8 +109,7 @@ class ChatAccessibilityService : AccessibilityService() {
         if (event.eventType == AccessibilityEvent.TYPE_VIEW_CLICKED && srcPkg in imePackages) {
             // Reliable foreground check (UsageStats-backed, cached) so keystrokes are
             // captured while genuinely in a game and never while in another app.
-            val foreground = ForegroundResolver.current(this)
-            if (GameDetector.isGame(this, foreground)) {
+            if (isTrackedGameForeground(prefs) && focusedInputIsSafe(prefs)) {
                 val label = event.contentDescription?.toString()
                     ?: event.text.joinToString("").takeIf { it.isNotEmpty() }
                 keystrokeBuffer.handleKey(label)
@@ -110,7 +123,10 @@ class ChatAccessibilityService : AccessibilityService() {
         // and without this check, text typed in another app during that window (e.g. a
         // messaging app the child switched to) would be captured. The IME path above
         // already gates on this; the EditText path previously did not.
-        if (!GameDetector.isGame(this, ForegroundResolver.current(this))) {
+        val foreground = ForegroundResolver.currentFresh(this)
+        val trackedPackage = prefs.activeSessionPackage
+        if (!CaptureTargetLogic.isExactSessionTarget(trackedPackage, foreground) ||
+            !CaptureTargetLogic.isExactSessionTarget(trackedPackage, srcPkg)) {
             keystrokeBuffer.clear()
             lastText = ""
             return
@@ -127,12 +143,25 @@ class ChatAccessibilityService : AccessibilityService() {
 
         when (event.eventType) {
             AccessibilityEvent.TYPE_VIEW_TEXT_CHANGED -> {
+                // Dynamic HUD/chat-log TextViews emit this event too. Capture only the
+                // focused editable node owned by the exact package for this session.
+                val node = event.source
+                if (node == null || !node.isEditable || !node.isFocused ||
+                    node.isPassword ||
+                    !CaptureTargetLogic.isExactSessionTarget(
+                        trackedPackage,
+                        node.packageName?.toString()
+                    )) {
+                    keystrokeBuffer.clear()
+                    lastText = ""
+                    return
+                }
                 // A real EditText is handling this input, so it's authoritative — drop
                 // any parallel IME-keystroke accumulation to avoid submitting the same
                 // message twice (once as "keyboard", once as "ime_keystroke"). The IME
                 // path is only meant for canvas games that emit no TEXT_CHANGED events.
                 keystrokeBuffer.clear()
-                lastTextChangeAt = System.currentTimeMillis()
+                lastTextChangeAt = SystemClock.elapsedRealtime()
                 val newText = event.text.joinToString(" ").trim()
                 when {
                     newText.isEmpty() -> {
@@ -169,6 +198,7 @@ class ChatAccessibilityService : AccessibilityService() {
     }
 
     private fun submitChat(prefs: PrefsManager, message: String, source: String) {
+        if (!prefs.canMonitor() || !isTrackedGameForeground(prefs)) return
         val sessionId = prefs.activeSessionId
         if (sessionId == -1) return
         scope.launch {
@@ -185,6 +215,37 @@ class ChatAccessibilityService : AccessibilityService() {
                 // Network failure — queue it; PassiveMonitorService flushes when back online.
                 ChatUploadQueue.enqueue(this@ChatAccessibilityService, sessionId, message, source)
             }
+        }
+    }
+
+    /** Require the exact package attached to the active session, not merely "any game".
+     * During the monitor's hand-off delay, accepting any game attributes game B's text to
+     * game A's session. Legacy sessions without a stored package retain the old fallback. */
+    private fun isTrackedGameForeground(
+        prefs: PrefsManager,
+        foreground: String? = ForegroundResolver.currentFresh(this)
+    ): Boolean {
+        val tracked = prefs.activeSessionPackage
+        if (!CaptureTargetLogic.isExactSessionTarget(tracked, foreground)) return false
+        return GameDetector.isGame(this, foreground)
+    }
+
+    /** IME accessibility key events describe the keyboard key, not the target editor, so
+     * event.isPassword is false even while a game-login password is being typed. Fail
+     * closed unless the focused input node is available and explicitly non-password.
+     * Canvas games should use this app's own IME, which can inspect EditorInfo safely. */
+    private fun focusedInputIsSafe(prefs: PrefsManager): Boolean {
+        return try {
+            val focused = rootInActiveWindow?.findFocus(AccessibilityNodeInfo.FOCUS_INPUT)
+                ?: return false
+            focused.isEditable &&
+                !focused.isPassword &&
+                CaptureTargetLogic.isExactSessionTarget(
+                    prefs.activeSessionPackage,
+                    focused.packageName?.toString()
+                )
+        } catch (_: Exception) {
+            false
         }
     }
 

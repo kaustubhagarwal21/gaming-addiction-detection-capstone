@@ -16,16 +16,21 @@ import com.pes.gamingdetector.api.ApiClient
 import com.pes.gamingdetector.databinding.ActivitySessionHistoryBinding
 import com.pes.gamingdetector.util.PrefsManager
 import com.pes.gamingdetector.util.RiskPresentation
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
 import java.util.Locale
 
-class SessionHistoryActivity : AppCompatActivity() {
+class SessionHistoryActivity : AuthenticatedActivity() {
     private lateinit var binding: ActivitySessionHistoryBinding
     private lateinit var prefs: PrefsManager
+    private var loadJob: Job? = null
+    private var loadGeneration = 0L
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        if (!ensureAuthenticatedOnCreate()) return
         binding = ActivitySessionHistoryBinding.inflate(layoutInflater)
         setContentView(binding.root)
         prefs = PrefsManager(this)
@@ -36,16 +41,21 @@ class SessionHistoryActivity : AppCompatActivity() {
 
         binding.recyclerView.layoutManager = LinearLayoutManager(this)
         binding.swipeRefresh.setOnRefreshListener { loadHistory() }
+    }
+
+    override fun onAuthenticatedResume() {
         loadHistory()
     }
 
     private fun loadHistory() {
+        if (loadJob?.isActive == true) return
+        val generation = ++loadGeneration
         binding.progressBar.visibility = View.VISIBLE
-        lifecycleScope.launch {
+        loadJob = lifecycleScope.launch {
             try {
                 val api = ApiClient.getInstance(prefs.serverUrl)
                 val resp = api.getSessions(prefs.userId)
-                if (resp.isSuccessful) {
+                if (generation == loadGeneration && resp.isSuccessful) {
                     val sessions = resp.body() ?: emptyList()
                     if (sessions.isEmpty()) {
                         binding.tvEmpty.visibility = View.VISIBLE
@@ -56,13 +66,35 @@ class SessionHistoryActivity : AppCompatActivity() {
                         binding.recyclerView.adapter = SessionAdapter(sessions)
                     }
                 }
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
-                Toast.makeText(this@SessionHistoryActivity, "Load failed: ${e.message}", Toast.LENGTH_SHORT).show()
+                if (generation == loadGeneration) {
+                    Toast.makeText(
+                        this@SessionHistoryActivity,
+                        "Load failed: ${e.message}",
+                        Toast.LENGTH_SHORT,
+                    ).show()
+                }
             } finally {
-                binding.progressBar.visibility = View.GONE
-                binding.swipeRefresh.isRefreshing = false
+                if (generation == loadGeneration) {
+                    binding.progressBar.visibility = View.GONE
+                    binding.swipeRefresh.isRefreshing = false
+                    loadJob = null
+                }
             }
         }
+    }
+
+    override fun onStop() {
+        ++loadGeneration
+        loadJob?.cancel()
+        loadJob = null
+        if (::binding.isInitialized) {
+            binding.progressBar.visibility = View.GONE
+            binding.swipeRefresh.isRefreshing = false
+        }
+        super.onStop()
     }
 
     override fun onSupportNavigateUp(): Boolean { finish(); return true }

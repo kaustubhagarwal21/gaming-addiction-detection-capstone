@@ -20,8 +20,8 @@ android {
         applicationId "com.pes.parentmonitor"
         minSdk 26
         targetSdk 34
-        versionCode 16
-        versionName "2.1.5"
+        versionCode 17
+        versionName "2.1.6"
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
     }
 
@@ -79,15 +79,13 @@ dependencies {
     // Coroutines
     implementation 'org.jetbrains.kotlinx:kotlinx-coroutines-android:1.7.3'
     implementation 'androidx.lifecycle:lifecycle-runtime-ktx:2.7.0'
+    implementation 'androidx.work:work-runtime-ktx:2.9.1'
 
     // MPAndroidChart
     implementation 'com.github.PhilJay:MPAndroidChart:v3.1.0'
 
     // Firebase Cloud Messaging (push notifications)
-    // SETUP: Add google-services.json to app/ folder, then uncomment the plugin line in build.gradle
-    // and fill in your project values in ParentApp.kt initFirebase().
     implementation 'com.google.firebase:firebase-messaging:23.4.1'
-    implementation 'com.google.firebase:firebase-analytics:21.6.1'
 
     testImplementation 'junit:junit:4.13.2'
     androidTestImplementation 'androidx.test.ext:junit:1.1.5'

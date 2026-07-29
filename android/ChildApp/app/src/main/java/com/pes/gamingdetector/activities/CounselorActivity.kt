@@ -15,9 +15,11 @@ import com.pes.gamingdetector.api.ApiClient
 import com.pes.gamingdetector.api.CounselorMessage
 import com.pes.gamingdetector.databinding.ActivityCounselorBinding
 import com.pes.gamingdetector.util.PrefsManager
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 
-class CounselorActivity : AppCompatActivity() {
+class CounselorActivity : AuthenticatedActivity() {
 
     private lateinit var binding: ActivityCounselorBinding
     private lateinit var prefs: PrefsManager
@@ -26,6 +28,7 @@ class CounselorActivity : AppCompatActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        if (!ensureAuthenticatedOnCreate()) return
         binding = ActivityCounselorBinding.inflate(layoutInflater)
         setContentView(binding.root)
         prefs = PrefsManager(this)
@@ -65,6 +68,8 @@ class CounselorActivity : AppCompatActivity() {
                     adapter.notifyDataSetChanged()
                     binding.rvMessages.scrollToPosition(messages.size - 1)
                 }
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
                 Toast.makeText(this@CounselorActivity, "Couldn't load chat history", Toast.LENGTH_SHORT).show()
             }
@@ -106,14 +111,20 @@ class CounselorActivity : AppCompatActivity() {
                     adapter.notifyItemRemoved(typingIdx)
                     Toast.makeText(this@CounselorActivity, "Couldn't send message", Toast.LENGTH_SHORT).show()
                 }
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
                 messages.removeAt(typingIdx)
                 adapter.notifyItemRemoved(typingIdx)
                 Toast.makeText(this@CounselorActivity, "Couldn't send message", Toast.LENGTH_SHORT).show()
             } finally {
                 awaitingReply = false
-                binding.btnSend.isEnabled = true
-                if (messages.isNotEmpty()) binding.rvMessages.scrollToPosition(messages.size - 1)
+                if (isActive && !isFinishing && !isDestroyed) {
+                    binding.btnSend.isEnabled = true
+                    if (messages.isNotEmpty()) {
+                        binding.rvMessages.scrollToPosition(messages.size - 1)
+                    }
+                }
             }
         }
     }
