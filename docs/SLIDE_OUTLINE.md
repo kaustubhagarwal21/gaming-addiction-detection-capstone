@@ -120,8 +120,9 @@ the data ablation (slide 9) shows domain data mattered far more than architectur
 **Notes:** Pre-empt "57% is weak": chance on 4 classes is 25%; the interesting part
 is the 9-point gap — with random splits the model memorised *voices*, not emotions,
 and the split choice even flipped which model won the bake-off (SVM → HistGB). An
-honest 0.574 beats an inflated 0.657 in front of any examiner. Also: raw audio is
-deleted server-side after feature extraction; transcription never leaves the phone.
+honest 0.574 beats an inflated 0.657 in front of any examiner. Also: transcription
+happens on-device; its text and a short WAV segment are sent via HTTPS, and the raw
+audio is deleted server-side after feature extraction.
 Known gap, stated on slide 13: acted adult emotion ≠ child gaming speech.
 (DEFENSE_NOTES §4)
 
@@ -162,7 +163,7 @@ augmentation was measured and found neutral — we say so instead of hiding it.
 
 ## Slide 10 — Dataset Audit
 **On slide:**
-- Adopted: Gamers & Anxiety (13,464) · IGDS9-SF LatAm (11,191) · CONDA · Davidson · RAVDESS + CREMA-D + EMO-DB + URDU (12,864 clips)
+- Adopted: Gamers & Anxiety (13,464) · IGDS9-SF LatAm (11,191) · CONDA · Davidson · RAVDESS + CREMA-D + EMO-DB + URDU (9,817 original clips; 12,864 augmented feature rows)
 - Rejected **with evidence**: Kaggle "Predict Online Gaming Behavior" (synthetic, engagement ≠ addiction), "Mobile App Usage" (3/10 features, credential-walled)
 - Full audit table in paper §4.2
 
@@ -175,8 +176,8 @@ with-reasons more than adopted-without-reasons. (DEFENSE_NOTES §7)
 
 ## Slide 11 — Engineering Quality
 **On slide:**
-- **116 automated tests in CI**: 70 backend (run on BOTH SQLite & Postgres 16) + 46 Android JVM
-- Load-verified: 288 concurrent requests, **0 errors**, p50 91 ms
+- **256 automated tests in CI**: 168 backend (run on BOTH SQLite & Postgres 16) + 88 Android JVM
+- Load-verified: 288 concurrent requests, **0 errors**, p50 80 ms
 - Weekly drift monitor vs production DB (PSI/KS) — live, verified against Neon
 - Signed-token auth, rate limiting, authz regression tests
 

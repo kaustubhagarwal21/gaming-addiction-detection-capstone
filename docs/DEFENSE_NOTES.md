@@ -193,7 +193,8 @@ we split eval into a separate `--eval-csv` and note it as a fixed pitfall.
 **Q: Which datasets did you consider and why did you reject some?**
 Full audit table in paper §4.2. Adopted: Gamers & Anxiety survey (n=13,464), IGDS9-SF
 LatAm (n=11,191), CONDA (in-game chat, 8,974 labelled eval rows), Davidson hate-speech,
-RAVDESS + CREMA-D + EMO-DB + URDU (12,864 clips). Rejected with reasons: Kaggle
+RAVDESS + CREMA-D + EMO-DB + URDU (9,817 original clips; 12,864 augmented feature rows).
+Rejected with reasons: Kaggle
 "Predict Online Gaming Behavior" (provenance audit shows synthetic generation;
 engagement labels, not addiction), Kaggle "Mobile App Usage Behavior" (covers ~3 of
 our 10 features; credential-walled so not reproducible). We downloaded and inspected
@@ -207,8 +208,8 @@ evidence is in the paper.
 **Q: Can a Flask + SQLite backend on a 512 MB free tier actually handle this?**
 Measured: the concurrency smoke (`backend/scripts/concurrency_smoke.py`, 288 mixed
 requests across 24 threads against a real threaded server, including per-message chat
-scoring and live predictions) passes with **zero 5xx errors** — p50 91 ms, p95 686 ms,
-157 req/s on the dev machine (re-run 2026-07-06 with the current heavier chat
+scoring and live predictions) passes with **zero 5xx errors** — p50 80 ms, p95 609 ms,
+175 req/s on the dev machine (re-run 2026-07-30 with the current heavier chat
 vectorizer). The script is permanent and re-runnable; the same check against the
 deployed Render instance is the remaining step after each deploy. The DB layer is
 dual-dialect (SQLite/Postgres) so outgrowing SQLite is a config change, not a rewrite.
@@ -218,10 +219,11 @@ Signed HMAC bearer tokens (itsdangerous), role-separated: parent-only routes cal
 `deny_non_parent()`, per-user access calls `guard(user_id)`. `AUTH_ENFORCE` supports
 a shadow mode (log violations without breaking clients) → enforce rollout. Rate
 limiting via Flask-Limiter; tokens of deleted accounts are rejected by an existence
-check. 70 backend tests — run in CI against both SQLite and Postgres 16, the
+check. 168 backend tests — run in CI against both SQLite and Postgres 16, the
 production dialect — cover the authz matrix, including regression tests for the
-alert-ownership gap we found and fixed; 46 Android JVM unit tests guard the
-offline-queue, WAV, keystroke-reconstruction, and alert-triage logic.
+alert-ownership gap we found and fixed; 88 Android JVM unit tests guard the
+offline-session/capture-health logic, profile validation, risk presentation,
+offline queue, WAV, keystroke reconstruction, and alert-triage logic.
 
 **Q: Why sideloaded APKs instead of Play Store?**
 The ChildApp needs a NotificationListener + accessibility-adjacent capture that Play

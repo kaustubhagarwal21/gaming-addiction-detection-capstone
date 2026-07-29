@@ -46,11 +46,15 @@ actual product flow, not a shortcut.
   (re-run `adb reverse tcp:5000 tcp:5000` if the phone can't reach it).
 - **Reseed the Arjun/Priya demo data** if it's missing or you wiped it:
   - Local: `python seed_demo.py`
-  - Cloud: from `backend/`, set the Render external DB URL + pepper, then seed:
+  - Cloud: **only against a disposable demo/staging database** — the script
+    overwrites user ids 1 and 3 (names + PINs reset to the published demo
+    credentials) and deletes all their existing data, so it refuses to run on
+    Postgres unless you explicitly force it. Never point it at a database with
+    real pilot families. From `backend/`:
     ```powershell
-    $env:DATABASE_URL="<render external DB url>"; $env:PIN_PEPPER="<render PIN_PEPPER>"
+    $env:DATABASE_URL="<render external DB url>"; $env:PIN_PEPPER="<render PIN_PEPPER>"; $env:SEED_DEMO_FORCE="1"
     python3.11 seed_demo.py
-    $env:DATABASE_URL=""; $env:PIN_PEPPER=""
+    $env:DATABASE_URL=""; $env:PIN_PEPPER=""; $env:SEED_DEMO_FORCE=""
     ```
 
 ---

@@ -9,7 +9,7 @@
 >   language tweets; evaluated on CONDA's held-out validation split. PR-AUC 0.834; alert
 >   precision 0.950 at the re-derived threshold **0.90**. Scripts: `ml/eval_chat_conda.py`
 >   (eval + retrain), `ml/ablation_studies.py`.
-> - **Voice**: trained on **RAVDESS + CREMA-D + EMO-DB + URDU** (9,817 clips, 163 speakers,
+> - **Voice**: trained on **RAVDESS + CREMA-D + EMO-DB + URDU** (9,817 clips, 154 speakers,
 >   3 languages) through the serving extractor; **speaker-independent** held-out accuracy
 >   0.574 (the honest protocol — random splits inflated it by ~9 points). Script:
 >   `ml/train_voice_real.py`. TESS was assessed and skipped (2 elderly speakers,

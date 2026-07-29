@@ -1,4 +1,8 @@
 {
+  "status": "historical_exploratory_snapshot",
+  "analysis_unit": "prediction",
+  "rerun_required": "The audited script now uses one final completed-session prediction and the full 37-point weight grid. The production pilot database is required to regenerate this artifact.",
+  "grid_note": "These retained historical numbers used 23 interior grid points; floating-point boundary comparisons omitted 14 endpoint combinations.",
   "n": 1961,
   "replication_max_abs_diff": 0.0001,
   "baseline_shares": {

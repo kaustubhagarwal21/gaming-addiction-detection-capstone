@@ -1,6 +1,6 @@
 # Privacy Policy — Gaming Wellbeing Monitor (PW26_SJ_05)
 
-_Last updated: 2026-06-14 · Consent version: 2026-06-01_
+_Last updated: 2026-07-30 · Consent version: 2026-07-30_
 
 This is a **parental wellbeing tool**: a parent installs the Child app on their
 child's device to understand the child's gaming patterns and emotional wellbeing,
@@ -22,11 +22,13 @@ it, how long it is kept, and how to delete it.
   used for tone/toxicity signals. We capture what the child types, not the
   messages of other players.
 - **Short voice clips during a gaming session** — used to estimate emotional
-  arousal/tone. **Raw audio is processed into numeric features and then deleted**
-  immediately (it is not stored or sent anywhere) unless a developer explicitly
-  enables retention for testing. The **spoken words are also transcribed to text
-  and kept** (the transcript, not the audio), so the emotional tone of what was
-  said can be read.
+  arousal/tone. A clip is sent over the configured HTTPS connection to this
+  project's backend, processed into emotion/features, and then deleted there by
+  default. The derived emotion/features are retained. A local developer can
+  explicitly enable temporary raw-audio retention for testing; that option must
+  not be used with participant data without separate approval. The **spoken words
+  are also transcribed on the device and the transcript is sent and kept**, so the
+  emotional tone of what was said can be read.
 
 **Also collected more broadly (including between sessions), as sleep-disruption and
 craving signals:**
@@ -50,17 +52,28 @@ indicators are **screening signals, not a diagnosis.**
 
 ## Who can see it
 
-Only the **parent linked to that child** (the parent signs in with the family **code +
-PIN**). The server authenticates every request with a signed token and authorizes by
-ownership — a parent can only access **their own** children's data, never another
-family's — and applies a **role** check so parent-only actions and views (the alerts
-feed, dashboards, reports, feedback, limits, nudges, PIN change, deletion) cannot be
-reached with a child's token. PINs are stored as keyed hashes, never in plaintext. In
-production all traffic is over HTTPS.
+The child can see their own wellbeing dashboard and voluntary check-ins. A linked
+**parent** (signed in with the family **code + PIN**) can see that family's monitoring
+insights. The server authenticates every request with a signed token and authorizes by
+family ownership, and applies a **role** check so parent-only actions and views (the
+alerts feed, parent dashboards, reports, feedback, limits, nudges, PIN change and
+deletion) cannot be reached with a child's token.
+
+The backend hosting provider stores/processes the uploaded data, and authorised
+project operators can technically administer that service for support and research
+maintenance. The Parent app also uses **Google Firebase Cloud Messaging (FCM)** for
+optional push delivery. Firebase processes the Parent device's push token and the
+notification payload needed to deliver an alert (alert title/text and routing fields
+such as child identifier/name, alert type, severity and alert identifier). Push
+delivery does not send raw voice clips or the child's chat transcript to Firebase;
+alerts remain available through the authenticated in-app polling path when push is
+not configured. Data is not sold or shared for advertising. PINs are stored as keyed
+hashes, never in plaintext. Production traffic uses HTTPS.
 
 ## How long it is kept (retention)
 
-**Raw audio is always deleted right after feature extraction** — it is never stored.
+In production, **raw audio is deleted right after feature extraction**. The
+developer-only `KEEP_AUDIO` option described above is off by default.
 
 Everything else collected (sessions, chat text, voice-emotion features, screen and
 notification events, predictions and alerts) is **kept while the child's account is
@@ -86,8 +99,9 @@ take effect immediately and permanently.
 ## Consent
 
 Setting up monitoring requires the parent to **review and accept** this policy on
-first launch (recorded with a timestamp and version). Monitoring does not begin
-until consent is given. If the policy changes, consent is requested again.
+the Child device and confirm with the family PIN (recorded with a timestamp and
+version). Monitoring does not begin until consent is given. If the policy changes,
+consent is requested again.
 
 ## Important limitations (stated honestly)
 

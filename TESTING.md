@@ -10,10 +10,12 @@ cloud check, and an on-device manual checklist. Run the automated layers any tim
 
 | Command | What it proves | Expected |
 |---|---|---|
-| `python -m pytest tests/ -q` | 70-test suite: API contracts, dashboards, feedback (incl. alert-ownership guards), auth shadow mode, input robustness, malformed-request 400s, session-level toxicity-streak alert, the parent-only data export (secrets excluded, scope = deletion scope), ML-unit tests (shared audio extractor, noisy-OR fusion, Hinglish lexicon, deleted-account token check, threshold-tuner math, punctuation-robust keyword channel, tuner-default sync), and regression tests from the external-review round (atomic session-end race, same-day streak spoiling, FCM re-register/unregister isolation, NaN limit rejection, sleep-impact evidence rules, counselor-history window, empty-reflection 400), and the risk-consistency contract (every aggregate surface incl. the rendered PDF pinned to the same duration-weighted latest-day figure; legacy alert wording normalised), and parent-only child-profile editing (name/age/PIN via /api/user/update; a child token is 403'd — age drives the peer comparison and limit caps, so it is not child-editable), and the voice-probs shadow logging contract (full acoustic distribution stored per event; served output unchanged) — isolated throwaway DB | `70 passed` |
-| `python scripts/functional_sweep.py` | **81 checks in production mode** (`AUTH_ENFORCE=1`, real tokens): registration/family joins, role guards (child token blocked from family-PIN change, data deletion, set-limit, nudge, feedback, alerts feed + mark-read, parent dashboards/reports/anomalies, **family roster**, analyse-chat utility), consent, session lifecycle + observation mode + **idempotent re-end carrying full sub-scores**, chat de-dupe + toxicity alert + auto language-nudge, full nudge lifecycle (delivered exactly once), real WAV voice upload (silence floor, raw-audio deletion, late re-score), stale-session self-healing (incl. heartbeat-aware close + one-open-session invariant), heartbeat watchdog **with child-local quiet hours**, tamper events (logout clears monitoring status; re-login alerts the parent; admin-disable attempt flips the uninstall-protection flag), **capture-permission revocation raises a one-shot `permission` alert (no re-spam while still off)**, feedback agreement + re-rating, dashboards/PDF, parent-controlled deletion | `81/81 checks passed` |
+| `python -m pytest tests/ -q` | 168-test suite: API/OpenAPI contracts, dashboards and canonical risk roll-ups, credential-version revocation, parent/child authorization, strict request validation, consent, session finalization/backfill races, notifications/FCM identity and stale-token pruning, feedback/export/deletion privacy (incl. verdicts on risk-revision and toxicity-streak alerts), SQLite/Postgres compatibility, PDF generation, and ML/audio/text helper regressions — isolated throwaway DB | `168 passed` |
+| `python scripts/functional_sweep.py` | **82 checks in production mode** (`AUTH_ENFORCE=1`, real tokens): registration/family joins, role guards, Family-PIN-authorized current-version consent, session lifecycle + observation mode + idempotent re-end, chat de-dupe/toxicity/nudges, WAV voice upload and late re-score, stale-session healing, heartbeat/tamper/permission alerts, feedback re-rating, dashboards/PDF, and parent-controlled deletion | `82/82 checks passed` |
 | `python scripts/cloud_e2e.py` | **25 checks against the LIVE Render deployment**: every screen's endpoint with real parent/child tokens, PDF bytes, cross-user 403 / no-token 401 guards | `25/25 passed` |
-| `python scripts/concurrency_smoke.py` | 288 mixed requests / 24 threads against a real threaded server (chat scoring + live predictions included) — re-run after any change to per-request cost | `zero server errors` (last: p50 91 ms, p95 686 ms) |
+| `python scripts/concurrency_smoke.py` | 288 mixed requests / 24 threads against a real threaded server (chat scoring + live predictions included) — re-run after any change to per-request cost | `zero server errors` (last: p50 80 ms, p95 609 ms) |
+| `docker build -t capstone-backend .` then run `/api/health` | Production image builds, starts as the non-root user, can create its local SQLite fallback, and loads every model | `"status":"ok", "models_loaded":true` |
+| `python scripts/pg_smoketest.py` with a throwaway Postgres 16 `DATABASE_URL` | Production database dialect, schema initialization, login, family authorization, and parent/child role guards | `ALL PASSED` |
 
 Notes
 - The first `cloud_e2e` call may take ~30–60 s if the free instance was asleep.
@@ -29,7 +31,12 @@ Notes
 ```
 .\gradlew.bat testDebugUnitTest
 ```
-46 tests across the two apps pin the pure decision logic: offline-session backfill rules (OfflineSessionLogic), profile-edit validation (ProfileValidation), the shared risk-label presentation (RiskPresentation, both apps), the offline chat queue's
+88 tests across the two apps (56 Child, 32 Parent) pin the pure decision logic:
+offline-session backfill and persisted capture-health rules
+(OfflineSessionLogic/CaptureHealthLogic), profile-edit validation
+(`ProfileValidation`), auth revision/origin handling, server URL validation,
+notification routing/unread totals, the shared risk-label presentation
+(`RiskPresentation`, both apps), the offline chat queue's
 delivered-or-deliberately-dropped semantics (`ChatQueueLogic`), the WAV container
 header the voice channel depends on (`WavUtil`), IME keystroke-to-sentence
 reconstruction incl. the word-vs-key regression (`KeystrokeBuffer`), and the
@@ -79,7 +86,8 @@ signed release APKs from `android/*/app/build/outputs/apk/release/app-release.ap
       any relapse here is critical.)*
 - [ ] **Register** a child (leave family code blank) → family-code dialog appears;
       note the code.
-- [ ] **Consent dialog** → I Agree → permission chain walks through Usage access,
+- [ ] **Consent dialog** → I Agree → enter the Family PIN → server confirms the
+      current consent version → permission chain walks through Usage access,
       Notification access, Accessibility, optional Device Admin, battery exemption,
       Wellbeing Keyboard (enable + select). Each "Skip" advances, nothing loops.
       Device Admin + battery come BEFORE the keyboard steps on purpose — they used
