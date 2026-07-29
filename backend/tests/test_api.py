@@ -678,6 +678,29 @@ def test_session_chat_score_is_max_of_messages(client, monkeypatch):
     assert pred['chat_score'] == pytest.approx(0.9, abs=0.01)
 
 
+def test_voice_stt_not_counted_as_typed_chat(client):
+    """Spoken transcripts (source=voice_stt) are the voice channel's words — chat_count
+    and the chat-analysis totals must report TYPED chat only, while the labeled
+    recent-messages sample keeps both and toxic speech still alerts at upload."""
+    sid = client.post('/api/session/start',
+                      json={'user_id': 1, 'game_name': 'BGMI'}).get_json()['session_id']
+    client.post(f'/api/session/{sid}/chat',
+                json={'message': 'typed hello line', 'source': 'keyboard'})
+    client.post(f'/api/session/{sid}/chat',
+                json={'message': 'spoken transcript line', 'source': 'voice_stt'})
+
+    rows = client.get('/api/sessions?user_id=1&limit=10').get_json()
+    row = next(r for r in rows if r['session_id'] == sid)
+    assert row['chat_count'] == 1                      # typed only
+
+    dash = client.get('/api/dashboard/chat_analysis?user_id=1').get_json()
+    assert dash['stats']['spoken_messages'] >= 1       # speech reported separately
+    dist = dash['toxicity_distribution']
+    # Totals and distribution share the same window + typed-only filter, so the
+    # buckets must sum to the headline count (they diverged when speech was mixed in).
+    assert dash['stats']['total_messages'] == dist['high'] + dist['medium'] + dist['safe']
+
+
 def test_toxicity_streak_session_alert(client, monkeypatch):
     """Three moderately-toxic messages (below the per-message alert bar) in one session
     must raise exactly ONE aggregate 'toxicity_streak' alert — and never a second."""

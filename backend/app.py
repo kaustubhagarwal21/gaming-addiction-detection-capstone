@@ -4815,7 +4815,11 @@ def get_session(sid):
 
     c.execute('SELECT * FROM predictions WHERE session_id=? ORDER BY id DESC LIMIT 1', (sid,))
     pred = c.fetchone()
-    c.execute('SELECT COUNT(*) AS n FROM chat_messages WHERE session_id=?', (sid,))
+    # chat_count means TYPED chat. Spoken words arrive as source='voice_stt' rows and
+    # already show up in voice_count via their voice_events — counting the transcript
+    # here too double-reported one utterance across both badges.
+    c.execute('''SELECT COUNT(*) AS n FROM chat_messages WHERE session_id=?
+                 AND (source IS NULL OR source <> 'voice_stt')''', (sid,))
     n_chat = c.fetchone()['n']
     c.execute('''SELECT COUNT(*) AS n FROM voice_events
                  WHERE session_id=? AND COALESCE(capture_valid, 1)=1''', (sid,))
@@ -4841,8 +4845,11 @@ def list_sessions():
     limit = _bounded_query_int('limit', 50, 1, 200)
     conn = get_db()
     c    = conn.cursor()
+    # chat_count = TYPED chat only (voice_stt transcripts are the voice channel's words
+    # and already counted through voice_events — see get_session for the rationale).
     c.execute('''SELECT s.*,
-                 (SELECT COUNT(*) FROM chat_messages  WHERE session_id=s.session_id) AS chat_count,
+                 (SELECT COUNT(*) FROM chat_messages  WHERE session_id=s.session_id
+                  AND (source IS NULL OR source <> 'voice_stt')) AS chat_count,
                  (SELECT COUNT(*) FROM voice_events WHERE session_id=s.session_id
                   AND COALESCE(capture_valid, 1)=1) AS voice_count
                  FROM sessions s WHERE s.user_id=? ORDER BY s.start_time DESC LIMIT ?''',
@@ -5644,24 +5651,38 @@ def chat_analysis_dashboard():
     conn    = get_db()
     c       = conn.cursor()
 
-    # Total messages and average toxicity
-    c.execute('''SELECT COUNT(*) AS total_messages,
-                 ROUND(AVG(cm.confidence),3) AS avg_toxicity
+    # Total messages and average toxicity — TYPED chat only. Spoken words arrive as
+    # source='voice_stt' rows; counting them here presented speech transcripts as typed
+    # chat volume (a parent reading "214 messages" when 180 were spoken is misled).
+    # They stay visible in the labeled recent-messages sample below, and toxic SPEECH
+    # still raises the same per-message/streak alerts at upload — this is a counting
+    # fix, not a detection change. spoken_messages reports the transcript volume
+    # separately so the signal isn't hidden.
+    c.execute('''SELECT
+                   SUM(CASE WHEN cm.source IS NULL OR cm.source <> 'voice_stt'
+                       THEN 1 ELSE 0 END) AS total_messages,
+                   ROUND(AVG(CASE WHEN cm.source IS NULL OR cm.source <> 'voice_stt'
+                       THEN cm.confidence END),3) AS avg_toxicity,
+                   SUM(CASE WHEN cm.source = 'voice_stt' THEN 1 ELSE 0 END) AS spoken_messages
                  FROM chat_messages cm JOIN sessions s ON s.session_id=cm.session_id
                  WHERE s.user_id=? AND cm.timestamp>=?''', (user_id, since))
     stats = dict(c.fetchone() or {})
+    stats['total_messages'] = int(stats.get('total_messages') or 0)
+    stats['spoken_messages'] = int(stats.get('spoken_messages') or 0)
 
     # Toxicity label distribution over the SAME 30-day window as the stats above — same
     # bands the rest of the system uses ('toxic' at the alert threshold, 'borderline' at
     # 0.4; see analyse_chat). Computed in SQL over the whole window, not from the 20-row
     # sample below: deriving it from "latest 20 all-time" mislabelled the distribution as
-    # a 30-day figure and ignored every older message in the period.
+    # a 30-day figure and ignored every older message in the period. Typed-only, matching
+    # total_messages, so the pie always sums to the count beside it.
     c.execute('''SELECT
                    SUM(CASE WHEN cm.confidence>=?                         THEN 1 ELSE 0 END) AS high,
                    SUM(CASE WHEN cm.confidence>=0.4 AND cm.confidence<?    THEN 1 ELSE 0 END) AS medium,
                    SUM(CASE WHEN cm.confidence<0.4 OR cm.confidence IS NULL THEN 1 ELSE 0 END) AS safe
                  FROM chat_messages cm JOIN sessions s ON s.session_id=cm.session_id
-                 WHERE s.user_id=? AND cm.timestamp>=?''',
+                 WHERE s.user_id=? AND cm.timestamp>=?
+                 AND (cm.source IS NULL OR cm.source <> 'voice_stt')''',
               (CHAT_ALERT_T, CHAT_ALERT_T, user_id, since))
     drow = dict(c.fetchone() or {})
 
@@ -6713,8 +6734,14 @@ def weekly_report_pdf():
     mrow = dict(c.fetchone() or {})
 
     # Chat insights this week (chat_messages.timestamp is local isoformat, same as since7).
-    c.execute('''SELECT COUNT(*) AS total,
-                 SUM(CASE WHEN cm.confidence>=? THEN 1 ELSE 0 END) AS toxic
+    # Typed and spoken (voice_stt transcript) lines are counted SEPARATELY — the PDF's
+    # "Chat lines captured" previously lumped speech transcripts into the typed figure.
+    c.execute('''SELECT
+                 SUM(CASE WHEN cm.source IS NULL OR cm.source <> 'voice_stt'
+                     THEN 1 ELSE 0 END) AS total,
+                 SUM(CASE WHEN (cm.source IS NULL OR cm.source <> 'voice_stt')
+                     AND cm.confidence>=? THEN 1 ELSE 0 END) AS toxic,
+                 SUM(CASE WHEN cm.source = 'voice_stt' THEN 1 ELSE 0 END) AS spoken
                  FROM chat_messages cm JOIN sessions s ON s.session_id=cm.session_id
                  WHERE s.user_id=? AND cm.timestamp>=?''', (CHAT_ALERT_T, user_id, since7))
     crow = dict(c.fetchone() or {})
@@ -6909,14 +6936,17 @@ def weekly_report_pdf():
     pdf.ln(4)
 
     # Chat & voice insights this week
-    chat_total = crow.get('total') or 0
-    chat_toxic = crow.get('toxic') or 0
+    chat_total  = int(crow.get('total') or 0)
+    chat_toxic  = int(crow.get('toxic') or 0)
+    chat_spoken = int(crow.get('spoken') or 0)
     pdf.set_font('Helvetica', 'B', 13)
     pdf.cell(0, 8, 'Chat & Voice Insights', ln=True)
     pdf.set_font('Helvetica', '', 11)
     pdf.set_x(pdf.l_margin)
     pdf.multi_cell(pdf.epw, 6, _latin1(
-        f"  Chat lines captured: {chat_total}    Flagged toxic (>={int(CHAT_ALERT_T * 100)}%): {chat_toxic}"))
+        f"  Typed chat lines captured: {chat_total}    "
+        f"Flagged toxic (>={int(CHAT_ALERT_T * 100)}%): {chat_toxic}    "
+        f"Spoken lines transcribed: {chat_spoken}"))
     pdf.set_x(pdf.l_margin)
     if voice_rows:
         emos = ", ".join(f"{r['emotion']} ({r['n']})" for r in voice_rows[:4])

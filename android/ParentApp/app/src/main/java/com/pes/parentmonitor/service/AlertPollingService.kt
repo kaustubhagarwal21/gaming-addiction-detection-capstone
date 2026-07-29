@@ -121,12 +121,12 @@ class AlertPollingService : Service() {
         val worst = AlertTriage.worstOf(newAlerts) ?: return
         // Only advance after Android accepted the notification. A disabled app/channel
         // keeps the backlog pending so it can surface once the parent enables alerts.
-        if (sendAlertNotification(worst, child)) {
+        if (sendAlertNotification(worst, child, newAlerts.size)) {
             prefs.advanceLastNotifiedAlertId(child.userId, newAlerts.maxOf { it.id })
         }
     }
 
-    private fun sendAlertNotification(alert: Alert, child: ChildInfo): Boolean {
+    private fun sendAlertNotification(alert: Alert, child: ChildInfo, newCount: Int): Boolean {
         val channelId = NotificationRouting.channelFor(alert.type, alert.severity)
         if (!NotificationSupport.canPost(this, channelId)) return false
         // Alert ids are globally unique. The former 31*child+alert arithmetic collided
@@ -145,7 +145,9 @@ class AlertPollingService : Service() {
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
         val notification = NotificationCompat.Builder(this, channelId)
-            .setContentTitle("Gaming alert · ${child.name}")
+            // Batch-aware title ("3 new alerts · Arjun"): the batch collapses to one
+            // card by design, but its size must never be hidden from the parent.
+            .setContentTitle(AlertTriage.notificationTitle(child.name, newCount))
             .setContentText(alert.message)
             .setStyle(NotificationCompat.BigTextStyle().bigText(alert.message))
             .setSmallIcon(R.drawable.ic_alert)

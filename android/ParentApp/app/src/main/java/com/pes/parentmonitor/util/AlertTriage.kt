@@ -28,6 +28,14 @@ object AlertTriage {
     /** The single alert worth one notification: highest severity wins. */
     fun worstOf(alerts: List<Alert>): Alert? = alerts.maxByOrNull { severityRank(it.severity) }
 
+    /** Title for the one notification a poll batch produces. A burst deliberately
+     *  collapses to a single card (anti-spam; worst severity is shown), but the title
+     *  must carry the count — a parent seeing one card for three alerts otherwise has
+     *  no cue that more are waiting in the app's alert list. */
+    fun notificationTitle(childName: String, newCount: Int): String =
+        if (newCount <= 1) "Gaming alert · $childName"
+        else "$newCount new alerts · $childName"
+
     /** Only elevated levels notify; a drop back to casual is visible in the app. */
     fun isNotifyWorthyRisk(risk: String): Boolean =
         risk.lowercase() in listOf("at_risk", "addicted")

@@ -70,6 +70,15 @@ class AlertTriageTest {
     }
 
     @Test
+    fun `notification title carries the batch count`() {
+        // A burst collapses to one card (worst severity wins), so the title must say
+        // how many alerts arrived — a lone card for three alerts hid the other two.
+        assertEquals("Gaming alert · Arjun", AlertTriage.notificationTitle("Arjun", 1))
+        assertEquals("Gaming alert · Arjun", AlertTriage.notificationTitle("Arjun", 0))
+        assertEquals("3 new alerts · Arjun", AlertTriage.notificationTitle("Arjun", 3))
+    }
+
+    @Test
     fun `feedback covers every model assessment but not operational events`() {
         listOf("risk", "RISK_REVISION", "toxicity", "toxicity_streak").forEach {
             assertTrue("$it should be rateable", AlertTriage.isFeedbackEligible(it))

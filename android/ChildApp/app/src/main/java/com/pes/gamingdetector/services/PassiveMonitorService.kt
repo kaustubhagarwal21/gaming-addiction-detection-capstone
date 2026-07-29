@@ -173,6 +173,15 @@ class PassiveMonitorService : Service() {
     // near-real-time instead of waiting out the ~5-min periodic heartbeat. "" = not yet
     // sent, so the first change always reports.
     @Volatile private var lastStatusKey: String = ""
+    // Last ATTEMPTED key + when (elapsedRealtime). While offline / during a backend
+    // cold start, lastStatusKey never becomes current, and the fast 5-second poll loop
+    // used to re-fire a doomed network POST on every tick — indefinitely — draining the
+    // child's battery. A retry of the SAME failing key now waits HEARTBEAT_RETRY_MS;
+    // a genuine flag CHANGE (different key) still reports instantly, and the 3-minute
+    // heartbeatLoop keeps its unconditional cadence either way.
+    @Volatile private var lastAttemptKey: String = ""
+    @Volatile private var lastAttemptElapsedMs: Long = 0L
+    private val HEARTBEAT_RETRY_MS = 60_000L
 
     /** Current device-admin + capture-permission flags. Voice uses u while unknown. */
     private fun statusKey(): String =
@@ -189,6 +198,8 @@ class PassiveMonitorService : Service() {
     private suspend fun sendHeartbeat() {
         if (!prefs.isLoggedIn() || prefs.userId == -1) return
         val key = statusKey()
+        lastAttemptKey = key
+        lastAttemptElapsedMs = android.os.SystemClock.elapsedRealtime()
         try {
             val tzMin = java.util.TimeZone.getDefault().getOffset(System.currentTimeMillis()) / 60000
             val body = mutableMapOf<String, Any>(
@@ -306,9 +317,11 @@ class PassiveMonitorService : Service() {
         if (prefs.lastCaptureBits != bits) prefs.lastCaptureBits = bits
         when (CaptureHealthLogic.loss(prev, bits)) {
             CaptureHealthLogic.Loss.KEYBOARD -> notifyReenable(
+                NOTIF_ID + 7,
                 "Wellbeing Keyboard turned off",
                 "In-game chat capture is paused. Tap to switch it back on.")
             CaptureHealthLogic.Loss.ACCESSIBILITY -> notifyReenable(
+                NOTIF_ID + 8,
                 "Chat monitoring turned off",
                 "Accessibility was disabled. Tap to re-enable gaming-wellbeing monitoring.")
             null -> Unit
@@ -316,11 +329,13 @@ class PassiveMonitorService : Service() {
     }
 
     /** One-tap self-heal: opens HomeActivity, which re-runs the permission chain and shows
-     *  the exact re-enable dialog. Same notification-permission tolerance as showNudge. */
-    private fun notifyReenable(title: String, text: String) {
+     *  the exact re-enable dialog. Same notification-permission tolerance as showNudge.
+     *  Distinct id per loss kind: with a shared id, losing accessibility after the
+     *  keyboard replaced the keyboard prompt before the child could act on it. */
+    private fun notifyReenable(notificationId: Int, title: String, text: String) {
         try {
             val pi = PendingIntent.getActivity(
-                this, 2, Intent(this, HomeActivity::class.java),
+                this, notificationId, Intent(this, HomeActivity::class.java),
                 PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
             val notif = NotificationCompat.Builder(this, Constants.CHANNEL_ALERTS)
                 .setSmallIcon(R.drawable.ic_launcher)
@@ -331,7 +346,7 @@ class PassiveMonitorService : Service() {
                 .setContentIntent(pi)
                 .setAutoCancel(true)
                 .build()
-            NotificationManagerCompat.from(this).notify(NOTIF_ID + 7, notif)
+            NotificationManagerCompat.from(this).notify(notificationId, notif)
         } catch (_: SecurityException) { /* notifications not permitted — skip */ }
     }
 
@@ -453,7 +468,15 @@ class PassiveMonitorService : Service() {
                 // last report, push a heartbeat NOW (this loop ticks every 5 s with the
                 // screen on — i.e. exactly when the user is in Settings toggling things) so
                 // the parent's monitoring-health view updates within seconds, not ~5 min.
-                if (statusKey() != lastStatusKey) sendHeartbeat()
+                // Backoff: only when the key actually CHANGED since the last attempt, or
+                // the same-key retry window elapsed — never a failed POST per 5 s tick.
+                val key = statusKey()
+                if (key != lastStatusKey &&
+                    (key != lastAttemptKey ||
+                        android.os.SystemClock.elapsedRealtime() - lastAttemptElapsedMs >=
+                            HEARTBEAT_RETRY_MS)) {
+                    sendHeartbeat()
+                }
                 checkCaptureRegression()
             }
             // Poll fast (5s) only when it matters — the screen is on, or a session is
