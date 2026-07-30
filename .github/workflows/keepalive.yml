@@ -13,9 +13,13 @@ name: keep-backend-warm
 # Also note: GitHub auto-disables scheduled workflows after 60 days of repo inactivity,
 # so for a long-dormant repo, re-enable it (or push any commit) ~a week before the demo.
 
+# SCHEDULE DISABLED 2026-07-30: the 14-min ping kept Render awake 24/7, whose
+# connection pool held open Postgres connections, which prevented Neon's compute
+# from ever auto-suspending — burning the entire 100 CU-hr/month free allowance by
+# Jul 30 and pausing the database. Cost chain: warm Render -> open pool conns ->
+# no Neon scale-to-zero. Warm up manually before a demo instead (button below or
+# open the app once); both apps already tolerate the 60-90s cold start by design.
 on:
-  schedule:
-    - cron: '*/14 * * * *'   # every 14 min (under the 15-min sleep threshold)
   workflow_dispatch:          # manual "wake it now" button in the Actions tab
 
 jobs:
