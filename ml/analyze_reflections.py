@@ -45,19 +45,29 @@ def _connect():
     return conn
 
 
+# The seeded demo family. seed_demo.py CONSTRUCTS their reflections to track their
+# seeded risk ("mood degrades as risk escalates"), so including them reports a
+# perfect-looking correlation that is an artifact of the seed script, not evidence.
+# On the production DB (which carries the demo accounts alongside real pilot
+# children) this exclusion is what keeps the check honest.
+DEMO_USER_IDS = (1, 3)
+
+
 def load(conn):
     cur = conn.cursor()
-    cur.execute('''SELECT user_id, SUBSTR(start_time,1,10) AS day,
+    cur.execute(f'''SELECT user_id, SUBSTR(start_time,1,10) AS day,
                           AVG(final_risk_score) AS risk,
                           SUM(COALESCE(duration_seconds,0))/3600.0 AS hours
                    FROM sessions WHERE final_risk_score IS NOT NULL
+                   AND user_id NOT IN {DEMO_USER_IDS}
                    GROUP BY user_id, SUBSTR(start_time,1,10)''')
     risk = {(r['user_id'], r['day']): (float(r['risk']), float(r['hours']))
             for r in cur.fetchall()}
-    cur.execute('''SELECT user_id, SUBSTR(created_at,1,10) AS day,
+    cur.execute(f'''SELECT user_id, SUBSTR(created_at,1,10) AS day,
                           AVG(mood_rating) AS mood, AVG(sleep_quality) AS sleep,
                           AVG(energy_level) AS energy
-                   FROM reflections GROUP BY user_id, SUBSTR(created_at,1,10)''')
+                   FROM reflections WHERE user_id NOT IN {DEMO_USER_IDS}
+                   GROUP BY user_id, SUBSTR(created_at,1,10)''')
     refl = {(r['user_id'], r['day']):
             {k: (float(r[k]) if r[k] is not None else None)
              for k in ('mood', 'sleep', 'energy')}

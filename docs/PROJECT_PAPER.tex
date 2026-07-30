@@ -1649,6 +1649,30 @@ system has now run against reality, and the reality-only defects it surfaced (la
 inconsistency, IME reset, demo-to-pilot drift masquerade) were each converted into a
 fix plus a regression guard.
 
+\paragraph{Day-23 update.} The pilot's third week extended every trend above: by
+28~July the corpus had grown to \textbf{131 auto-detected sessions} across 18 active
+days ($\sim$11.8 hours; median session $\approx$2 minutes), \textbf{3{,}448 served
+predictions}, 2{,}228 spoken-word transcripts, 132 alerts, and 3{,}564 voice events
+--- 1{,}426 of them now carrying shadow-logged probability vectors for the offline
+voice-mitigation analysis (\S6.3), with the frustrated-label share steady at 79\%.
+Three further observations are worth recording. First, an \emph{escalation
+trajectory}: daily session counts on the active device rose from 1--2 in week one to
+16--19 at the week-three peak while sessions stayed short --- a checking-shaped usage
+pattern --- and the duration-weighted daily risk score rose in step, from
+$\approx$0.03 on day one to $\approx$0.40 by day 23, with roughly a third of sessions
+starting in the late-night window. Whether this reflects a real behavioural shift or
+ordinary within-child variability is precisely what the IGDS9-SF anchoring study is
+designed to decide; the point here is that the score moved \emph{coherently with the
+observable pattern}, not as noise. Second, an honest null: the child-side reflection
+check-ins went entirely unused (zero submissions), so the reflections-vs-risk
+external-validity instrument remains data-starved --- self-report streams cannot be
+assumed to collect themselves, and a validation cohort must budget for prompting
+them. Third, the week closed with the consent-policy rotation: the deployed consent
+version was bumped while the device still ran the older APK, and the server correctly
+\emph{paused all ingestion} for that device pending an app update and renewed
+parental consent --- the fail-closed consent design operating in production exactly
+as specified.
+
 \subsection{Summary of features delivered}
 \begin{center}
 \footnotesize
