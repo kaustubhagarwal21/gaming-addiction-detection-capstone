@@ -26,6 +26,45 @@
 
 ---
 
+## ⚡ FAST PATH — the one-week, zero-budget, solo-student version
+
+Everything below this box is the full methodology; this is the minimal sequence that
+actually gets the missing number (construct validity of the behaviour model) with
+nothing but a Google Form, WhatsApp, and one script run. Total hands-on effort ≈ 3–4
+hours spread over a week.
+
+| Day | Action (time) |
+|---|---|
+| **Day 0** | Build the Google Form by pasting `SURVEY_IGDS9SF.md` verbatim — consent header, Q1–Q11 (incl. the six gaming-pattern questions + attention check), IGDS9-SF grid. Link it to a Sheet. (~45 min) |
+| **Day 0** | One-line email to the project guide: "anonymous 18+ survey on gaming habits for the capstone, no personal data — flagging for your records." (~5 min) |
+| **Day 0–1** | Blast the link: class/section groups, hostel groups, college gaming groups (BGMI/Valorant squads are the highest-yield audience), club Discords, plus 5 friends asked to forward to *their* groups. Personal follow-ups roughly double completion. (~30 min) |
+| **Day 3–4** | One reminder ping in the same groups. Target **75–100 raw responses** so that after dropping non-gamers and attention-check failures you keep ≥50. (~10 min) |
+| **Day 6–7** | Sheet → File → Download → CSV → save as `data/survey/responses.csv` → run `python ml/eval_behavior_survey.py`. It prints + writes JSON: local prevalence (with CI), hours↔severity check, **behaviour-model score ↔ IGDS9-SF correlation (the construct-validity headline)**, and data-driven RISK_T1/T2 suggestions. Paste the numbers into the paper/model card. (~30 min) |
+
+**Deliberately skipped on the fast path** (state each as future work — naming them is a
+strength, not a weakness): minors/parent-proxy sampling (needs guardian consent + ethics
+clearance), the clinician-anchored tier, and telemetry-linked Mode A at scale. If 3–5
+gamer friends will install the ChildApp on their own phones for a week (adults
+self-monitoring, consenting via the app's own flow), that micro-Mode-A is the only way
+to say anything about the *ensemble weights* — nice bonus, fine to skip.
+
+**Guardrails that still apply even in fast mode:**
+- **Correlation is the primary endpoint, not classification.** At the ~6% disordered
+  base rate, 50–100 responses contain only ~3–6 disordered-range cases — ROC/AUC and
+  sensitivity/specificity are statistically meaningless at that count. Report Spearman ρ
+  with a bootstrap CI; the script refuses to print caseness metrics below 10 positives.
+- **Blinding (only if any Mode-A linkage is done):** the IGDS9-SF must be completed
+  *before* the respondent sees any app dashboard/risk output, or the label is
+  contaminated by the prediction it is supposed to validate.
+- **Keep label streams separate:** pilot families who submit in-app parent verdicts must
+  not also anchor the survey validation of thresholds tuned on those verdicts — that
+  re-introduces the leakage class the chat eval already had fixed once.
+- Threshold fitting = band the IGDS totals (<21 / 21–31 / ≥32), grid-search RISK_T1/T2
+  maximizing quadratic-weighted kappa, bootstrap the CI, deploy via env vars (same
+  mechanism `tune_from_feedback.py` uses). The script does this automatically.
+
+---
+
 ## The remaining principle
 
 | Model | Real-data label source | Status |
@@ -154,8 +193,8 @@ synthetic data — this is the actual ~9.5 move.
 ### After collection
 - Responses tab → export to **CSV**.
 - Score IGDS9-SF (sum the 9 items), build the self-report feature vector, run the model, and
-  compute the Tier-2 metrics above. (I can write `backend/scripts/eval_behavior_survey.py`
-  to do scoring → correlation → AUC/sensitivity/specificity → calibration in one pass.)
+  compute the Tier-2 metrics above — all done in one pass by `ml/eval_behavior_survey.py`
+  (delivered; see the FAST PATH box).
 
 ---
 
@@ -174,8 +213,8 @@ synthetic data — this is the actual ~9.5 move.
   `ml/analyze_igds.py`, `ml/analyze_survey.py`, `ml/analyze_reflections.py` (risk vs next-day
   self-reports — the weak-label check that activates as soon as a pilot has history),
   `ml/tune_from_feedback.py` and `ml/monitor_drift.py` (the pilot instruments).
-- Still to write when survey data arrives: `eval_behavior_survey.py` (IGDS scoring →
-  correlation → AUC/sensitivity/specificity → calibration in one pass).
+- `ml/eval_behavior_survey.py` (delivered): IGDS scoring → prevalence CI → behaviour-model
+  correlation → threshold suggestion in one pass over the exported form CSV.
 - Cross-reference: paper **Future Work** (data-dependent tier + clinical validation).
 
 ## Suggested sequencing (updated)

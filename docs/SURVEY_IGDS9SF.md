@@ -45,6 +45,40 @@ grounding the system currently borrows from the IGDS9-SF Latin-America dataset
 
 ---
 
+## Gaming-pattern questions (feed the behaviour model — keep the exact bands)
+
+These six questions self-report the model's objective features, so
+`ml/eval_behavior_survey.py` can score every respondent with the real behaviour model
+and correlate it against their IGDS9-SF total (the construct-validity number). The
+band wordings below are what the script parses — paste them verbatim.
+
+**Q5. On a typical day you play, about how many hours do you game?** (Multiple choice)
+- Less than 1  ·  1–2  ·  2–3  ·  3–5  ·  More than 5
+
+**Q6. How many days per week do you usually game?** (Multiple choice)
+- 0  ·  1  ·  2  ·  3  ·  4  ·  5  ·  6  ·  7
+
+**Q7. How long is a typical single gaming session?** (Multiple choice)
+- Under 30 minutes  ·  30–60 minutes  ·  1–2 hours  ·  2–4 hours  ·  More than 4 hours
+
+**Q8. How often do you game after midnight?** (Multiple choice)
+- Never  ·  Rarely  ·  Sometimes  ·  Often  ·  Very often
+
+**Q9. In a typical week, how many gaming sessions run longer than 3 hours?** (Multiple choice)
+- 0  ·  1–2  ·  3–5  ·  6 or more
+
+**Q10. After ending a session, how often do you start another within 15 minutes?** (Multiple choice)
+- Never  ·  Rarely  ·  Sometimes  ·  Often  ·  Very often
+
+**Q11. What is the longest run of consecutive days you've gamed recently?** (Multiple choice)
+- 1–2 days  ·  3–6 days  ·  1–2 weeks  ·  More than 2 weeks
+
+**Attention check (place between Q8 and Q9):** "For quality control, please select
+'Often' for this question." (same Never→Very often options; the analysis script drops
+respondents who fail it.)
+
+---
+
 ## IGDS9-SF — the 9 items
 
 Instructions to paste above the block:
@@ -80,6 +114,11 @@ columns = 1 / 2 / 3 / 4 / 5. (Set the grid to "require a response in each row".)
 - Feed that number in: `python ml/calibrate_thresholds_prevalence.py --prevalence <p>`
   once the cohort has enough children; and cross-check hours (Q3) vs total score for the
   hours–severity direction (`ml/analyze_igds.py` is the methodology template).
+- **One-command analysis:** export the linked Sheet as CSV to `data/survey/responses.csv`
+  and run `python ml/eval_behavior_survey.py` — it scores the IGDS totals, computes the
+  local prevalence with a CI, runs every respondent through the real behaviour model via
+  the gaming-pattern answers (Q5–Q11), and prints the construct-validity correlation plus
+  threshold suggestions ready for the paper.
 
 **Sample-size note:** at a ~6% true prevalence you need well over 100 responses before
 the base-rate estimate is tight — with 150 responses expect only ~9 in the disordered
