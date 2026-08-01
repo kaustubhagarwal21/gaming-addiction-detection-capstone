@@ -1025,3 +1025,74 @@ def test_break_before_the_subject_session_is_measured(client):
     feats = appmod.compute_behavioral_features(sid)
     assert feats['avg_break_between_sessions_min'] < 15, feats
     assert feats['rapid_relogin_ratio'] > 0
+
+
+def test_stale_open_session_is_not_adopted_as_the_same_bout(client):
+    """A start request stamps last_seen (proving the app is alive), which by design
+    blinds the orphan sweep to silence. Without a recency rule the same-game reuse path
+    then adopted a session abandoned hours earlier and banked the whole idle gap as play.
+    A genuine lost-response retry (seconds old) must still be idempotent."""
+    import app as appmod
+
+    now = datetime.now()
+    conn = appmod.get_db()
+    conn.execute('UPDATE users SET last_seen=? WHERE user_id=1',
+                 ((now - timedelta(hours=1, minutes=55)).isoformat(),))
+    stale = appmod.insert_returning_id(
+        conn, "INSERT INTO sessions (user_id, game_name, start_time) VALUES (1,'Orphan',?)",
+        ((now - timedelta(hours=2)).isoformat(),), pk='session_id')
+    conn.commit()
+    conn.close()
+
+    fresh = client.post('/api/session/start',
+                        json={'user_id': 1, 'game_name': 'Orphan'}).get_json()
+    assert fresh['reused'] is False
+    assert fresh['session_id'] != stale
+
+    conn = appmod.get_db()
+    closed = conn.execute(
+        'SELECT end_time, duration_seconds FROM sessions WHERE session_id=?',
+        (stale,)).fetchone()
+    conn.close()
+    assert closed['end_time'] is not None
+    # Bounded by the last heartbeat (~5 min of play), not the two-hour idle gap.
+    assert closed['duration_seconds'] < 30 * 60, closed['duration_seconds']
+
+    # A retry moments later is still the same bout and must reuse the id.
+    retry = client.post('/api/session/start',
+                        json={'user_id': 1, 'game_name': 'Orphan'}).get_json()
+    assert retry['reused'] is True
+    assert retry['session_id'] == fresh['session_id']
+    client.post(f"/api/session/{fresh['session_id']}/end")
+
+
+def test_burst_of_late_chat_does_not_stampede_predictions(client):
+    """An offline queue flush delivers many lines for an already-closed session. Each
+    one used to run a full re-prediction (15 lines -> 15 predictions); the durable
+    pending flag lets us throttle without losing the work."""
+    import app as appmod
+
+    started = client.post('/api/session/start',
+                          json={'user_id': 1, 'game_name': 'BurstGame'}).get_json()
+    sid = started['session_id']
+    client.post(f'/api/session/{sid}/end')
+
+    conn = appmod.get_db()
+    before = conn.execute(
+        'SELECT COUNT(*) AS n FROM predictions WHERE session_id=?', (sid,)).fetchone()['n']
+    conn.close()
+
+    for i in range(12):
+        assert client.post(f'/api/session/{sid}/chat',
+                           json={'message': f'queued line {i}', 'source': 'keyboard'}
+                           ).status_code == 200
+
+    conn = appmod.get_db()
+    row = conn.execute(
+        '''SELECT (SELECT COUNT(*) FROM predictions WHERE session_id=?) AS n,
+                  voice_rescore_pending FROM sessions WHERE session_id=?''',
+        (sid, sid)).fetchone()
+    conn.close()
+    assert row['n'] - before <= 2, f"stampede: {row['n'] - before} predictions"
+    # Work is deferred, not dropped: the flag survives for the stale-session sweep.
+    assert int(row['voice_rescore_pending'] or 0) != 0 or row['n'] > before

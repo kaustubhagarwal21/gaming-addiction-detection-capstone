@@ -3820,6 +3820,10 @@ END_RETRY_MAX_AGE = timedelta(days=7)
 # (this many minutes of heartbeat silence) instead of waiting out the 6-hour fallback,
 # which is what left a child shown as "playing" with the green dot after a swipe-away.
 SESSION_SILENT_MIN = 12
+# How idle an open session may be and still be adopted by a repeated start request as
+# "the same bout". A lost-response retry arrives within seconds; anything older is an
+# orphan whose idle gap must not be recorded as play time (see _start_session_state).
+SESSION_REUSE_MAX_IDLE_MIN = 15
 
 
 def _close_stale_sessions(c, user_id):
@@ -4279,6 +4283,12 @@ def _start_session_state(user_id: int, game_name: str, now: str):
         if USE_POSTGRES:
             c.execute('SELECT pg_advisory_xact_lock(?)', (int(user_id),))
 
+        # Remember when the app was last known alive BEFORE overwriting it below: it is
+        # the only bound available on how long an orphaned session could really have been
+        # played, and stamping first destroys it.
+        c.execute('SELECT last_seen FROM users WHERE user_id=?', (user_id,))
+        _seen_row = c.fetchone()
+        prev_last_seen = _seen_row['last_seen'] if _seen_row else None
         # A fresh start request is itself proof that the Child app is alive. Stamp it
         # before the orphan sweep so an old heartbeat cannot immediately close the new
         # or retried session as "silent".
@@ -4290,9 +4300,38 @@ def _start_session_state(user_id: int, game_name: str, now: str):
                      ORDER BY session_id DESC''', (user_id,))
         open_rows = c.fetchall()
 
+        def _still_the_same_bout(row) -> bool:
+            """Is this open row plausibly THIS start request retried, rather than an
+            orphan from hours ago?
+
+            The reuse rule exists for one narrow case: the server created a session and
+            the HTTP response was lost, so the client retries within seconds. It must not
+            adopt a session abandoned hours earlier — the heartbeat is stamped just above
+            (a start proves the app is alive), which by design blinds the orphan sweep to
+            silence, so without this check a two-hour-old row was reused and the entire
+            offline gap was recorded as play time.
+            """
+            osid = row['session_id']
+            c.execute("SELECT MAX(t) AS t FROM ("
+                      "  SELECT MAX(timestamp) AS t FROM chat_messages WHERE session_id=? "
+                      "  UNION ALL SELECT MAX(timestamp) FROM voice_events WHERE session_id=? "
+                      "  UNION ALL SELECT MAX(timestamp) FROM behavioral_data WHERE session_id=? "
+                      "  UNION ALL SELECT MAX(timestamp) FROM predictions WHERE session_id=? "
+                      ") q", (osid, osid, osid, osid))
+            seen = c.fetchone()
+            try:
+                latest = _parse_ts(row['start_time'])
+                if seen and seen['t']:
+                    latest = max(latest, _parse_ts(seen['t']))
+                return (_parse_ts(now) - latest) <= timedelta(minutes=SESSION_REUSE_MAX_IDLE_MIN)
+            except Exception:
+                return False
+
         # The server may create a session and lose the HTTP response. Returning the same
-        # id on retry prevents one play bout being split into two rows.
-        same = next((r for r in open_rows if r['game_name'] == game_name), None)
+        # id on retry prevents one play bout being split into two rows. A stale row falls
+        # through to the close loop below, which ends it at its last known activity.
+        same = next((r for r in open_rows
+                     if r['game_name'] == game_name and _still_the_same_bout(r)), None)
         if same:
             conn.commit()
             conn.close()
@@ -4311,8 +4350,21 @@ def _start_session_state(user_id: int, game_name: str, now: str):
             activity = c.fetchone()
             try:
                 start_dt = _parse_ts(old['start_time'])
-                end_dt = (_parse_ts(activity['t']) if activity and activity['t']
-                          else _parse_ts(now))
+                if activity and activity['t']:
+                    end_dt = _parse_ts(activity['t'])
+                else:
+                    # No event rows at all. "The new game's start proves the old one
+                    # stopped by now" holds for a live hand-off, but an ORPHAN abandoned
+                    # hours ago would bank the whole idle gap as play. Bound it by the
+                    # last heartbeat we saw before this request instead.
+                    end_dt = _parse_ts(now)
+                    if prev_last_seen:
+                        try:
+                            seen_dt = _parse_ts(prev_last_seen)
+                            if start_dt <= seen_dt <= end_dt:
+                                end_dt = seen_dt
+                        except Exception:
+                            pass
                 end_dt = min(max(end_dt, start_dt),
                              start_dt + timedelta(hours=STALE_SESSION_HOURS))
                 end_value = end_dt.isoformat()
@@ -5063,18 +5115,39 @@ def save_chat(sid):
     conn.commit()
     conn.close()
     if _closed:
-        try:
-            if int((_state['finalization_complete'] if _state else 0) or 0) == 1:
-                _drain_pending_voice_rescore(sid)
-            else:
-                _finalize_session_once(sid, explain=False)
-        except Exception as e:
-            logger.warning(f"closed-session chat rescore remains queued: {e}")
+        _maybe_drain_late_rescore(
+            sid, _state['finalization_complete'] if _state else 0)
     return jsonify({'success': True, 'toxicity_score': round(tox_score, 3)})
 
 
 # Last voice-driven re-score per session (monotonic seconds) — see save_voice.
 _voice_rescore_last: dict = {}
+# Last CLOSED-session re-score per session. An offline queue flush delivers a burst of
+# lines/segments for an already-finalized session, and draining on every one of them ran
+# a full prediction per row (measured: 15 queued chat lines -> 15 predictions). The
+# pending flag is durable and the stale-session sweep re-drains it, so skipping inside
+# the window defers work rather than losing it.
+_late_rescore_last: dict = {}
+_LATE_RESCORE_THROTTLE_S = 8
+
+
+def _maybe_drain_late_rescore(sid: int, finalization_complete) -> None:
+    """Run at most one late re-score per session per throttle window. Safe to skip:
+    voice_rescore_pending stays set and _close_stale_sessions sweeps it up later."""
+    now_mono = time.monotonic()
+    _prune_mono_cache(_late_rescore_last, max_age_s=3600)
+    if now_mono - _late_rescore_last.get(sid, 0) < _LATE_RESCORE_THROTTLE_S:
+        return
+    _late_rescore_last[sid] = now_mono
+    try:
+        if int(finalization_complete or 0) == 1:
+            _drain_pending_voice_rescore(sid)
+        else:
+            # If /end is still finalizing, this waits briefly for its result; the durable
+            # pending flag remains available to a later retry on failure.
+            _finalize_session_once(sid, explain=False)
+    except Exception as e:
+        logger.warning(f"closed-session rescore remains queued: {e}")
 # Sessions whose toxicity-streak alert has already fired (sid → monotonic seconds).
 
 
@@ -5221,17 +5294,10 @@ def save_voice(sid):
     now_mono = time.monotonic()
     _prune_mono_cache(_voice_rescore_last, max_age_s=3600)   # bound long-run growth
     if capture_valid and is_closed:
-        try:
-            state = int((session_state['finalization_complete']
-                         if session_state else 0) or 0)
-            if state == 1:
-                _drain_pending_voice_rescore(sid)
-            else:
-                # If /end is still finalizing, this waits briefly for its result; the
-                # durable pending flag remains available to a later retry on failure.
-                _finalize_session_once(sid, explain=False)
-        except Exception as e:
-            logger.warning(f"closed-session voice rescore remains queued: {e}")
+        # Same throttle as the chat path: an offline flush delivers segments in a burst,
+        # and one prediction per segment is pure waste on the free tier.
+        _maybe_drain_late_rescore(
+            sid, session_state['finalization_complete'] if session_state else 0)
     elif capture_valid and now_mono - _voice_rescore_last.get(sid, 0) >= 8:
         _voice_rescore_last[sid] = now_mono
         try:

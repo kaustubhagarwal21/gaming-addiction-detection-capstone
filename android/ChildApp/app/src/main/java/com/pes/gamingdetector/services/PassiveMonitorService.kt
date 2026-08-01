@@ -229,10 +229,15 @@ class PassiveMonitorService : Service() {
         } catch (_: Exception) { /* offline — server infers silence; retried next tick */ }
     }
 
-    /** Tear down every capture path the moment consent stops being valid. */
+    /** Tear down every capture path the moment consent stops being valid, and discard
+     *  data captured but not yet delivered — permission to hold and transmit it is gone,
+     *  and the durable WorkManager flusher would otherwise keep retrying it for a day. */
     private fun stopCaptureAfterConsentLoss() {
         runCatching { stopService(Intent(this, VoiceRecorderService::class.java)) }
         runCatching { stopService(Intent(this, GameMonitorService::class.java)) }
+        runCatching { ChatUploadQueue.clear(this) }
+        runCatching { OfflineSessionBuffer.clear(this) }
+        runCatching { prefs.clearOfflineSession() }
         stopSelf()
     }
 

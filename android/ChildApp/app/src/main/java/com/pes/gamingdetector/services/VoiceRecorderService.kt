@@ -188,6 +188,16 @@ class VoiceRecorderService : Service() {
         try {
             while (currentCoroutineContext().isActive && !gracefulStopRequested) {
                 val read = recorder.read(chunkBuffer, 0, chunkBuffer.size)
+                if (read < 0) {
+                    // Persistent error (ERROR_INVALID_OPERATION etc. — mic revoked or
+                    // claimed by another app mid-session). `continue` here hot-spun the
+                    // loop at 100% CPU until session end; stop capturing instead.
+                    // MUST stay ahead of the foreground gate below: read() does not block
+                    // when it is failing, so skipping this check would spin at 100% CPU
+                    // exactly while the child is in another app.
+                    Log.w("VoiceRecorder", "AudioRecord.read error $read — stopping voice capture")
+                    break
+                }
                 // PRIVACY GATE. A session deliberately stays open for a grace period
                 // after the game leaves the foreground (20s normally, 120s for an
                 // ancillary flow, and indefinitely while an end request keeps failing).
@@ -201,13 +211,6 @@ class VoiceRecorderService : Service() {
                     if (pcmAccumulator.size() > 0) pcmAccumulator.reset()
                     segmentStartElapsed = SystemClock.elapsedRealtime()
                     continue
-                }
-                if (read < 0) {
-                    // Persistent error (ERROR_INVALID_OPERATION etc. — mic revoked or
-                    // claimed by another app mid-session). `continue` here hot-spun the
-                    // loop at 100% CPU until session end; stop capturing instead.
-                    Log.w("VoiceRecorder", "AudioRecord.read error $read — stopping voice capture")
-                    break
                 }
                 if (read == 0) continue
 

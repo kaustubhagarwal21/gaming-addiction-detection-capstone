@@ -62,6 +62,15 @@ object ChatUploadQueue {
         ChatFlushWorker.schedule(context)
     }
 
+    /** Discard everything still queued. Called when consent is withdrawn or the policy
+     *  changes: permission to hold and transmit this captured text is gone, so keeping it
+     *  on disk (and letting the durable worker keep retrying it) is not defensible. */
+    @SuppressLint("ApplySharedPref")
+    fun clear(context: android.content.Context) {
+        val prefs = SecurePrefs.get(context, Constants.PREFS_NAME)
+        synchronized(lock) { prefs.edit().remove(KEY).commit() }
+    }
+
     /** Lines still waiting on disk — lets the flush worker decide success vs retry. */
     fun pendingCount(context: android.content.Context): Int {
         val prefs = SecurePrefs.get(context, Constants.PREFS_NAME)

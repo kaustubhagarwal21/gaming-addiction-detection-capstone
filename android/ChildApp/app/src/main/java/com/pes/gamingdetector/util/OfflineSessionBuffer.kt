@@ -49,6 +49,13 @@ object OfflineSessionBuffer {
         return true
     }
 
+    /** Discard buffered offline sessions — see ChatUploadQueue.clear (consent withdrawn). */
+    @android.annotation.SuppressLint("ApplySharedPref")
+    fun clear(context: Context) {
+        val prefs = SecurePrefs.get(context, Constants.PREFS_NAME)
+        synchronized(lock) { prefs.edit().remove(KEY).commit() }
+    }
+
     fun pendingCount(context: Context): Int {
         val prefs = SecurePrefs.get(context, Constants.PREFS_NAME)
         synchronized(lock) { return readArr(prefs).length() }
