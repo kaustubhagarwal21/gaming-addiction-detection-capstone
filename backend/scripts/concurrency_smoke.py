@@ -30,7 +30,7 @@ os.environ['DATABASE_PATH'] = _TMP_DB
 os.environ.setdefault('AUTH_ENFORCE', '0')
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
-from app import app  # noqa: E402
+from app import app, CONSENT_VERSION  # noqa: E402
 
 from werkzeug.serving import make_server  # noqa: E402
 
@@ -56,6 +56,13 @@ def main():
     srv = make_server('127.0.0.1', 0, app, threaded=True)
     base = f'http://127.0.0.1:{srv.server_port}'
     threading.Thread(target=srv.serve_forever, daemon=True).start()
+
+    # Record current-version consent for the seeded user FIRST. Every ingestion route is
+    # consent-gated, so without this the seed session 403s and the whole load check exits
+    # before exercising a single concurrent request — the harness silently proved nothing.
+    status, _ = call(base, 'POST', '/api/consent',
+                     {'user_id': 1, 'version': CONSENT_VERSION, 'parent_pin': '0000'})
+    assert status == 200, f'seed consent failed: {status}'
 
     # Seed one session so the write/predict paths have a target.
     status, _ = call(base, 'POST', '/api/session/start',

@@ -277,17 +277,27 @@ nowmin = nowu.hour * 60 + nowu.minute
 tz_night = (2 * 60 - nowmin) % 1440          # child-local 02:00 (inside quiet hours)
 tz_day   = (12 * 60 - nowmin) % 1440         # child-local 12:00 (outside quiet hours)
 conn = db()
+# Clear any offline alert an EARLIER phase already raised. The watchdog is evaluated by
+# the parent dashboard as well as the alerts feed (a parent watching the dashboard should
+# not have to open Alerts to learn monitoring went quiet), so this phase must establish
+# its own starting state instead of assuming only /api/alerts can have fired it.
+conn.execute("DELETE FROM alerts WHERE user_id=? AND type='offline'", (child_a,))
 conn.execute("UPDATE users SET last_seen=?, offline_alerted=0, tz_offset_min=? WHERE user_id=?",
              ((datetime.now() - timedelta(minutes=40)).isoformat(), tz_night, child_a))
 conn.commit(); conn.close()
+# BOTH watchdog entry points must respect child-local quiet hours.
+client.get(f'/api/dashboard/parent?user_id={child_a}', headers=auth(tok_p))
 client.get(f'/api/alerts?user_id={child_a}', headers=auth(tok_p))
 conn = db()
 n_off = conn.execute("SELECT COUNT(*) c FROM alerts WHERE user_id=? AND type='offline'",
                      (child_a,)).fetchone()['c']
 conn.execute("UPDATE users SET tz_offset_min=? WHERE user_id=?", (tz_day, child_a))
 conn.commit(); conn.close()
-check('silence at child-local NIGHT suppressed', n_off == 0)
-client.get(f'/api/alerts?user_id={child_a}', headers=auth(tok_p))
+check('silence at child-local NIGHT suppressed (dashboard + alerts)', n_off == 0)
+# Repeated polls on both endpoints must still yield exactly ONE alert for one outage.
+for _ in range(3):
+    client.get(f'/api/dashboard/parent?user_id={child_a}', headers=auth(tok_p))
+    client.get(f'/api/alerts?user_id={child_a}', headers=auth(tok_p))
 conn = db()
 n_off2 = conn.execute("SELECT COUNT(*) c FROM alerts WHERE user_id=? AND type='offline'",
                       (child_a,)).fetchone()['c']
