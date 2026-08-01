@@ -335,7 +335,12 @@ data class EmotionDashboard(
 // ── Dedicated chat-analysis dashboard ─────────────────────────────
 data class ChatStats(
     @SerializedName("total_messages") val totalMessages: Int?,
-    @SerializedName("avg_toxicity") val avgToxicity: Double?
+    @SerializedName("avg_toxicity") val avgToxicity: Double?,
+    // Speech transcribed on-device (source='voice_stt'), counted separately from typed
+    // chat. Omitting it made the screen claim "No chat captured yet" for a child whose
+    // games have no text chat but who talks constantly — the live pilot's exact case
+    // (0 typed vs 2,224 spoken).
+    @SerializedName("spoken_messages") val spokenMessages: Int? = null
 )
 data class ToxicityDistribution(
     val high: Int,

@@ -249,6 +249,19 @@ class PrefsManager(context: Context) {
             .putBoolean("consent_synced", true)
             .commit()
 
+    /** Drop local consent because the SERVER refused data under the current policy
+     *  (withdrawal, or a policy version this build predates). Local flags are otherwise
+     *  the only gate on capture, so without this the device keeps recording — mic
+     *  included — for as long as it stays out of HomeActivity, even though every upload
+     *  is being rejected. Durable: a process restart must not resurrect consent. */
+    @SuppressLint("ApplySharedPref")
+    fun revokeConsentLocally(): Boolean =
+        prefs.edit()
+            .putBoolean("consent_done", false)
+            .putBoolean("consent_synced", false)
+            .remove("consent_version")
+            .commit()
+
     // Packages the parent manually marked as games (force-include). Covers a real game
     // the OS doesn't report as CATEGORY_GAME and that isn't in the curated list.
     var forcedGamePackages: Set<String>

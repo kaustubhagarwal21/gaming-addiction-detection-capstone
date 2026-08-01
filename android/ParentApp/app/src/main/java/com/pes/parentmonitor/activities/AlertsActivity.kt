@@ -133,11 +133,21 @@ class AlertsActivity : AuthenticatedActivity() {
                     }
                     val unreadIds = incoming.filter { !it.read }.map { it.id }
                     if (unreadIds.isNotEmpty()) {
-                        val marked = api.markAlertsRead(MarkReadRequest(unreadIds))
-                        if (generation != loadGeneration || childId != prefs.childUserId) {
-                            return@launch
+                        // The endpoint accepts at most 100 ids per call, so a backlog
+                        // larger than that used to fail the whole request with a 400 and
+                        // leave the badge stuck forever. Send it in chunks.
+                        var allMarked = true
+                        for (batch in unreadIds.chunked(100)) {
+                            val marked = api.markAlertsRead(MarkReadRequest(batch))
+                            if (generation != loadGeneration || childId != prefs.childUserId) {
+                                return@launch
+                            }
+                            if (!(marked.isSuccessful && marked.body()?.success == true)) {
+                                allMarked = false
+                                break
+                            }
                         }
-                        if (marked.isSuccessful && marked.body()?.success == true) {
+                        if (allMarked) {
                             val ids = unreadIds.toHashSet()
                             alerts.filter { it.id in ids }.forEach { it.read = true }
                             binding.rvAlerts.adapter?.notifyDataSetChanged()

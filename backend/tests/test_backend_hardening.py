@@ -375,7 +375,9 @@ def test_alert_unread_total_and_mark_read_validation(client):
     conn.close()
 
     feed = client.get('/api/alerts?user_id=1').get_json()
-    assert len(feed['alerts']) == 50
+    # The page is capped, but the unread TOTAL must count every unread row — the badge
+    # is a count of reality, not of what fit on this page.
+    assert 55 <= len(feed['alerts']) <= 200
     assert feed['unread_count'] == expected
     parent = client.get('/api/dashboard/parent?user_id=1').get_json()
     assert parent['unread_alert_count'] == expected
@@ -387,6 +389,34 @@ def test_alert_unread_total_and_mark_read_validation(client):
     assert client.post(
         '/api/alerts/mark_read',
         json={'alert_ids': [True]}).status_code == 400
+
+
+def test_alert_backlog_beyond_one_page_is_still_reachable(client):
+    """A backlog larger than one page must not become permanently invisible.
+
+    Regression: the feed returned only the newest 50 rows while the badge counted every
+    unread row, and the app marks read only what it was shown — so with more than a
+    page of unread alerts the oldest could never surface and the badge never cleared.
+    """
+    import app as appmod
+
+    conn = appmod.get_db()
+    c = conn.cursor()
+    ids = [appmod._insert_alert(c, 1, 'test', f'backlog {i}', 'info')
+           for i in range(120)]
+    conn.commit()
+    conn.close()
+
+    feed = client.get('/api/alerts?user_id=1').get_json()
+    returned = {a['id'] for a in feed['alerts']}
+    # Every one of this backlog is reachable in a single fetch...
+    assert set(ids).issubset(returned)
+    # ...and marking exactly what was returned drives the unread badge to zero.
+    for batch_start in range(0, len(feed['alerts']), 100):
+        batch = [a['id'] for a in feed['alerts'][batch_start:batch_start + 100]]
+        assert client.post('/api/alerts/mark_read',
+                           json={'alert_ids': batch}).status_code == 200
+    assert client.get('/api/alerts?user_id=1').get_json()['unread_count'] == 0
 
 
 def test_dashboards_expose_served_risk_thresholds(client):
@@ -833,3 +863,165 @@ def test_login_token_uses_version_read_with_authenticated_pin(
         headers={'Authorization': f"Bearer {login.get_json()['token']}"},
     )
     assert response.status_code == 401
+
+
+# ── Safety: the counselor must never answer a self-harm disclosure with small talk ──
+
+def test_counselor_routes_self_harm_to_a_crisis_response(client):
+    """A child-facing companion answering "I want to kill myself" with "Tell me more
+    about that" is the highest-consequence defect this system can have. Detection is
+    deliberately recall-first: gaming hyperbole matching is an acceptable price."""
+    import app as appmod
+
+    for message in ("I want to kill myself", "I am suicidal", "kms",
+                    "hey mira, i want to end it all", "life is not worth living",
+                    "I feel like hurting myself"):
+        assert appmod._classify_intent(message) == 'crisis', message
+        reply = client.post('/api/counselor/chat',
+                            json={'user_id': 1, 'message': message}).get_json()
+        assert reply['success'] is True
+        assert reply['intent'] == 'crisis'
+        # A real helpline number and a push toward a trusted adult are the point.
+        assert '14416' in reply['reply']
+        assert 'trust' in reply['reply'].lower()
+
+
+def test_counselor_does_not_cry_crisis_over_ordinary_gaming_talk(client):
+    import app as appmod
+
+    for message in ("nice kill", "I died again", "I'm tired", "hey mira",
+                    "I can't stop playing", "that boss killed me twice"):
+        assert appmod._classify_intent(message) != 'crisis', message
+
+
+# ── Late evidence on a closed session ──────────────────────────────────────────
+
+def test_live_predict_refuses_to_rescore_a_closed_session(client):
+    """/predict must not overwrite a finalized risk: it bypasses the finalization state
+    machine, so the stored score would disagree with the alert and streak already
+    committed for that session."""
+    start = client.post('/api/session/start',
+                        json={'user_id': 1, 'game_name': 'BGMI'}).get_json()
+    sid = start['session_id']
+    client.post(f'/api/session/{sid}/end')
+
+    response = client.post(f'/api/session/{sid}/predict')
+    assert response.status_code in (200, 409)
+    if response.status_code == 200:
+        # Serves the stored prediction rather than computing a new one.
+        assert response.get_json().get('session_closed') is True
+
+
+def test_late_chat_on_a_closed_session_queues_a_rescore(client):
+    """Chat arriving after close (offline flush, STT lag) must reach the fused score the
+    same way late voice does — previously it was stored and then ignored forever."""
+    import app as appmod
+
+    start = client.post('/api/session/start',
+                        json={'user_id': 1, 'game_name': 'BGMI'}).get_json()
+    sid = start['session_id']
+    client.post(f'/api/session/{sid}/end')
+
+    before = appmod.get_db()
+    n_before = before.execute(
+        'SELECT COUNT(*) AS n FROM predictions WHERE session_id=?', (sid,)
+    ).fetchone()['n']
+    before.close()
+
+    assert client.post(f'/api/session/{sid}/chat',
+                       json={'message': 'you are trash kys', 'source': 'keyboard'}
+                       ).status_code == 200
+
+    after = appmod.get_db()
+    row = after.execute(
+        '''SELECT voice_rescore_pending,
+                  (SELECT COUNT(*) FROM predictions WHERE session_id=?) AS n
+           FROM sessions WHERE session_id=?''', (sid, sid)).fetchone()
+    after.close()
+    # Either the rescore already ran (a new prediction row) or it remains durably queued.
+    assert row['n'] > n_before or int(row['voice_rescore_pending'] or 0) != 0
+
+
+# ── Alert delivery ─────────────────────────────────────────────────────────────
+
+def test_escalating_revision_creates_a_deliverable_alert(client):
+    """Both delivery paths key on the alert id (polling notifies ids above a watermark;
+    FCM drops ids at or below it). Revising in place kept the id, so an alert escalated
+    to High concern reached nobody. An escalation must yield a NEW id."""
+    import app as appmod
+
+    conn = appmod.get_db()
+    c = conn.cursor()
+    first = appmod._maybe_create_alert(
+        c, 1, {'risk_category': 'at_risk', 'final_risk_score': 0.4}, session_id=4242)
+    conn.commit()
+
+    escalated = appmod._maybe_create_alert(
+        c, 1, {'risk_category': 'addicted', 'final_risk_score': 0.8},
+        session_id=4242, revise=True)
+    conn.commit()
+
+    rows = {r['id']: dict(r) for r in c.execute(
+        'SELECT id, severity, read FROM alerts WHERE session_id=4242').fetchall()}
+    conn.close()
+
+    assert escalated != first, 'escalation must not reuse the suppressed id'
+    assert rows[escalated]['severity'] == 'high'
+    assert rows[escalated]['read'] == 0
+    # Exactly one live alert for the session: the superseded row is retired, not deleted.
+    assert rows[first]['read'] == 1
+
+
+def test_downward_revision_still_edits_in_place(client):
+    """A correction should not re-alarm the parent — only escalations get a new id."""
+    import app as appmod
+
+    conn = appmod.get_db()
+    c = conn.cursor()
+    first = appmod._maybe_create_alert(
+        c, 1, {'risk_category': 'addicted', 'final_risk_score': 0.8}, session_id=4343)
+    revised = appmod._maybe_create_alert(
+        c, 1, {'risk_category': 'casual', 'final_risk_score': 0.1},
+        session_id=4343, revise=True)
+    conn.commit()
+    row = c.execute('SELECT type, severity FROM alerts WHERE id=?', (first,)).fetchone()
+    conn.close()
+
+    assert revised == first
+    assert row['type'] == 'risk_revision'
+    assert row['severity'] == 'info'
+
+
+def test_break_before_the_subject_session_is_measured(client):
+    """The gap between the previous session and this one is the rapid-relogin signal;
+    pairing only prior sessions with each other reported the 120-minute default and a
+    zero craving signal for a child who restarted five minutes after stopping."""
+    import app as appmod
+
+    conn = appmod.get_db()
+    now = datetime.now()
+    # Its own user: the suite shares one database, and other tests' sessions for user 1
+    # would dilute the break statistics this test is asserting on.
+    uid = appmod.insert_returning_id(
+        conn,
+        "INSERT INTO users (name, age, pin_hash, parent_pin_hash) VALUES (?,?,?,?)",
+        ('BreakProbe', 14, appmod.hash_pin('919191'), appmod.hash_pin('828282')),
+        pk='user_id')
+    prev_start = now - timedelta(minutes=65)
+    prev_end = now - timedelta(minutes=5)
+    appmod.insert_returning_id(
+        conn,
+        """INSERT INTO sessions (user_id, game_name, start_time, end_time,
+                                 duration_seconds, final_risk_score, risk_category)
+           VALUES (?,'BGMI',?,?,?,0.3,'casual')""",
+        (uid, prev_start.isoformat(), prev_end.isoformat(), 3600), pk='session_id')
+    sid = appmod.insert_returning_id(
+        conn,
+        """INSERT INTO sessions (user_id, game_name, start_time)
+           VALUES (?,'BGMI',?)""", (uid, now.isoformat()), pk='session_id')
+    conn.commit()
+    conn.close()
+
+    feats = appmod.compute_behavioral_features(sid)
+    assert feats['avg_break_between_sessions_min'] < 15, feats
+    assert feats['rapid_relogin_ratio'] > 0

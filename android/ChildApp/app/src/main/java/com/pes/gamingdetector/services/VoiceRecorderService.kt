@@ -112,10 +112,31 @@ class VoiceRecorderService : Service() {
         val captureSession = sessionId
         val captureUrl = serverUrl
         recordingJob = scope.launch {
+            var session = captureSession
+            var url = captureUrl
             try {
-                recordLoop(captureSession, captureUrl)
-            } catch (e: Exception) {
-                Log.w("VoiceRecorder", "Voice capture stopped unexpectedly: ${e.message}")
+                while (true) {
+                    try {
+                        recordLoop(session, url)
+                    } catch (e: Exception) {
+                        Log.w("VoiceRecorder", "Voice capture stopped unexpectedly: ${e.message}")
+                    }
+                    // HANDOVER. Switching straight from one game to another ends session A
+                    // and starts B immediately; B's onStartCommand is ignored while this
+                    // job is still draining A (see the `recording` guard above), so the
+                    // old code then called stopSelf() and B recorded nothing at all.
+                    // Pick the new session up here instead of exiting.
+                    val next = prefs.activeSessionId
+                    if (next > 0 && next != session && prefs.canMonitor()) {
+                        Log.i("VoiceRecorder", "handing recorder over to session $next")
+                        session = next
+                        url = prefs.serverUrl
+                        sessionId = next
+                        gracefulStopRequested = false
+                        continue
+                    }
+                    break
+                }
             } finally {
                 recording = false
                 prefs.voiceCaptureActive = false
@@ -167,6 +188,20 @@ class VoiceRecorderService : Service() {
         try {
             while (currentCoroutineContext().isActive && !gracefulStopRequested) {
                 val read = recorder.read(chunkBuffer, 0, chunkBuffer.size)
+                // PRIVACY GATE. A session deliberately stays open for a grace period
+                // after the game leaves the foreground (20s normally, 120s for an
+                // ancillary flow, and indefinitely while an end request keeps failing).
+                // Without this check the microphone kept capturing through all of it, so
+                // a conversation held in another app could be recorded, transcribed and
+                // attributed to the game. Keep draining the buffer (so AudioRecord stays
+                // healthy and does not overflow) but DISCARD everything while the tracked
+                // game is not the foreground app, and drop any partially accumulated
+                // segment so it cannot be uploaded later.
+                if (!trackedGameInForeground()) {
+                    if (pcmAccumulator.size() > 0) pcmAccumulator.reset()
+                    segmentStartElapsed = SystemClock.elapsedRealtime()
+                    continue
+                }
                 if (read < 0) {
                     // Persistent error (ERROR_INVALID_OPERATION etc. — mic revoked or
                     // claimed by another app mid-session). `continue` here hot-spun the
@@ -246,6 +281,21 @@ class VoiceRecorderService : Service() {
         // when the dir was missing), silently ignoring a bundled model swap — e.g.
         // the en-us -> Indian-English (en-in) change for Hinglish-speaking users.
         private const val VOSK_MODEL_VERSION = "small-en-in-0.4"
+    }
+
+    /** True only while the exact game this session belongs to is the foreground app.
+     *  Fails CLOSED: if the foreground cannot be determined (usage access revoked
+     *  mid-session, resolver error), we stop capturing rather than record blind. */
+    private fun trackedGameInForeground(): Boolean {
+        if (!::prefs.isInitialized || !prefs.canMonitor()) return false
+        val tracked = prefs.activeSessionPackage
+        if (tracked.isBlank()) {
+            // Legacy sessions predate the stored package. Fall back to "a session for
+            // this recorder is still active", which is the old behaviour.
+            return prefs.activeSessionId == sessionId
+        }
+        return com.pes.gamingdetector.util.CaptureTargetLogic.isExactSessionTarget(
+            tracked, com.pes.gamingdetector.util.ForegroundResolver.current(this))
     }
 
     private fun requestGracefulStop(startId: Int) {

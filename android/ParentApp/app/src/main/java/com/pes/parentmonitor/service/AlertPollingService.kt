@@ -118,10 +118,18 @@ class AlertPollingService : Service() {
         )
         if (newAlerts.isEmpty()) return
 
-        val worst = AlertTriage.worstOf(newAlerts) ?: return
+        // Surface the most severe alert whose channel can actually post. Picking the
+        // single global worst and giving up when ITS channel is disabled meant one muted
+        // channel (e.g. the urgent one) blocked delivery of everything else forever: the
+        // watermark never advanced, so the same undeliverable alert was retried on every
+        // poll while alerts on enabled channels were never shown.
+        val candidates = newAlerts.sortedByDescending { AlertTriage.severityRank(it.severity) }
+        val deliverable = candidates.firstOrNull {
+            NotificationSupport.canPost(this, NotificationRouting.channelFor(it.type, it.severity))
+        } ?: return
         // Only advance after Android accepted the notification. A disabled app/channel
         // keeps the backlog pending so it can surface once the parent enables alerts.
-        if (sendAlertNotification(worst, child, newAlerts.size)) {
+        if (sendAlertNotification(deliverable, child, newAlerts.size)) {
             prefs.advanceLastNotifiedAlertId(child.userId, newAlerts.maxOf { it.id })
         }
     }

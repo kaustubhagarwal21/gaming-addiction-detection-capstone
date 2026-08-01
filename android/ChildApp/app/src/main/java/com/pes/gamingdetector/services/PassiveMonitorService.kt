@@ -214,7 +214,26 @@ class PassiveMonitorService : Service() {
             // Retrofit returns normally on 4xx/5xx. Only remember a status as delivered
             // after a real success, otherwise the next fast tick must retry it.
             if (resp.isSuccessful && resp.body()?.success == true) lastStatusKey = key
+            // 403 on the heartbeat means exactly one thing: the server will not accept
+            // monitoring data under the current consent state (withdrawn, or a policy
+            // version newer than this build). guard() cannot 403 here — the caller is
+            // always its own user — so no other case is conflated. Stop capturing NOW
+            // rather than continuing to record locally until the child next opens the
+            // app; HomeActivity re-runs the consent flow on the next launch.
+            else if (resp.code() == 403) {
+                android.util.Log.w("PassiveMonitor",
+                    "server refused data (consent) — stopping capture")
+                prefs.revokeConsentLocally()
+                stopCaptureAfterConsentLoss()
+            }
         } catch (_: Exception) { /* offline — server infers silence; retried next tick */ }
+    }
+
+    /** Tear down every capture path the moment consent stops being valid. */
+    private fun stopCaptureAfterConsentLoss() {
+        runCatching { stopService(Intent(this, VoiceRecorderService::class.java)) }
+        runCatching { stopService(Intent(this, GameMonitorService::class.java)) }
+        stopSelf()
     }
 
     // A periodic heartbeat so the server can tell the parent if monitoring goes silent
@@ -425,7 +444,9 @@ class PassiveMonitorService : Service() {
                     Intent.ACTION_SCREEN_OFF -> screenOff = true
                     Intent.ACTION_SCREEN_ON  -> screenOff = false
                 }
-                if (prefs.isLoggedIn()) {
+                // Screen timing is monitoring data like any other — gate it on consent,
+                // not merely on being signed in.
+                if (prefs.canMonitor()) {
                     scope.launch { postScreenEvent(type) }
                 }
             }
@@ -462,6 +483,13 @@ class PassiveMonitorService : Service() {
 
     private suspend fun usageStatsLoop() {
         while (currentCoroutineContext().isActive) {
+            // canMonitor(), not isLoggedIn(): consent can lapse while the service runs
+            // (policy bump or withdrawal, detected by the heartbeat above). Session and
+            // screen collection must stop with it, not merely fail server-side.
+            if (!prefs.canMonitor()) {
+                stopCaptureAfterConsentLoss()
+                return
+            }
             if (prefs.isLoggedIn()) {
                 checkForegroundGame()
                 // Near-real-time status: if a device-admin/permission flag flipped since the

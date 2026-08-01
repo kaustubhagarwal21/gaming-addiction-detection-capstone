@@ -1047,6 +1047,24 @@ re-entering the family code. The Child app adds wellbeing features --- a rule-ba
 check-in streak, reflections, breathing resets and gentle break / limit nudges ---
 supporting awareness rather than hard restriction.
 
+\paragraph{A crisis path is a requirement, not a feature.} An external code audit of
+the deployed build found that Mira's intent rules had no branch for self-harm: a child
+typing ``I want to kill myself'' fell through to the generic reflective prompt (``Tell
+me more about that''). For a companion aimed at minors this is the single
+highest-consequence failure mode in the system, and it is a useful illustration of a
+general point --- a rule-based conversational surface must be audited for what it
+\emph{cannot} say, not only for what it answers well. The deployed classifier now
+checks a self-harm/suicidal-ideation intent \emph{first}, ahead of every other cue, and
+returns fixed crisis content: national helplines (Tele-MANAS 14416, KIRAN
+1800-599-0019), an explicit push toward a trusted adult, and emergency guidance. Unlike
+the toxicity path --- where thresholds are set precision-first to protect parent trust
+(\S5.5) --- this detector is deliberately \emph{recall}-first: gaming hyperbole (``I'll
+kill myself if I lose again'') will match, and showing a supportive message to a child
+who was joking is an acceptable cost for never missing a real disclosure. Whether such
+a disclosure should additionally escalate to the parent is a genuine clinical-ethics
+question (automatic breach can deter help-seeking) that we deliberately leave open
+rather than settle in code.
+
 % =====================================================================
 \section{Results}
 % =====================================================================
@@ -1688,7 +1706,7 @@ Parent value & Per-day weighted risk + ``why'' (SHAP), live ``playing now'' + mo
 Child wellbeing & Mira check-in (typing indicator, double-send guard), gamified daily check-in + streak, reflections, breathing, break/limit nudges, today-vs-goal progress \\
 Reliability/anti-tamper & Heartbeat watchdog (uninstall/kill/offline alert, child-local quiet hours), optional Device Admin (uninstall block + instant disable alert), battery-optimisation exemption, double-start-safe services, consent-gated boot resume, parent-PIN lock on logout/settings (server-verified, constant-time), logout \emph{and} login alerts with honest monitoring status, idempotent session-end, self-scoring stale-session guard, per-child risk notifications, multi-guardian FCM push (lazy-init) \\
 Privacy/Security & Token auth + \emph{role} checks on every parent-only endpoint, deleted-account tokens locked out despite the stateless 30-day TTL (TTL-cached existence probe), peppered PIN hashes (validated, family-wide PIN change), HTTPS-only, encrypted token store, consent (versioned), raw-audio deletion, retention purge, parent-controlled data export mirroring the deletion scope (credentials excluded), 16\,MB body cap, opt-in Sentry crash monitoring (stack traces only, no PII), family code always recoverable in PIN-gated Settings \\
-Engineering & Dual-dialect DB with pooled validated Postgres connections + composite indexes on the hot query paths, per-client rate limiting, hot-path caching/throttling + audio-concurrency cap + bounded throttle caches, thread-safe device-side shared state (concurrent cache, crash-safe confirm-then-delete offline queue, WorkManager network-aware retry), signed APKs, layered tests (169 API + 87 Android JVM + 82 production-mode + 25 live-cloud) + concurrency smoke + CI (pytest on SQLite \emph{and} PostgreSQL, Android lint + unit tests per push, weekly drift monitor against the production DB), real-device validated, lint-clean, deployed + durable DB \\
+Engineering & Dual-dialect DB with pooled validated Postgres connections + composite indexes on the hot query paths, per-client rate limiting, hot-path caching/throttling + audio-concurrency cap + bounded throttle caches, thread-safe device-side shared state (concurrent cache, crash-safe confirm-then-delete offline queue, WorkManager network-aware retry), signed APKs, layered tests (177 API + 87 Android JVM + 82 production-mode + 25 live-cloud) + concurrency smoke + CI (pytest on SQLite \emph{and} PostgreSQL, Android lint + unit tests per push, weekly drift monitor against the production DB), real-device validated, lint-clean, deployed + durable DB \\
 \bottomrule
 \end{tabularx}
 \end{center}

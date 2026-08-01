@@ -601,6 +601,9 @@ _PG_POOL      = None
 _PG_POOL_LOCK = threading.Lock()
 _PG_POOL_PID  = None
 PG_POOL_MAX = _env_int('PG_POOL_MAX', 10, minimum=1)
+# Warm connections retained when idle (see the pool constructor). 1 is enough for the
+# single-worker free tier; raise alongside PG_POOL_MAX on a larger instance.
+_PG_POOL_MIN = min(_env_int('PG_POOL_MIN', 1, minimum=1), PG_POOL_MAX)
 
 
 def _pg_pool():
@@ -617,8 +620,13 @@ def _pg_pool():
     if _PG_POOL is None:
         with _PG_POOL_LOCK:
             if _PG_POOL is None:
+                # minconn MUST be >= 1. psycopg2's putconn keeps a returned connection
+                # only while `len(pool) < minconn`; with minconn=0 that is never true, so
+                # every connection was closed on release and the "pool" re-paid the full
+                # TCP+TLS handshake on every borrow — the exact cost this pool exists to
+                # avoid. Env-tunable so a memory-constrained instance can still cap it.
                 _PG_POOL = _pg_pool_mod.ThreadedConnectionPool(
-                    0, PG_POOL_MAX, DATABASE_URL,
+                    _PG_POOL_MIN, PG_POOL_MAX, DATABASE_URL,
                     cursor_factory=psycopg2.extras.RealDictCursor,
                     connect_timeout=10,
                     # TCP keepalives so long-idle pooled connections are noticed dead
@@ -2188,6 +2196,19 @@ def compute_behavioral_features(session_id: int) -> dict:
                 breaks.append(gap)
         except Exception:
             continue
+    # The break IMMEDIATELY BEFORE this session is the most diagnostic one — restarting
+    # four minutes after stopping is exactly the rapid-relogin/craving pattern the
+    # feature exists to capture. Pairing only prior sessions with each other omitted it,
+    # so a subject session that began minutes after the last one still reported the
+    # 120-minute "no data" default and rapid_relogin_ratio 0.
+    if ended:
+        try:
+            last_end = min(_parse_ts(ended[-1]['end_time']), reference_dt)
+            gap = (start_dt - last_end).total_seconds() / 60.0
+            if 0 < gap < 1440:
+                breaks.append(gap)
+        except Exception:
+            pass
     avg_break = round(float(np.mean(breaks)) if breaks else 120.0, 2)
     rapid = (round(min(sum(1 for value in breaks if value < 15) /
                        max(1, len(breaks)), 1.0), 4) if breaks else 0.0)
@@ -2456,6 +2477,11 @@ def _insert_toxicity_streak_once(cursor, user_id, session_id, message):
     return int(cursor.lastrowid) if cursor.rowcount else None
 
 
+# Ordering used to decide whether a late revision ESCALATES (see _maybe_create_alert).
+# Mirrors AlertTriage.severityRank in the Parent app.
+_SEVERITY_RANK = {'info': 0, 'low': 1, 'medium': 2, 'high': 3}
+
+
 def _maybe_create_alert(cursor, user_id: int, prediction: dict,
                         session_id: int | None = None, revise: bool = False):
     """Create or reconcile the durable risk alert for one session."""
@@ -2468,7 +2494,7 @@ def _maybe_create_alert(cursor, user_id: int, prediction: dict,
 
     existing = None
     if session_id is not None:
-        cursor.execute('''SELECT id FROM alerts WHERE user_id=? AND session_id=?
+        cursor.execute('''SELECT id, severity FROM alerts WHERE user_id=? AND session_id=?
                           AND type IN ('risk','risk_revision')
                           ORDER BY id DESC LIMIT 1''', (user_id, session_id))
         existing = cursor.fetchone()
@@ -2494,6 +2520,19 @@ def _maybe_create_alert(cursor, user_id: int, prediction: dict,
         return int(existing['id'])
 
     if existing:
+        # An ESCALATION must reach the parent, and both delivery paths key on the alert
+        # id: polling only notifies ids above its per-child high-water mark, and FCM
+        # drops ids at or below it. Revising the row in place keeps the id, so a
+        # medium alert later revised to High concern was silently delivered to nobody.
+        # Supersede instead: retire the old row (marked read so the feed still shows
+        # exactly one live alert for the session) and insert a new one, which is both
+        # genuinely new news and a deliverable id. Same-or-lower severity keeps the
+        # in-place edit — a correction should not re-alarm anyone.
+        old_rank = _SEVERITY_RANK.get(str(existing['severity'] or '').lower(), 0)
+        if revise and _SEVERITY_RANK.get(severity, 0) > old_rank:
+            cursor.execute('UPDATE alerts SET read=1 WHERE id=?', (existing['id'],))
+            return _insert_alert(cursor, user_id, 'risk', message, severity,
+                                 session_id=session_id)
         cursor.execute('''UPDATE alerts SET type='risk', message=?, severity=?,
                           read=0, created_at=? WHERE id=?''',
                        (message, severity, datetime.now().isoformat(), existing['id']))
@@ -5010,8 +5049,27 @@ def save_chat(sid):
                     f'Repeated concerning language this gaming session — '
                     f'{n_flagged} messages flagged. A pattern, not a one-off.')
 
+    # A line can land after the session closed (offline queue flush, STT lag). Voice
+    # already queues a durable re-score for that case; chat did not, so late evidence
+    # silently never reached the fused score, the alert or the streak. Use the same
+    # mechanism rather than a second one.
+    c.execute('''SELECT end_time, finalization_complete FROM sessions
+                 WHERE session_id=?''', (sid,))
+    _state = c.fetchone()
+    _closed = bool(_state and _state['end_time'])
+    if _closed:
+        c.execute('''UPDATE sessions SET voice_rescore_pending=1,
+                     voice_rescore_started_at=NULL WHERE session_id=?''', (sid,))
     conn.commit()
     conn.close()
+    if _closed:
+        try:
+            if int((_state['finalization_complete'] if _state else 0) or 0) == 1:
+                _drain_pending_voice_rescore(sid)
+            else:
+                _finalize_session_once(sid, explain=False)
+        except Exception as e:
+            logger.warning(f"closed-session chat rescore remains queued: {e}")
     return jsonify({'success': True, 'toxicity_score': round(tox_score, 3)})
 
 
@@ -5191,6 +5249,24 @@ def predict_now(sid):
     if deny: return deny
     deny = require_session_current_consent(sid)
     if deny: return deny
+    # LIVE predictions only. Re-scoring a closed session here would overwrite the
+    # finalized risk while bypassing the finalization state machine entirely — no alert,
+    # no streak update, and side_effect_risk_category left describing the superseded
+    # result. Late evidence for a closed session goes through the durable re-score path
+    # (see save_voice / save_chat), which reconciles those side effects properly.
+    _live = get_db()
+    _row = _live.execute('SELECT end_time FROM sessions WHERE session_id=?',
+                         (sid,)).fetchone()
+    _live.close()
+    if _row and _row['end_time']:
+        latest = _latest_prediction(sid)
+        if latest:
+            return jsonify({**latest, 'success': True,
+                            'risk_label': latest.get('risk_category'),
+                            'risk_score': latest.get('final_risk_score'),
+                            'session_closed': True})
+        return jsonify({'success': False,
+                        'message': 'Session is already closed'}), 409
     _save_behavioral_snapshot(sid)
     result = run_prediction(sid, explain=False)   # skip SHAP on frequent live predicts (memory)
     # Spread result FIRST so the explicit keys win: risk_label must be the internal
@@ -5350,8 +5426,16 @@ def parent_dashboard():
     # Self-heal lost end-events before reading live state, so this dashboard never
     # shows a child "perpetually playing" a session whose end never arrived.
     _closed = _close_stale_sessions(c, user_id)
+    # Also evaluate the silence watchdog here, not only in the alerts feed: a parent who
+    # opens the dashboard (or leaves it polling) should learn that monitoring went quiet
+    # without having to visit Alerts first. NOTE: with no parent client running at all,
+    # nothing evaluates this — server-initiated detection needs a scheduler, which the
+    # free tier has no room for (documented as future work).
+    _hb_push = _check_heartbeat(c, user_id)
     conn.commit()
     _finalize_closed_sessions(_closed)   # score them so they show in the risk history
+    if _hb_push:
+        _push_to_user_family(**_hb_push)
 
     # ── Live status strip ────────────────────────────────────────────
     # Is the child playing RIGHT NOW, and is the monitoring app checking in?
@@ -5935,7 +6019,7 @@ def get_alerts():
     c.execute('''SELECT a.*, f.label AS feedback_label
                  FROM alerts a
                  LEFT JOIN feedback f ON f.alert_id = a.id
-                 WHERE a.user_id=? ORDER BY a.id DESC LIMIT 50''', (user_id,))
+                 WHERE a.user_id=? ORDER BY a.id DESC LIMIT 200''', (user_id,))
     rows    = [dict(r) for r in c.fetchall()]
     c.execute('SELECT COUNT(*) AS n FROM alerts WHERE user_id=? AND read=0',
               (user_id,))
@@ -6732,11 +6816,17 @@ def weekly_report_pdf():
 
     # Weekly model averages — average each channel only over sessions where it was present,
     # so absent-modality zeros don't drag the picture down. NULL = never captured this week.
+    # ONE row per session — the latest prediction for each. A live session accumulates a
+    # prediction on every re-score, so averaging raw rows weights a three-hour session
+    # ~100x a five-minute one and skews the whole breakdown toward long, voice-rich play
+    # (in the pilot, 3,432 prediction rows across 128 sessions).
     c.execute('''SELECT AVG(CASE WHEN behavior_present=1 THEN behavior_score END) AS b,
                         AVG(CASE WHEN chat_present=1     THEN chat_score     END) AS ch,
                         AVG(CASE WHEN voice_present=1    THEN voice_score    END) AS v
                  FROM predictions p JOIN sessions s ON s.session_id=p.session_id
-                 WHERE s.user_id=? AND s.start_time>=?''', (user_id, since7))
+                 WHERE s.user_id=? AND s.start_time>=?
+                 AND p.id=(SELECT MAX(p2.id) FROM predictions p2
+                           WHERE p2.session_id=p.session_id)''', (user_id, since7))
     mrow = dict(c.fetchone() or {})
 
     # Chat insights this week (chat_messages.timestamp is local isoformat, same as since7).
@@ -7217,12 +7307,43 @@ _COUNSELOR_REPLIES = {
     'limit': [
         "Time limits work best when they're your choice, not a rule someone else makes. What would feel right to you — 1 hour? 2? Let's pick something that matches your week.",
     ],
+    # SAFETY PATH. A child-facing companion must never answer a disclosure of
+    # self-harm or suicidal thinking with small talk ("Tell me more about that").
+    # One fixed reply, not a rotation: this is the one intent where varying the
+    # wording buys nothing and risks a weaker phrasing being served. Helplines are
+    # Indian and free/24x7 (the deployment population); update per deployment region.
+    'crisis': [
+        "I'm really glad you told me — that took courage, and I'm not going to brush "
+        "past it.\n\nI'm a wellbeing companion, not a counsellor, so I can't be the "
+        "support you deserve right now. Please talk to someone who can:\n\n"
+        "• Tele-MANAS — call 14416 (free, 24x7, all of India)\n"
+        "• KIRAN — call 1800-599-0019 (free, 24x7)\n\n"
+        "And please tell one adult you trust today — a parent, a teacher, an older "
+        "cousin. You don't have to explain it perfectly; \"I'm not okay\" is enough "
+        "to start.\n\nIf you feel unsafe right now, call 112 or go to the nearest "
+        "hospital. I'm here, and I'd like to keep talking with you.",
+    ],
     'default': [
         "Tell me more about that.",
         "What does that look like for you day-to-day?",
         "How long has this been going on?",
     ],
 }
+
+# Self-harm / suicidal-ideation cues. DELIBERATELY RECALL-FIRST — the opposite of the
+# precision-first policy governing toxicity alerts (CHAT_ALERT_T). The failure modes are
+# not symmetric: a false positive shows a supportive message and two helpline numbers to
+# a child who was being hyperbolic ("I'll kill myself if I lose again" is real gaming
+# hyperbole, and will match); a false negative answers a genuine disclosure with "Tell me
+# more about that." We accept the first to eliminate the second.
+_CRISIS_PHRASES = (
+    'kill myself', 'killing myself', 'end my life', 'end it all', 'want to die',
+    'wanna die', 'better off dead', 'hurt myself', 'hurting myself', 'harm myself',
+    'harming myself', 'cut myself', 'cutting myself', 'not worth living',
+    'no reason to live', 'no point living', 'no point in living', 'dont want to live',
+    "don't want to live", 'take my own life', 'wish i was dead', 'wish i were dead',
+)
+_CRISIS_WORDS = {'suicide', 'suicidal', 'kms'}
 
 
 def _classify_intent(text: str) -> str:
@@ -7231,6 +7352,10 @@ def _classify_intent(text: str) -> str:
     # still matched as substrings of the lowered text.
     t = text.lower()
     words = set(re.findall(r"[a-z']+", t))
+    # Checked FIRST and unconditionally: a disclosure must win over every other cue in
+    # the same sentence ("hey mira, i want to kill myself" is a crisis, not a greeting).
+    if words & _CRISIS_WORDS or any(p in t for p in _CRISIS_PHRASES):
+        return 'crisis'
     if words & {'hi', 'hello', 'hey', 'mira'}:
         return 'greeting'
     if words & {'tired', 'exhausted', 'sleepy', 'fatigued'}:
@@ -7255,11 +7380,16 @@ def _build_counselor_context(user_id: int) -> dict:
     conn = get_db()
     try:
         cutoff_7d = (datetime.now() - timedelta(days=7)).isoformat()
+        # Latest prediction per session (see the weekly-PDF note): averaging every
+        # re-score row would let one long session dominate the counselor's read of
+        # "how intense has this week been".
         row = conn.execute('''
             SELECT AVG(p.final_risk_score) AS avg_risk
             FROM predictions p
             JOIN sessions s ON s.session_id = p.session_id
             WHERE s.user_id = ? AND s.start_time >= ?
+            AND p.id = (SELECT MAX(p2.id) FROM predictions p2
+                        WHERE p2.session_id = p.session_id)
         ''', (user_id, cutoff_7d)).fetchone()
         avg_risk = row['avg_risk'] if row and row['avg_risk'] is not None else 0.5
 

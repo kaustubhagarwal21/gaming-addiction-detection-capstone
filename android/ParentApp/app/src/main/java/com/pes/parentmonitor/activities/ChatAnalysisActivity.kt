@@ -60,11 +60,15 @@ class ChatAnalysisActivity : AuthenticatedActivity() {
                 if (resp.isSuccessful && resp.body()?.success == true) {
                     val data = resp.body()!!
                     val total = data.stats?.totalMessages ?: 0
+                    val spoken = data.stats?.spokenMessages ?: 0
                     val avgTox = data.stats?.avgToxicity ?: 0.0
                     val tox = data.toxicityDistribution
                     val recent = data.recentMessages ?: emptyList()
 
-                    if (total == 0) {
+                    // "Nothing captured" means NEITHER channel produced anything. Gating
+                    // on typed chat alone blanked the whole screen for a child whose
+                    // games have no text chat but who speaks throughout.
+                    if (total == 0 && spoken == 0) {
                         binding.tvChatRisk.text = "No chat captured yet"
                         binding.tvChatRisk.setTextColor(getColor(com.pes.parentmonitor.R.color.text_secondary))
                         binding.tvCommunicationPattern.text =
@@ -77,13 +81,26 @@ class ChatAnalysisActivity : AuthenticatedActivity() {
                         return@launch
                     }
 
-                    // Real average toxicity across captured messages
-                    binding.tvChatRisk.text =
-                        "Avg toxicity: ${"%.0f".format(avgTox * 100)}%  ·  $total messages analysed"
+                    // The server's average and distribution are TYPED-only (spoken lines
+                    // are counted separately). Report each channel for what it is rather
+                    // than presenting "0% over 0 messages" as a clean result while
+                    // thousands of spoken lines sit unmentioned.
+                    val sampleTox = recent.mapNotNull { it.confidence }
+                    val shownAvg = if (total > 0) avgTox else sampleTox.average().takeIf {
+                        sampleTox.isNotEmpty()
+                    } ?: 0.0
+                    binding.tvChatRisk.text = when {
+                        total > 0 && spoken > 0 ->
+                            "Avg toxicity: ${"%.0f".format(avgTox * 100)}%  ·  " +
+                                "$total typed · $spoken spoken"
+                        total > 0 -> "Avg toxicity: ${"%.0f".format(avgTox * 100)}%  ·  " +
+                            "$total typed messages"
+                        else -> "$spoken spoken lines analysed  ·  no typed chat in these games"
+                    }
                     val sev = when {
-                        avgTox > 0.6 -> "addicted"
-                        avgTox > 0.3 -> "at_risk"
-                        else         -> "casual"
+                        shownAvg > 0.6 -> "addicted"
+                        shownAvg > 0.3 -> "at_risk"
+                        else           -> "casual"
                     }
                     binding.tvChatRisk.setTextColor(when (sev) {
                         "addicted" -> getColor(com.pes.parentmonitor.R.color.risk_high)
@@ -93,8 +110,11 @@ class ChatAnalysisActivity : AuthenticatedActivity() {
 
                     // Real toxicity distribution + a few recent samples
                     val sb = StringBuilder()
-                    if (tox != null) {
-                        sb.append("Recent messages: 🔴 ${tox.high} concerning · 🟡 ${tox.medium} borderline · 🟢 ${tox.safe} clean\n")
+                    if (tox != null && total > 0) {
+                        sb.append("Typed messages: 🔴 ${tox.high} concerning · 🟡 ${tox.medium} borderline · 🟢 ${tox.safe} clean\n")
+                    } else if (spoken > 0) {
+                        sb.append("No typed chat captured — the breakdown below is from " +
+                            "transcribed speech.\n")
                     }
                     // Show how the recent sample splits between text the child actually
                     // typed in-game and speech that was transcribed to text, so the parent
