@@ -1,0 +1,73 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Devanagari consonant page. Exists so Hindi typed in a monitored game reaches the
+  capture path: previously Devanagari required a third-party keyboard, whose text is
+  only visible to the accessibility service (and not at all in canvas/engine games).
+  android:codes carries the Unicode code point; the IME commits it verbatim, so the
+  dual-script chat model scores it exactly as it scores accessibility-captured text.
+  Page 2 (vowels + matras) is devanagari_vowels.xml; -100 returns to QWERTY.
+-->
+<Keyboard xmlns:android="http://schemas.android.com/apk/res/android"
+    android:keyWidth="10%p"
+    android:keyHeight="46dp"
+    android:horizontalGap="0px"
+    android:verticalGap="2dp">
+
+    <Row>
+        <Key android:codes="2325" android:keyLabel="क" android:keyEdgeFlags="left" />
+        <Key android:codes="2326" android:keyLabel="ख" />
+        <Key android:codes="2327" android:keyLabel="ग" />
+        <Key android:codes="2328" android:keyLabel="घ" />
+        <Key android:codes="2330" android:keyLabel="च" />
+        <Key android:codes="2331" android:keyLabel="छ" />
+        <Key android:codes="2332" android:keyLabel="ज" />
+        <Key android:codes="2333" android:keyLabel="झ" />
+        <Key android:codes="2335" android:keyLabel="ट" />
+        <Key android:codes="2336" android:keyLabel="ठ" android:keyEdgeFlags="right" />
+    </Row>
+
+    <Row>
+        <Key android:codes="2337" android:keyLabel="ड" android:keyEdgeFlags="left" />
+        <Key android:codes="2338" android:keyLabel="ढ" />
+        <Key android:codes="2340" android:keyLabel="त" />
+        <Key android:codes="2341" android:keyLabel="थ" />
+        <Key android:codes="2342" android:keyLabel="द" />
+        <Key android:codes="2343" android:keyLabel="ध" />
+        <Key android:codes="2344" android:keyLabel="न" />
+        <Key android:codes="2346" android:keyLabel="प" />
+        <Key android:codes="2347" android:keyLabel="फ" />
+        <Key android:codes="2348" android:keyLabel="ब" android:keyEdgeFlags="right" />
+    </Row>
+
+    <Row>
+        <Key android:codes="2349" android:keyLabel="भ" android:keyEdgeFlags="left" />
+        <Key android:codes="2350" android:keyLabel="म" />
+        <Key android:codes="2351" android:keyLabel="य" />
+        <Key android:codes="2352" android:keyLabel="र" />
+        <Key android:codes="2354" android:keyLabel="ल" />
+        <Key android:codes="2357" android:keyLabel="व" />
+        <Key android:codes="2358" android:keyLabel="श" />
+        <Key android:codes="2359" android:keyLabel="ष" />
+        <Key android:codes="2360" android:keyLabel="स" />
+        <Key android:codes="2361" android:keyLabel="ह" android:keyEdgeFlags="right" />
+    </Row>
+
+    <Row>
+        <Key android:codes="-101" android:keyLabel="अआ" android:keyWidth="15%p" android:keyEdgeFlags="left" />
+        <Key android:codes="2339" android:keyLabel="ण" />
+        <Key android:codes="2334" android:keyLabel="ञ" />
+        <Key android:codes="2329" android:keyLabel="ङ" />
+        <Key android:codes="2355" android:keyLabel="ळ" />
+        <Key android:codes="2364" android:keyLabel="़" />
+        <Key android:codes="2381" android:keyLabel="्" />
+        <Key android:codes="-5" android:keyLabel="⌫" android:keyWidth="15%p" android:isRepeatable="true" android:keyEdgeFlags="right" />
+    </Row>
+
+    <Row>
+        <Key android:codes="-100" android:keyLabel="ABC"   android:keyWidth="15%p" android:keyEdgeFlags="left" />
+        <Key android:codes="2404" android:keyLabel="।"     />
+        <Key android:codes="32"   android:keyLabel="space" android:keyWidth="50%p" />
+        <Key android:codes="44"   android:keyLabel=","     />
+        <Key android:codes="10"   android:keyLabel="↵"     android:keyWidth="15%p" android:keyEdgeFlags="right" />
+    </Row>
+</Keyboard>

@@ -91,17 +91,17 @@ them makes SHAP circular. Ablation: 0.9191 vs 0.9160, CIs overlap — free hones
 ## Slide 6 — Chat Model
 **On slide:**
 - TF-IDF (word 1–2g + char_wb 3–5g) → LogReg → isotonic; noisy-OR keyword fusion
-- In-domain (CONDA game chat): **PR-AUC 0.830** [0.813, 0.845]; off-the-shelf toxic-BERT reads only 0.709 on the same split — domain data beats model capacity
-- At alert threshold 0.95: precision **0.971**, recall 0.285 — >=0.95 precision on EVERY register at one threshold
-- **NEW: dual-script Hindi path** (HASOC 2019, Devanagari + romanised): held-out precision **0.957 / 0.973** per script — was (near) zero before adoption
+- In-domain (CONDA game chat): **PR-AUC 0.825** [0.807, 0.841]; off-the-shelf toxic-BERT reads only 0.709 on the same split — domain data beats model capacity
+- At alert threshold 0.95: precision **0.956**, recall 0.428 — >=0.95 precision on EVERY register at one threshold
+- **NEW: dual-script Hindi path** (HASOC 2019 + clean-wiki counterweight, Devanagari + romanised): held-out precision **0.968 / 0.958** per script — was (near) zero before adoption
 - Hinglish + Devanagari lexicon (bsdk, चूतिया…) — load-bearing for India
 
 **Figure:** pr_chat.pdf (PR curve)
 
 **Notes:** The threshold story is the strongest 60 s of the talk: at the realistic
-~3.5% toxic base rate, threshold 0.5 gives precision 0.241 — a parent gets ~3
-false alarms per real one and stops reading alerts. At the deployed 0.95, precision is 0.971 at
-recall 0.285: we consciously trade recall to keep alerts credible (the session-level
+~3.5% toxic base rate, threshold 0.5 gives precision 0.235 — a parent gets ~3
+false alarms per real one and stops reading alerts. At the deployed 0.95, precision is 0.956 at
+recall 0.428: we consciously trade recall to keep alerts credible (the session-level
 streak alert recovers coverage; per-message recall 0.87 at its 0.6 bar).
 Threshold is env-tunable and a Beta-posterior tuner adjusts it from parent
 feedback. Why no BERT: 512 MB serving budget, real-time per-message scoring, and
@@ -149,7 +149,7 @@ asymmetric cost is parents ignoring alerts. Show you know both operating points:
 - Held-out only, seeds recorded; voice = speaker-independent; chat = in-domain
 - Ablations: one component removed per row, bootstrap 95% CIs (1,000 resamples)
 - MCC + PR-AUC alongside F1 (base rates are extreme)
-- Biggest finding: remove CONDA domain data → PR-AUC 0.834 → **0.513**
+- Biggest finding: remove CONDA domain data → PR-AUC 0.825 → **0.511**
 
 **Table:** 3-row mini-ablation (full 0.834 / − char_wb 0.811 / − CONDA 0.513) —
 full tables in `docs/ablation_results.json` and the paper.

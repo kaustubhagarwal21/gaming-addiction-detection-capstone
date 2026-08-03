@@ -786,10 +786,11 @@ if not 0.0 < RISK_T1 < RISK_T2 < 1.0:
 # an accusation about a SPECIFIC line the parent may confront the child over, so it is
 # precision-first. Defaults are chosen from the MEASURED held-out curve of the served
 # pipeline on real gaming chat (CONDA_valid; model trained on the de-duplicated
-# general + CONDA train + Davidson + dual-script HASOC-Hindi assembly):
-#   0.95 → toxic precision 0.971, recall 0.285  (the alert; also >=0.95 precision
+# general + CONDA train + Davidson + dual-script HASOC-Hindi + clean-Hindi-wiki
+# assembly):
+#   0.95 → toxic precision 0.956, recall 0.428  (the alert; also >=0.95 precision
 #          on held-out Devanagari AND romanised Hindi at this same threshold)
-#   0.97 → toxic precision 1.00, recall 0.025   (the 'high'-severity marker)
+#   0.97 → toxic precision 1.00, recall 0.024   (the 'high'-severity marker)
 # The pre-dedupe model's curve put the same ~0.95-precision operating point at
 # 0.90 — calibration shifts where probabilities land, so thresholds never survive
 # a model change unexamined; each revision re-derives them from its own curve.

@@ -3,94 +3,107 @@
   "chat": [
     {
       "config": "full recipe (deployed)",
-      "pr_auc": 0.83,
+      "pr_auc": 0.8246,
       "pr_auc_ci95": [
-        0.8129,
-        0.845
+        0.8073,
+        0.8407
       ],
-      "roc_auc": 0.9216,
-      "precision@alert": 0.9585,
-      "recall@alert": 0.3889,
-      "f1@alert": 0.5533,
-      "mcc@alert": 0.5595
+      "roc_auc": 0.9206,
+      "precision@alert": 0.9648,
+      "recall@alert": 0.363,
+      "f1@alert": 0.5276,
+      "mcc@alert": 0.5414
     },
     {
       "config": "- keyword fusion",
-      "pr_auc": 0.8214,
+      "pr_auc": 0.8139,
       "pr_auc_ci95": [
-        0.8039,
-        0.8367
+        0.7964,
+        0.8299
       ],
-      "roc_auc": 0.9192,
-      "precision@alert": 0.9576,
-      "recall@alert": 0.3811,
-      "f1@alert": 0.5452,
-      "mcc@alert": 0.5529
+      "roc_auc": 0.9183,
+      "precision@alert": 0.9726,
+      "recall@alert": 0.2781,
+      "f1@alert": 0.4326,
+      "mcc@alert": 0.472
     },
     {
       "config": "- calibration",
-      "pr_auc": 0.8412,
+      "pr_auc": 0.8371,
       "pr_auc_ci95": [
-        0.8245,
-        0.8563
+        0.82,
+        0.8521
       ],
-      "roc_auc": 0.9228,
-      "precision@alert": 0.9693,
-      "recall@alert": 0.3227,
-      "f1@alert": 0.4842,
-      "mcc@alert": 0.5098
+      "roc_auc": 0.9216,
+      "precision@alert": 0.965,
+      "recall@alert": 0.3654,
+      "f1@alert": 0.5301,
+      "mcc@alert": 0.5435
     },
     {
       "config": "- char_wb n-grams",
-      "pr_auc": 0.802,
+      "pr_auc": 0.7942,
       "pr_auc_ci95": [
-        0.7843,
-        0.8186
+        0.7765,
+        0.8111
       ],
-      "roc_auc": 0.8984,
-      "precision@alert": 0.9564,
-      "recall@alert": 0.2775,
-      "f1@alert": 0.4302,
-      "mcc@alert": 0.4655
+      "roc_auc": 0.8929,
+      "precision@alert": 0.963,
+      "recall@alert": 0.298,
+      "f1@alert": 0.4552,
+      "mcc@alert": 0.4861
     },
     {
       "config": "- Davidson corpus",
-      "pr_auc": 0.8062,
+      "pr_auc": 0.7937,
       "pr_auc_ci95": [
-        0.7888,
-        0.8234
+        0.7751,
+        0.8121
       ],
-      "roc_auc": 0.9144,
-      "precision@alert": 0.9314,
-      "recall@alert": 0.4576,
-      "f1@alert": 0.6136,
-      "mcc@alert": 0.5992
+      "roc_auc": 0.9077,
+      "precision@alert": 0.8951,
+      "recall@alert": 0.5551,
+      "f1@alert": 0.6852,
+      "mcc@alert": 0.6493
     },
     {
       "config": "- HASOC Hindi corpus",
-      "pr_auc": 0.831,
+      "pr_auc": 0.8315,
       "pr_auc_ci95": [
-        0.8134,
-        0.846
+        0.815,
+        0.8475
       ],
-      "roc_auc": 0.9223,
-      "precision@alert": 0.9556,
-      "recall@alert": 0.3889,
-      "f1@alert": 0.5528,
-      "mcc@alert": 0.5582
+      "roc_auc": 0.9214,
+      "precision@alert": 0.958,
+      "recall@alert": 0.3155,
+      "f1@alert": 0.4746,
+      "mcc@alert": 0.4992
+    },
+    {
+      "config": "- clean-Hindi wiki counterweight",
+      "pr_auc": 0.8346,
+      "pr_auc_ci95": [
+        0.8178,
+        0.8497
+      ],
+      "roc_auc": 0.9222,
+      "precision@alert": 0.9643,
+      "recall@alert": 0.3739,
+      "f1@alert": 0.5388,
+      "mcc@alert": 0.55
     },
     {
       "config": "- CONDA corpus (domain data)",
-      "pr_auc": 0.5337,
+      "pr_auc": 0.5109,
       "pr_auc_ci95": [
-        0.5081,
-        0.5568
+        0.4869,
+        0.5347
       ],
-      "roc_auc": 0.7565,
-      "precision@alert": 0.9688,
-      "recall@alert": 0.0373,
-      "f1@alert": 0.0719,
-      "mcc@alert": 0.1677
+      "roc_auc": 0.7395,
+      "precision@alert": 0.9062,
+      "recall@alert": 0.0698,
+      "f1@alert": 0.1297,
+      "mcc@alert": 0.2184
     },
     {
       "config": "original (general-only, word-only)",
