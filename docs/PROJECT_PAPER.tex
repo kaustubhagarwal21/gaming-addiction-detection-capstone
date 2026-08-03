@@ -490,8 +490,11 @@ why hours alone are not the model. We remain explicit about the boundary: ground
 narrows the sim-to-real gap for the dominant features, but the \emph{labels} are
 still synthetic screening priors, and the telemetry-only features (late-night ratio,
 breaks, re-logins) have no public source. The chat model is trained on \emph{three
-real corpora}: a public general-toxicity corpus, the CONDA train
-split~\cite{conda2021} (real Dota~2
+real corpora}: a general-toxicity corpus dominated by the Jigsaw/Conversation-AI
+Wikipedia talk-page comments~\cite{jigsaw2018} ($86\%$ of its $185{,}312$ rows; a
+copy of the Davidson tweets and a small YouTube comment set make up the rest ---
+the duplicate-text audit in \S\ref{sec:chatresults} accounts for the overlap), the
+CONDA train split~\cite{conda2021} (real Dota~2
 in-game utterances with toxicity labels), and the Davidson et al.\ offensive-language
 dataset~\cite{davidson2017} ($24{,}783$ real tweets --- informal, slang-heavy language close to gaming
 chat's register); it is evaluated on CONDA's \emph{held-out} validation split it
@@ -530,7 +533,7 @@ had to \emph{earn} their place with a measured, held-out effect (reported in
 \midrule
 Gamers \& Anxiety (OSF, $n{=}13{,}464$) & adopted & real survey; grounds play-time bands + peer percentiles (hand-set table was measurably wrong) \\
 IGDS9-SF Latin America (OSF, $n{=}11{,}191$) & adopted & real IGD labels; severity base rate + chat-premise validation \\
-General toxicity corpus & adopted & chat training base (public, real comments) \\
+General toxicity corpus~\cite{jigsaw2018} & adopted & chat training base --- Jigsaw Wikipedia talk-page comments ($86\%$), plus a Davidson copy and a small YouTube set \\
 CONDA (real Dota~2 chat) & adopted & the in-domain anchor: its removal collapses PR-AUC $0.834 \rightarrow 0.513$ \\
 Davidson et al.\ tweets & adopted & real informal/slang register; $+0.029$ PR-AUC measured \\
 RAVDESS + CREMA-D & adopted & real labelled English speech, 115 speakers \\
@@ -1137,9 +1140,10 @@ the word~$\cup$~char\_wb model trained on three real corpora (general toxicity +
 CONDA train split + Davidson offensive-language tweets; held-out Brier
 $0.074 \rightarrow 0.070$), fused with the keyword lexicon. The held-out set is
 reconstructed from the \emph{same} corpus assembly the trainer uses (shared code
-path), so no training row can leak into it --- an earlier draft rebuilt this split
+path), so no training \emph{row} can re-enter it --- an earlier draft rebuilt this split
 from the general corpus alone, which admitted trained CONDA/Davidson rows and
-understated the realistic base rate.
+understated the realistic base rate. (Duplicate \emph{texts} are a subtler channel,
+audited below.)
 \begin{center}
 \begin{tabular}{lccc}
 \toprule
@@ -1151,6 +1155,22 @@ General realistic stream @0.90 (alert) & 0.331 & 0.471 & out-of-domain view \\
 \bottomrule
 \end{tabular}
 \end{center}
+
+\paragraph{Duplicate-text audit (net-conservative).} A provenance audit of the
+assembled corpus found $18{,}038$ duplicate rows ($7.8\%$): the general corpus
+itself carries a copy of the Davidson tweets alongside the canonical
+\texttt{chat\_extra} file, and $6{,}542$ texts carried \emph{conflicting} labels
+between their copies. Exact-duplicate texts therefore straddle the train/test
+boundary ($10.6\%$ of balanced test rows have a training-side twin). Measured on
+the deployed model, the net effect is \emph{conservative}, not inflationary: the
+overlapping subset scores \emph{worse} than the rest (accuracy $0.840$ vs.\
+$0.913$ overall), because a label conflict guarantees an error on one copy of the
+text --- outweighing any memorisation gain --- so the leak-free subset reads
+accuracy $0.922$, PR-AUC $0.935$, Brier $0.062$, all slightly \emph{better} than
+the reported figures. The reported (lower) numbers are retained as the honest
+published values; the assembly now de-duplicates for future retrains (majority
+label per text, ties resolved toward toxic), recorded by a metadata flag so
+evaluation always reproduces the exact assembly the deployed model was trained on.
 
 \paragraph{In-domain evaluation on real gaming chat (held-out CONDA split).}
 The serving domain is gaming chat, so the decisive evaluation is on \textbf{CONDA's
@@ -2072,6 +2092,9 @@ for in-game toxicity understanding and detection,'' in \emph{Findings of ACL-IJC
 2021.
 \bibitem{davidson2017} T. Davidson, D. Warmsley, M. Macy, and I. Weber, ``Automated hate
 speech detection and the problem of offensive language,'' in \emph{Proc.\ ICWSM}, 2017.
+\bibitem{jigsaw2018} Jigsaw / Conversation AI, ``Toxic Comment Classification
+Challenge'' (Wikipedia talk-page comments with crowd-sourced toxicity annotations),
+Kaggle, 2018.
 \bibitem{cremad2014} H. Cao, D. G. Cooper, M. K. Keutmann, R. C. Gur, A. Nenkova, and
 R. Verma, ``CREMA-D: Crowd-sourced emotional multimodal actors dataset,'' \emph{IEEE
 Trans.\ Affective Computing}, vol.~5, no.~4, 2014.

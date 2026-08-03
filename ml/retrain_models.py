@@ -289,13 +289,23 @@ def train_behavior_model():
 # ──────────────────────────────────────────────────────────────────────────────
 # 2. CHAT MODEL  (binary classifier: toxic vs. clean)
 # ──────────────────────────────────────────────────────────────────────────────
-def assemble_chat_dataset(verbose: bool = True):
+def assemble_chat_dataset(verbose: bool = True, dedupe: bool = False):
     """The FULL chat corpus the model trains on: general corpus + CONDA train split +
     every data/chat_extra/*.csv, cleaned with the serving clean_text. Deterministic
     (fixed read order, ignore_index concats), so ml/eval_chat_voice.py can import this
     and reproduce the EXACT rows — its "held-out" set then genuinely excludes what the
     model trained on. Previously eval rebuilt the split from the general corpus ALONE,
     so CONDA/chat_extra rows the model HAD trained on leaked into the "held-out" metrics.
+
+    dedupe: collapse exact post-clean duplicate texts across corpora. The general
+    corpus itself carries a Davidson copy while chat_extra adds the canonical one,
+    leaving ~18k duplicate rows of which ~6.5k texts had CONFLICTING labels between
+    copies (measured net effect on the deployed model's balanced holdout: metrics
+    UNDERstated by ~0.9pp — conflicts guarantee errors on duplicated texts, outweighing
+    any memorisation gain). Trainers pass True and record `chat_dedup` in
+    model_metadata.json; eval reads that flag so it always reproduces the exact
+    assembly the DEPLOYED model was trained on (models trained before the flag
+    existed used the un-deduped assembly — hence the False default).
     """
     df = pd.read_csv(os.path.join(DATA_DIR, 'chat_dataset.csv'))
     df = df[['text', 'toxicity_score']].dropna()
@@ -330,6 +340,16 @@ def assemble_chat_dataset(verbose: bool = True):
     # Apply the SAME clean_text the backend uses at serving (no train/serve skew).
     df['text'] = df['text'].astype(str).map(clean_text)
     df = df[df['text'].str.len() > 2]
+    if dedupe:
+        n_before = len(df)
+        # One row per cleaned text: majority label, ties -> toxic (a tie means the
+        # sources genuinely disagree; keep the positive so the example still teaches
+        # the alert boundary). groupby sorts by text — deterministic, and the trainer
+        # reshuffles with a fixed seed downstream anyway.
+        df = df.groupby('text', as_index=False)['toxic'].agg(lambda s: int(s.mean() >= 0.5))
+        if verbose:
+            print(f"De-duplicated: {n_before:,} -> {len(df):,} rows "
+                  f"({n_before - len(df):,} duplicate texts collapsed)")
     return df
 
 
@@ -344,7 +364,7 @@ def train_chat_model():
     # gaming-chat domain mismatch + 30:1 imbalance, not label noise. So we did NOT adopt
     # it; the real chat lever is real gaming-chat data / threshold tuning, not cleanup.
     # Shared assembly (also used by eval_chat_voice.py, so eval excludes exactly these rows).
-    df = assemble_chat_dataset(verbose=True)
+    df = assemble_chat_dataset(verbose=True, dedupe=True)
     print(f"Dataset: {df.shape}")
     print(f"Toxic: {df['toxic'].sum():,} ({df['toxic'].mean()*100:.1f}%)  Non-toxic: {(df['toxic']==0).sum():,}")
 
@@ -421,6 +441,19 @@ def train_chat_model():
         pickle.dump(calibrated, f)
     with open(os.path.join(MODELS_DIR, 'tfidf_vectorizer.pkl'), 'wb') as f:
         pickle.dump(vectorizer, f)
+    # Record that THIS model was trained on the de-duplicated assembly, so
+    # eval_chat_voice.py reproduces the identical split (see assemble_chat_dataset).
+    meta_path = os.path.join(MODELS_DIR, 'model_metadata.json')
+    merged = {}
+    if os.path.exists(meta_path):
+        try:
+            with open(meta_path) as f:
+                merged = json.load(f)
+        except Exception:
+            merged = {}
+    merged['chat_dedup'] = True
+    with open(meta_path, 'w') as f:
+        json.dump(merged, f, indent=2)
     print("[OK] Saved chat_model.pkl, chat_calibrated.pkl, tfidf_vectorizer.pkl")
     return clf, vectorizer
 

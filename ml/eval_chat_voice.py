@@ -49,7 +49,17 @@ def eval_chat():
     # No reset_index: the trainer balances/splits on this same (filter-gapped) index, so
     # reproducing it here — index and all — is what makes X_train.index line up exactly.
     from retrain_models import assemble_chat_dataset
-    df = assemble_chat_dataset(verbose=False)
+    # Reproduce the assembly EXACTLY as the deployed model saw it: models trained
+    # after the de-duplication fix record chat_dedup in model_metadata.json; models
+    # from before it used the un-deduped assembly (flag absent -> False).
+    dedup = False
+    meta_path = os.path.join(MODELS_DIR, 'model_metadata.json')
+    try:
+        with open(meta_path) as f:
+            dedup = bool(json.load(f).get('chat_dedup', False))
+    except Exception:
+        pass
+    df = assemble_chat_dataset(verbose=False, dedupe=dedup)
 
     # Reproduce the balanced training subset + split EXACTLY (retrain_models.py seeds).
     toxic_df    = df[df['toxic'] == 1]
