@@ -1,0 +1,18 @@
+# Normalise line endings in the repository (LF) regardless of platform, so a
+# Windows checkout no longer reports phantom "modified" on files that differ only
+# by CRLF. Binary assets are marked so git never tries to convert them.
+* text=auto eol=lf
+
+*.png  binary
+*.jpg  binary
+*.pdf  binary
+*.apk  binary
+*.jks  binary
+*.keystore binary
+*.pkl  binary
+*.zip  binary
+*.npz  binary
+*.gz   binary
+*.jar  binary
+gradlew text eol=lf
+*.bat  text eol=crlf
