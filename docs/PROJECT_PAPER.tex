@@ -162,8 +162,9 @@ rather than to maximise a headline accuracy number.
         capturing only the child's own typing.
   \item An \textbf{India-ready abuse channel} for code-mixed gaming chat: a curated
         Hinglish lexicon (romanised Hindi \emph{and} Devanagari script) fused with the
-        calibrated English toxicity model via noisy-OR --- ablation-measured to raise
-        recall at the alert threshold from 0.434 to 0.491 at equal precision --- and an
+        calibrated English toxicity model via noisy-OR --- ablation-measured to lift
+        recall at the alert threshold from $0.287$ to $0.389$ (precision
+        $0.97 \rightarrow 0.96$, post-dedupe retrain) --- and an
         \emph{on-device} Indian-English speech-to-text path (Vosk) that routes what the
         child \emph{says} through the same toxicity model, so spoken abuse is caught
         without raw audio ever being retained. English-centric keyword monitors cover
@@ -448,7 +449,11 @@ mis-time the night of a child in another timezone.
 craving, tolerance, missed-sleep, fatigue, routine-disruption,
 neglect-responsibilities, gaming-priority) are derived deterministically from the
 objective ten by a \emph{single shared function} imported by both the trainer and the
-live backend, so the derivation can never diverge between training and serving.
+live backend, so the derivation can never diverge between training and serving. The
+term ``proxy'' is load-bearing: these are engineered behavioural indicators
+\emph{named after} the psychometric constructs they approximate, not measured
+psychological states --- which is exactly why they are excluded from the model input
+and the SHAP explanations (below) and serve only as UI-level descriptions.
 
 \paragraph{Why the model input is the objective ten, not all twenty.}
 An earlier iteration fed all 20 features to the classifier. Because the proxies are
@@ -1238,8 +1243,8 @@ flagged messages are correlated (same speaker, same session), so the bar is a
 repetition heuristic that suppresses one-off false positives, not an
 independence-based probability bound.
 General-corpus behaviour remains reported above for transparency: out-of-domain precision
-is poor, which is expected --- and irrelevant to serving, whose traffic is gaming
-chat.
+is poor, which is expected --- and not directly representative of the serving
+distribution, whose traffic is gaming chat.
 
 \subsection{Voice emotion model (now trained on real audio)}
 \label{sec:voiceresults}
@@ -1632,7 +1637,9 @@ summarises the collected corpus.
 \begin{table}[ht]
 \centering
 \footnotesize
-\caption{Pilot data collected in the first 12 days (6--18 July 2026), by channel.}
+\caption{Pilot data collected in the first 12 days (6--18 July 2026), by channel.
+Chat/toxicity alerts reflect the then-deployed $0.90$ alert threshold; the
+post-pilot retrain re-derived it to $0.95$ (\S\ref{sec:chatresults}).}
 \label{tab:pilot}
 \begin{tabularx}{\linewidth}{@{}lrX@{}}
 \toprule
