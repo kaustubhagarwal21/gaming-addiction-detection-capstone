@@ -1,0 +1,4 @@
+# file: C:\Users\KAUSTUBH\AppData\Local\Packages\PythonSoftwareFoundation.Python.3.11_qbz5n2kfra8p0\LocalCache\local-packages\Python311\site-packages\schemathesis\core\error_feedback\parsers\drf.py
+# hypothesis_version: 6.147.0
+
+['Enter a valid URL.', 'array', 'boolean', 'date', 'date-time', 'detail', 'email', 'integer', 'non_field_errors', 'number', 'object', 'time', 'uri', 'uuid']

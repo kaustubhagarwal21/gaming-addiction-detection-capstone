@@ -1,0 +1,4 @@
+# file: C:\Users\KAUSTUBH\AppData\Local\Packages\PythonSoftwareFoundation.Python.3.11_qbz5n2kfra8p0\LocalCache\local-packages\Python311\site-packages\schemathesis\engine\run\cache.py
+# hypothesis_version: 6.147.0
+
+[100, 401, 403, 405, '%Y-%m-%dT%H:%M:%SZ', 'HttpMethod', '_ctx', 'cache-auth-replay', 'cert', 'info', 'session', 'title', 'verify', 'writer']

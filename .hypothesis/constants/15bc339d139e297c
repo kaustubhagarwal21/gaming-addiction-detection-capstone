@@ -1,0 +1,4 @@
+# file: C:\Users\KAUSTUBH\AppData\Local\Packages\PythonSoftwareFoundation.Python.3.11_qbz5n2kfra8p0\LocalCache\local-packages\Python311\site-packages\schemathesis\core\failures.py
+# hypothesis_version: 6.147.0
+
+[413, 414, 416, 422, '\n    <BINARY>', '\n    <EMPTY>', 'Content Too Large', 'Run checks', 'Server error', 'URI Too Long', 'Unknown', 'case_id', 'colno', 'curl', 'deadline', 'document', 'elapsed', 'exception', 'expected_statuses', 'failure', 'lineno', 'message', 'operation', 'origin', 'position', 's', 'severity', 'status', 'status_code', 'title', 'validation_message']

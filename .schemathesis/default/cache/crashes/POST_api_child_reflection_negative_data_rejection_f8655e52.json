@@ -1,0 +1,99 @@
+{
+  "operation": "POST /api/child/reflection",
+  "method": "POST",
+  "path_template": "/api/child/reflection",
+  "fingerprint": "f8655e52",
+  "case_id": "c9ce4u",
+  "code_sample": "curl -X POST -H 'Content-Type: application/json' -d '{\"user_id\": 1, \"mood_rating\": 1, \"sleep_quality\": 1, \"energy_level\": 1, \"note\": \"\"}' http://127.0.0.1:5057/api/child/reflection",
+  "sequence": [
+    {
+      "method": "POST",
+      "url": "http://127.0.0.1:5057/api/child/reflection",
+      "url_template": "http://127.0.0.1:5057/api/child/reflection",
+      "headers": {
+        "User-Agent": "schemathesis/4.24.3",
+        "Accept-Encoding": "gzip, deflate",
+        "Accept": "*/*",
+        "Connection": "keep-alive",
+        "X-Schemathesis-TestCaseId": "c9ce4u",
+        "Content-Type": "application/json",
+        "Content-Length": "83"
+      },
+      "response": {
+        "status_code": 200,
+        "headers": {
+          "server": "Werkzeug/3.1.6 Python/3.11.9",
+          "date": "Mon, 03 Aug 2026 22:52:34 GMT",
+          "content-type": "application/json",
+          "content-length": "17",
+          "access-control-allow-origin": "*",
+          "connection": "close"
+        },
+        "body": "{\"success\":true}\n"
+      },
+      "link": null,
+      "checks": [
+        {
+          "name": "negative_data_rejection",
+          "status": "failure",
+          "message": "API accepted schema-violating request\n\nInvalid data should have been rejected\nExpected: 400, 401, 403, 404, 405, 406, 409, 422, 428, 5xx\nInvalid component: Missing `Authorization` at header"
+        }
+      ],
+      "meta": {
+        "generation": {
+          "time": 9.000010322779417e-06,
+          "mode": "negative"
+        },
+        "components": {
+          "HEADER": "negative",
+          "BODY": "positive"
+        },
+        "phase": {
+          "name": "coverage",
+          "data": {
+            "type": "CoveragePhaseData",
+            "description": "Missing `Authorization` at header",
+            "location": null,
+            "parameter": "Authorization",
+            "parameter_location": "HEADER",
+            "scenario": "missing_parameter"
+          }
+        },
+        "pool_draws": [
+          {
+            "location": "body",
+            "parameter_name": "user_id",
+            "resource_name": "User",
+            "resource_field": "id",
+            "source_operation": "POST /api/consent",
+            "source_status": 200
+          }
+        ],
+        "pool_misses": [],
+        "semantic_draws": [],
+        "dictionary_draws": [],
+        "constants_draws": [],
+        "raw_containers": {
+          "HEADER": {}
+        }
+      },
+      "path": "/api/child/reflection",
+      "path_parameters": {},
+      "query": {},
+      "case_headers": {},
+      "cookies": {},
+      "case_body": {
+        "encoding": "json",
+        "value": {
+          "user_id": 1,
+          "mood_rating": 1,
+          "sleep_quality": 1,
+          "energy_level": 1,
+          "note": ""
+        }
+      },
+      "media_type": "application/json",
+      "parent_index": null
+    }
+  ]
+}

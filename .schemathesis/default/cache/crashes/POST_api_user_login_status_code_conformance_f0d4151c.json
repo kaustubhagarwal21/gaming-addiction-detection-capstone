@@ -1,0 +1,84 @@
+{
+  "operation": "POST /api/user/login",
+  "method": "POST",
+  "path_template": "/api/user/login",
+  "fingerprint": "f0d4151c",
+  "case_id": "ssmGoq",
+  "code_sample": "curl -X POST -H 'Content-Type: application/json' -d '{\"pin\": \"\", \"role\": \"child\"}' http://127.0.0.1:5058/api/user/login",
+  "sequence": [
+    {
+      "method": "POST",
+      "url": "http://127.0.0.1:5058/api/user/login",
+      "url_template": "http://127.0.0.1:5058/api/user/login",
+      "headers": {
+        "User-Agent": "schemathesis/4.24.3",
+        "Accept-Encoding": "gzip, deflate",
+        "Accept": "*/*",
+        "Connection": "keep-alive",
+        "X-Schemathesis-TestCaseId": "ssmGoq",
+        "Content-Type": "application/json",
+        "Content-Length": "28"
+      },
+      "response": {
+        "status_code": 400,
+        "headers": {
+          "server": "Werkzeug/3.1.6 Python/3.11.9",
+          "date": "Mon, 03 Aug 2026 22:55:49 GMT",
+          "content-type": "application/json",
+          "content-length": "46",
+          "access-control-allow-origin": "*",
+          "connection": "close"
+        },
+        "body": "{\"message\":\"PIN is required\",\"success\":false}\n"
+      },
+      "link": null,
+      "checks": [
+        {
+          "name": "status_code_conformance",
+          "status": "failure",
+          "message": "Undocumented HTTP status code\n\nReceived: 400\nDocumented: 200, 401"
+        }
+      ],
+      "meta": {
+        "generation": {
+          "time": 0.0018865999882109463,
+          "mode": "positive"
+        },
+        "components": {
+          "BODY": "positive"
+        },
+        "phase": {
+          "name": "fuzzing",
+          "data": {
+            "type": "FuzzingPhaseData",
+            "description": "Positive test case",
+            "location": null,
+            "parameter": null,
+            "parameter_location": null,
+            "mutations": []
+          }
+        },
+        "pool_draws": [],
+        "pool_misses": [],
+        "semantic_draws": [],
+        "dictionary_draws": [],
+        "constants_draws": [],
+        "raw_containers": {}
+      },
+      "path": "/api/user/login",
+      "path_parameters": {},
+      "query": {},
+      "case_headers": {},
+      "cookies": {},
+      "case_body": {
+        "encoding": "json",
+        "value": {
+          "pin": "",
+          "role": "child"
+        }
+      },
+      "media_type": "application/json",
+      "parent_index": null
+    }
+  ]
+}

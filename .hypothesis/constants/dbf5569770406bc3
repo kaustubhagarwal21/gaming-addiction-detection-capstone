@@ -1,0 +1,4 @@
+# file: C:\Users\KAUSTUBH\AppData\Local\Packages\PythonSoftwareFoundation.Python.3.11_qbz5n2kfra8p0\LocalCache\local-packages\Python311\site-packages\schemathesis\core\jsonschema\keywords.py
+# hypothesis_version: 6.147.0
+
+['$ref', 'additionalItems', 'additionalProperties', 'allOf', 'anyOf', 'const', 'contains', 'contentEncoding', 'contentMediaType', 'dependencies', 'else', 'enum', 'exclusiveMaximum', 'exclusiveMinimum', 'format', 'if', 'items', 'maxItems', 'maxLength', 'maxProperties', 'maximum', 'minItems', 'minLength', 'minProperties', 'minimum', 'multipleOf', 'not', 'oneOf', 'pattern', 'patternProperties', 'properties', 'propertyNames', 'required', 'then', 'type', 'uniqueItems']

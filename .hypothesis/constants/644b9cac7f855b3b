@@ -1,0 +1,4 @@
+# file: C:\Users\KAUSTUBH\AppData\Local\Packages\PythonSoftwareFoundation.Python.3.11_qbz5n2kfra8p0\LocalCache\local-packages\Python311\site-packages\schemathesis\specs\openapi\converter.py
+# hypothesis_version: 6.147.0
+
+['#', '$defs', '$ref', '$schema', '/', '\\A', '\\Z', 'additionalItems', 'additionalProperties', 'allOf', 'anyOf', 'array', 'binary', 'const', 'contains', 'contentSchema', 'definitions', 'dependentSchemas', 'discriminator', 'else', 'enum', 'exclusiveMaximum', 'exclusiveMinimum', 'file', 'format', 'if', 'int32', 'int64', 'integer', 'items', 'mapping', 'maxLength', 'maximum', 'minItems', 'minLength', 'minimum', 'not', 'null', 'object', 'oneOf', 'pattern', 'patternProperties', 'prefixItems', 'properties', 'propertyName', 'propertyNames', 'readOnly', 'required', 'string', 'then', 'type', 'unevaluatedItems', 'writeOnly', 'x-writeOnly']

@@ -1,0 +1,81 @@
+{
+  "operation": "POST /api/user/fcm_token",
+  "method": "POST",
+  "path_template": "/api/user/fcm_token",
+  "fingerprint": "dcbafef5",
+  "case_id": "AgIEJ0",
+  "code_sample": "curl -X POST http://127.0.0.1:5058/api/user/fcm_token",
+  "sequence": [
+    {
+      "method": "POST",
+      "url": "http://127.0.0.1:5058/api/user/fcm_token",
+      "url_template": "http://127.0.0.1:5058/api/user/fcm_token",
+      "headers": {
+        "User-Agent": "schemathesis/4.24.3",
+        "Accept-Encoding": "gzip, deflate",
+        "Accept": "*/*",
+        "Connection": "keep-alive",
+        "X-Schemathesis-TestCaseId": "AgIEJ0",
+        "Content-Length": "0"
+      },
+      "response": {
+        "status_code": 400,
+        "headers": {
+          "server": "Werkzeug/3.1.6 Python/3.11.9",
+          "date": "Mon, 03 Aug 2026 22:55:47 GMT",
+          "content-type": "application/json",
+          "content-length": "38",
+          "access-control-allow-origin": "*",
+          "connection": "close"
+        },
+        "body": "{\"error\":\"A JSON object is required\"}\n"
+      },
+      "link": null,
+      "checks": [
+        {
+          "name": "status_code_conformance",
+          "status": "failure",
+          "message": "Undocumented HTTP status code\n\nReceived: 400\nDocumented: 200"
+        }
+      ],
+      "meta": {
+        "generation": {
+          "time": 6.699992809444666e-06,
+          "mode": "negative"
+        },
+        "components": {
+          "HEADER": "negative"
+        },
+        "phase": {
+          "name": "coverage",
+          "data": {
+            "type": "CoveragePhaseData",
+            "description": "Missing `Authorization` at header",
+            "location": null,
+            "parameter": "Authorization",
+            "parameter_location": "HEADER",
+            "scenario": "missing_parameter"
+          }
+        },
+        "pool_draws": [],
+        "pool_misses": [],
+        "semantic_draws": [],
+        "dictionary_draws": [],
+        "constants_draws": [],
+        "raw_containers": {
+          "HEADER": {}
+        }
+      },
+      "path": "/api/user/fcm_token",
+      "path_parameters": {},
+      "query": {},
+      "case_headers": {},
+      "cookies": {},
+      "case_body": {
+        "encoding": "none"
+      },
+      "media_type": null,
+      "parent_index": null
+    }
+  ]
+}

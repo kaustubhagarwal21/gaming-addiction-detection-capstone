@@ -1,0 +1,221 @@
+{
+  "operation": "POST /api/user/delete_data",
+  "method": "POST",
+  "path_template": "/api/user/delete_data",
+  "fingerprint": "83539a80",
+  "case_id": "nUgSTg",
+  "code_sample": "curl -X GET -H 'Authorization: [Filtered]' -H '3y: R#Cx]DQpIf=r' -H 'Content-Type: application/json' 'http://127.0.0.1:5057/api/dashboard/user?user_id=128336'\ncurl -X POST -H 'Authorization: [Filtered]' -H '3y: R#Cx]DQpIf=r' -H 'Content-Type: application/json' -d '{\"user_id\": 1, \"not underline2\": [[null, {\"\": [-4.416565023948623e+16]}], [[], {\"\\u00cf\\u0018\": [null, false, -27152]}, {\"\": false, \"\\u0093\\u00cf\\u00da\\u00e7\\u00ba\\u00e5Y\\u0015\\u00feS\\udbdc\\udf3fI\\u00dc$\\ud883\\udd6a\": [], \"\\u00fcN\\u008fR\\u00a5uY\\ud9f8\\udfe4\\u001fq\\udb25\\udd11\\u00fb\\u0083\\udb0a\\udeea\\u0084vY\\u00acK\\u0084\\u00e8\": []}]]}' http://127.0.0.1:5057/api/user/delete_data",
+  "sequence": [
+    {
+      "method": "GET",
+      "url": "http://127.0.0.1:5057/api/dashboard/user?user_id=128336",
+      "url_template": "http://127.0.0.1:5057/api/dashboard/user",
+      "headers": {
+        "User-Agent": "schemathesis/4.24.3",
+        "Accept-Encoding": "gzip, deflate",
+        "Accept": "*/*",
+        "Connection": "keep-alive",
+        "Authorization": "[Filtered]",
+        "X-Schemathesis-TestCaseId": "RWcWUa"
+      },
+      "response": {
+        "status_code": 200,
+        "headers": {
+          "server": "Werkzeug/3.1.6 Python/3.11.9",
+          "date": "Mon, 03 Aug 2026 22:52:48 GMT",
+          "content-type": "application/json",
+          "content-length": "527",
+          "access-control-allow-origin": "*",
+          "connection": "close"
+        },
+        "body": "{\"current_risk\":\"unknown\",\"disclaimer\":\"Wellbeing screening indicator based on gaming patterns \\u2014 not a medical or clinical diagnosis.\",\"game_breakdown\":[],\"recent_sessions\":[],\"risk_distribution\":{},\"risk_label\":\"unknown\",\"risk_period\":null,\"risk_score\":null,\"risk_thresholds\":{\"high_concern\":0.67,\"some_concern\":0.33},\"stats\":{\"avg_daily_hours\":0.0,\"current_risk\":\"unknown\",\"risk_label\":\"unknown\",\"risk_period\":null,\"risk_score\":null,\"total_hours\":0.0,\"total_sessions\":0},\"success\":true,\"trend_data\":[],\"user_id\":128336}\n"
+      },
+      "link": null,
+      "checks": [],
+      "meta": {
+        "generation": {
+          "time": 0.0033010999904945493,
+          "mode": "positive"
+        },
+        "components": {
+          "QUERY": "positive",
+          "HEADER": "positive"
+        },
+        "phase": {
+          "name": "stateful",
+          "data": {
+            "type": "StatefulPhaseData",
+            "description": "Positive test case",
+            "location": null,
+            "parameter": null,
+            "parameter_location": null,
+            "mutations": []
+          }
+        },
+        "pool_draws": [
+          {
+            "location": "query",
+            "parameter_name": "user_id",
+            "resource_name": "User",
+            "resource_field": "user_id",
+            "source_operation": "GET /api/dashboard/user",
+            "source_status": 200
+          }
+        ],
+        "pool_misses": [],
+        "semantic_draws": [],
+        "dictionary_draws": [],
+        "constants_draws": [],
+        "raw_containers": {}
+      },
+      "path": "/api/dashboard/user",
+      "path_parameters": {},
+      "query": {
+        "user_id": 128336
+      },
+      "case_headers": {
+        "Authorization": "[Filtered]"
+      },
+      "cookies": {},
+      "case_body": {
+        "encoding": "none"
+      },
+      "media_type": null,
+      "parent_index": null
+    },
+    {
+      "method": "POST",
+      "url": "http://127.0.0.1:5057/api/user/delete_data",
+      "url_template": "http://127.0.0.1:5057/api/user/delete_data",
+      "headers": {
+        "User-Agent": "schemathesis/4.24.3",
+        "Accept-Encoding": "gzip, deflate",
+        "Accept": "*/*",
+        "Connection": "keep-alive",
+        "Authorization": "[Filtered]",
+        "3y": "R#Cx]DQpIf=r",
+        "X-Schemathesis-TestCaseId": "nUgSTg",
+        "Content-Type": "application/json",
+        "Content-Length": "336"
+      },
+      "response": {
+        "status_code": 400,
+        "headers": {
+          "server": "Werkzeug/3.1.6 Python/3.11.9",
+          "date": "Mon, 03 Aug 2026 22:52:48 GMT",
+          "content-type": "application/json",
+          "content-length": "66",
+          "access-control-allow-origin": "*",
+          "connection": "close"
+        },
+        "body": "{\"message\":\"not underline2 must not be an array\",\"success\":false}\n"
+      },
+      "link": {
+        "operationId": "GET /api/dashboard/user -> [200] PostUser_6 -> POST /api/user/delete_data",
+        "parameters": {},
+        "requestBody": {
+          "user_id": "$response.body#/id"
+        }
+      },
+      "checks": [
+        {
+          "name": "status_code_conformance",
+          "status": "failure",
+          "message": "Undocumented HTTP status code\n\nReceived: 400\nDocumented: 200"
+        }
+      ],
+      "meta": {
+        "generation": {
+          "time": 0.008407499990426004,
+          "mode": "negative"
+        },
+        "components": {
+          "HEADER": "negative",
+          "BODY": "negative"
+        },
+        "phase": {
+          "name": "stateful",
+          "data": {
+            "type": "StatefulPhaseData",
+            "description": "violates `format` at /properties/Authorization",
+            "location": "/properties/Authorization",
+            "parameter": "Authorization",
+            "parameter_location": "HEADER",
+            "mutations": [
+              {
+                "path": [
+                  "Authorization"
+                ],
+                "schema_pointer": "/properties/Authorization",
+                "channel": "schema",
+                "operator": "negate_constraints",
+                "keywords": [
+                  "format"
+                ],
+                "parameter": "Authorization",
+                "original_value": null,
+                "new_value": null
+              }
+            ]
+          }
+        },
+        "pool_draws": [
+          {
+            "location": "body",
+            "parameter_name": "user_id",
+            "resource_name": "User",
+            "resource_field": "id",
+            "source_operation": "POST /api/consent",
+            "source_status": 200
+          }
+        ],
+        "pool_misses": [],
+        "semantic_draws": [],
+        "dictionary_draws": [],
+        "constants_draws": [],
+        "raw_containers": {}
+      },
+      "path": "/api/user/delete_data",
+      "path_parameters": {},
+      "query": {},
+      "case_headers": {
+        "Authorization": "[Filtered]",
+        "3y": "R#Cx]DQpIf=r"
+      },
+      "cookies": {},
+      "case_body": {
+        "encoding": "json",
+        "value": {
+          "user_id": 1,
+          "not underline2": [
+            [
+              null,
+              {
+                "": [
+                  -4.416565023948623e+16
+                ]
+              }
+            ],
+            [
+              [],
+              {
+                "\u00cf\u0018": [
+                  null,
+                  false,
+                  -27152
+                ]
+              },
+              {
+                "": false,
+                "\u0093\u00cf\u00da\u00e7\u00ba\u00e5Y\u0015\u00feS\udbdc\udf3fI\u00dc$\ud883\udd6a": [],
+                "\u00fcN\u008fR\u00a5uY\ud9f8\udfe4\u001fq\udb25\udd11\u00fb\u0083\udb0a\udeea\u0084vY\u00acK\u0084\u00e8": []
+              }
+            ]
+          ]
+        }
+      },
+      "media_type": "application/json",
+      "parent_index": 0
+    }
+  ]
+}

@@ -1,0 +1,82 @@
+{
+  "operation": "POST /api/parent/nudge",
+  "method": "POST",
+  "path_template": "/api/parent/nudge",
+  "fingerprint": "6945aa53",
+  "case_id": "yri6Qn",
+  "code_sample": "curl -X POST -H 'Authorization: [Filtered]' http://127.0.0.1:5058/api/parent/nudge",
+  "sequence": [
+    {
+      "method": "POST",
+      "url": "http://127.0.0.1:5058/api/parent/nudge",
+      "url_template": "http://127.0.0.1:5058/api/parent/nudge",
+      "headers": {
+        "User-Agent": "schemathesis/4.24.3",
+        "Accept-Encoding": "gzip, deflate",
+        "Accept": "*/*",
+        "Connection": "keep-alive",
+        "Authorization": "[Filtered]",
+        "X-Schemathesis-TestCaseId": "yri6Qn",
+        "Content-Length": "0"
+      },
+      "response": {
+        "status_code": 415,
+        "headers": {
+          "server": "Werkzeug/3.1.6 Python/3.11.9",
+          "date": "Mon, 03 Aug 2026 22:55:48 GMT",
+          "content-type": "application/json",
+          "content-length": "125",
+          "access-control-allow-origin": "*",
+          "connection": "close"
+        },
+        "body": "{\"message\":\"Did not attempt to load JSON data because the request Content-Type was not 'application/json'.\",\"success\":false}\n"
+      },
+      "link": null,
+      "checks": [
+        {
+          "name": "positive_data_acceptance",
+          "status": "failure",
+          "message": "API rejected schema-compliant request\n\nValid data should have been accepted\nExpected: 2xx, 401, 403, 404, 409, 5xx"
+        }
+      ],
+      "meta": {
+        "generation": {
+          "time": 0.0012250000145286322,
+          "mode": "positive"
+        },
+        "components": {
+          "HEADER": "positive"
+        },
+        "phase": {
+          "name": "fuzzing",
+          "data": {
+            "type": "FuzzingPhaseData",
+            "description": "Positive test case",
+            "location": null,
+            "parameter": null,
+            "parameter_location": null,
+            "mutations": []
+          }
+        },
+        "pool_draws": [],
+        "pool_misses": [],
+        "semantic_draws": [],
+        "dictionary_draws": [],
+        "constants_draws": [],
+        "raw_containers": {}
+      },
+      "path": "/api/parent/nudge",
+      "path_parameters": {},
+      "query": {},
+      "case_headers": {
+        "Authorization": "[Filtered]"
+      },
+      "cookies": {},
+      "case_body": {
+        "encoding": "none"
+      },
+      "media_type": null,
+      "parent_index": null
+    }
+  ]
+}

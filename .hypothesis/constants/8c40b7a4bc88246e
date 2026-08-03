@@ -1,0 +1,4 @@
+# file: C:\Users\KAUSTUBH\AppData\Local\Packages\PythonSoftwareFoundation.Python.3.11_qbz5n2kfra8p0\LocalCache\local-packages\Python311\site-packages\schemathesis\specs\openapi\_hypothesis.py
+# hypothesis_version: 6.147.0
+
+[0.0, 0.05, 0.95, 1.0, '\x00', '$defs', ',', '/', 'Positive test case', 'Schema mutated', '_', 'array', 'ascii', 'body', 'boolean', 'codec', 'const', 'cookie', 'default', 'definitions', 'dependencies', 'dependentSchemas', 'enum', 'example', 'examples', 'exclude_characters', 'exclusiveMaximum', 'exclusiveMinimum', 'false', 'float', 'format', 'header', 'if', 'maximum', 'minimum', 'not', 'null', 'number', 'object', 'path', 'patternProperties', 'properties', 'query', 'raw', 'required', 'string', 'true', 'type', 'utf-8']

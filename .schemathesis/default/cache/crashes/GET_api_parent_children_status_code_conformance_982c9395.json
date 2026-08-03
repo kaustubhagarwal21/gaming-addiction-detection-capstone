@@ -1,0 +1,80 @@
+{
+  "operation": "GET /api/parent/children",
+  "method": "GET",
+  "path_template": "/api/parent/children",
+  "fingerprint": "982c9395",
+  "case_id": "zSllty",
+  "code_sample": "curl -X GET http://127.0.0.1:5058/api/parent/children",
+  "sequence": [
+    {
+      "method": "GET",
+      "url": "http://127.0.0.1:5058/api/parent/children",
+      "url_template": "http://127.0.0.1:5058/api/parent/children",
+      "headers": {
+        "User-Agent": "schemathesis/4.24.3",
+        "Accept-Encoding": "gzip, deflate",
+        "Accept": "*/*",
+        "Connection": "keep-alive",
+        "X-Schemathesis-TestCaseId": "zSllty"
+      },
+      "response": {
+        "status_code": 401,
+        "headers": {
+          "server": "Werkzeug/3.1.6 Python/3.11.9",
+          "date": "Mon, 03 Aug 2026 22:55:48 GMT",
+          "content-type": "application/json",
+          "content-length": "54",
+          "access-control-allow-origin": "*",
+          "connection": "close"
+        },
+        "body": "{\"message\":\"Authentication required\",\"success\":false}\n"
+      },
+      "link": null,
+      "checks": [
+        {
+          "name": "status_code_conformance",
+          "status": "failure",
+          "message": "Undocumented HTTP status code\n\nReceived: 401\nDocumented: 200"
+        }
+      ],
+      "meta": {
+        "generation": {
+          "time": 8.200004231184721e-06,
+          "mode": "negative"
+        },
+        "components": {
+          "HEADER": "negative"
+        },
+        "phase": {
+          "name": "coverage",
+          "data": {
+            "type": "CoveragePhaseData",
+            "description": "Missing `Authorization` at header",
+            "location": null,
+            "parameter": "Authorization",
+            "parameter_location": "HEADER",
+            "scenario": "missing_parameter"
+          }
+        },
+        "pool_draws": [],
+        "pool_misses": [],
+        "semantic_draws": [],
+        "dictionary_draws": [],
+        "constants_draws": [],
+        "raw_containers": {
+          "HEADER": {}
+        }
+      },
+      "path": "/api/parent/children",
+      "path_parameters": {},
+      "query": {},
+      "case_headers": {},
+      "cookies": {},
+      "case_body": {
+        "encoding": "none"
+      },
+      "media_type": null,
+      "parent_index": null
+    }
+  ]
+}

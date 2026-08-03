@@ -93,6 +93,7 @@ class SettingsActivity : AppCompatActivity() {
         binding.btnRemoveChild.setOnClickListener { confirmRemoveChild() }
 
         binding.btnAboutModel.setOnClickListener { showModelCard() }
+        binding.btnCaptureCoverage.setOnClickListener { showCaptureCoverage() }
 
         updateProtectedActions()
     }
@@ -127,6 +128,35 @@ class SettingsActivity : AppCompatActivity() {
                 Toast.makeText(this@SettingsActivity, "Couldn't reach server: ${e.message}", Toast.LENGTH_LONG).show()
             }
         }
+    }
+
+    /** The honest capture matrix — product-facing version of the paper's Sec 5.2.
+        A monitoring product that overstates its coverage teaches parents false
+        confidence; stating the blind spots plainly is part of the trust design. */
+    private fun showCaptureCoverage() {
+        val msg = """
+            What the app CAN see during a monitored game session:
+
+            • Typed chat on the Wellbeing Keyboard — English and romanised Hinglish, in EVERY game (including canvas games like Roblox). Devanagari typing is added by the keyboard's हिं layout (v2.4 beta).
+            • Typed chat on other keyboards (e.g. Gboard, incl. Hindi) — only in games whose chat box Android accessibility can read. Canvas games are NOT readable this way.
+            • Spoken words — transcribed on the phone in English today; Hindi+English recognition is a v2.4 beta option (Settings on the child phone, parent-gated).
+            • Voice tone (how it is said) — works in any language; audio is deleted right after analysis, never stored.
+            • Play time, sessions, late-night patterns — always, for monitored games.
+
+            What the app CANNOT see:
+
+            • Anything outside a monitored game session (other apps, browsing, passwords — the keyboard types normally but records nothing).
+            • Other players' messages — only your child's own words are ever captured.
+            • Devanagari typed with a third-party keyboard inside a canvas game.
+            • Spoken Hindi words, until the v2.4 beta option is enabled and validated.
+
+            Why we tell you this: an alert can only come from what is capturable. Knowing the blind spots tells you what a quiet dashboard does and doesn't mean.
+        """.trimIndent()
+        AlertDialog.Builder(this)
+            .setTitle("What we can and can't see")
+            .setMessage(msg)
+            .setPositiveButton("Close", null)
+            .show()
     }
 
     /** Honest, plain-language model card so a parent (and an examiner) can see exactly
@@ -177,6 +207,17 @@ class SettingsActivity : AppCompatActivity() {
                     "it's right ${pct(t.precisionToxic)} of the time. Per-message alerts " +
                     "catch ${pct(t.recallToxic)} of toxic lines — repeated toxic language " +
                     "in one session raises an extra pattern alert on top.\n")
+            }
+        }
+        // Hindi capability — same "why trust this" treatment as the English chat
+        // numbers: held-out data the model never trained on, per script register.
+        mc.chatMetricsHindi?.let { h ->
+            val dev = h.devanagari?.precisionAtAlert
+            val rom = h.romanized?.precisionAtAlert
+            if (dev != null || rom != null) {
+                sb.append("\nHindi abuse too — tested on ${h.n ?: 0} real held-out Hindi " +
+                    "posts: a flagged Devanagari message is right ${pct(dev)} of the " +
+                    "time, a flagged romanised-Hinglish message ${pct(rom)}.\n")
             }
         }
         mc.voiceMetrics?.let { v ->

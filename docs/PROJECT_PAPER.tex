@@ -374,7 +374,7 @@ The Child app runs always-on foreground services that:
         (e.g.\ Roblox) whose chat box exposes no text node are covered --- without
         fragile screenshot OCR;
   \item record microphone audio (\texttt{AudioRecord}, 16~kHz mono) and run
-        \textbf{Vosk} on-device speech-to-text, so spoken words are transcribed
+        \textbf{Vosk}~\cite{vosk,kaldi2011} on-device speech-to-text, so spoken words are transcribed
         \emph{without raw audio leaving the device for transcription};
   \item compute behavioural metrics from real session history.
 \end{itemize}
@@ -382,7 +382,8 @@ The Child app runs always-on foreground services that:
 \subsection{Serving tier (Flask backend + ML ensemble)}
 A Flask application (run under gunicorn) exposes a REST API for session lifecycle,
 chat/voice/behaviour ingestion, prediction, alerts, dashboards and a parent-feedback
-endpoint. It loads three serialised scikit-learn models and fuses them. The backend
+endpoint. It loads three serialised scikit-learn~\cite{sklearn2011} models (audio
+features via librosa~\cite{librosa2015}) and fuses them. The backend
 is \textbf{dual-dialect} --- the identical SQL runs on SQLite (local) or PostgreSQL
 (production) --- and is deployed on a managed host with a durable managed Postgres.
 
@@ -1254,7 +1255,8 @@ prior --- is described in \S4.2). First the
 Devanagari rows (held-out PR-AUC $0.579 \rightarrow 0.875$); then, because the
 bundled keyboard is QWERTY (typed Hinglish is \emph{romanised} in practice ---
 \S5.2), each training row was added again in a colloquial romanisation
-(ITRANS-based; the fetch script reproduces it deterministically). On the
+(ITRANS-based, via the \texttt{indic-transliteration}
+library~\cite{indictrans}; the fetch script reproduces it deterministically). On the
 $933$-row held-out split ($20\%$, stratified, never trained on; $52.9\%$
 offensive base rate) the deployed model now reads, at the unchanged $0.95$
 alert threshold: \textbf{Devanagari PR-AUC $0.890$, precision $0.968$ / recall
@@ -1657,7 +1659,7 @@ assumptions --- drive the next revision.
 \begin{itemize}[leftmargin=1.4em]
   \item Production-deployed cloud backend (HTTPS, token auth, consent, durable
         managed Postgres); both apps build as signed release APKs.
-  \item A layered test program, all passing: a 179-test API suite (isolated database;
+  \item A layered test program, all passing: a 180-test API suite (isolated database;
         includes ML-unit tests for the shared audio extractor, noisy-OR fusion,
         threshold-tuner math and the session-streak alert; run automatically in CI
         against \textbf{both} SQLite and PostgreSQL~16 --- the production dialect ---
@@ -1666,7 +1668,17 @@ assumptions --- drive the next revision.
         parent-only endpoint, the full nudge lifecycle, a real WAV upload through the
         silence floor and late re-score, the watchdog's quiet hours, end-session
         idempotency, feedback re-rating, parent-controlled deletion), and a
-        \textbf{25-check end-to-end probe of the live cloud deployment}. Both apps pass
+        \textbf{25-check end-to-end probe of the live cloud deployment}. A fifth layer
+        generates cases nobody wrote: \textbf{property-based API fuzzing}
+        (Schemathesis~\cite{schemathesis}) over all 53 documented operations, plus a
+        dependency-CVE audit (\texttt{pip-audit}). Under the production auth posture the
+        fuzz produced \textbf{no server errors}; it did find one real precedence
+        bug --- an endpoint that parsed its JSON body \emph{before} authenticating, so
+        an unauthenticated caller received \texttt{415} (``this endpoint wants JSON'')
+        instead of \texttt{401} --- now fixed, regression-tested, and confirmed by a
+        scripted scan to have been the only such endpoint
+        (\texttt{docs/API\_FUZZ\_REPORT.md}). The audit also retired six dependency
+        CVEs. Both apps pass
         Android Lint with zero errors, and 87 JVM unit tests (run in CI) pin offline
         session/capture-health transitions, profile and risk-presentation rules, the
         offline chat queue's delivery semantics, the WAV container encoding, IME
@@ -2305,6 +2317,23 @@ open-source software, \texttt{github.com/MobSF/Mobile-Security-Framework-MobSF}.
 \bibitem{emoreact2016} B. Nojavanasghari, T. Baltru\v{s}aitis, C. E. Hughes, and
 L.-P. Morency, ``EmoReact: A multimodal approach and dataset for recognizing
 emotional responses in children,'' in \emph{Proc.\ ICMI}, 2016.
+\bibitem{vosk} Alpha Cephei, ``Vosk speech recognition toolkit,'' open-source
+software, \texttt{alphacephei.com/vosk}.
+\bibitem{kaldi2011} D. Povey \emph{et al.}, ``The Kaldi speech recognition
+toolkit,'' in \emph{Proc.\ IEEE ASRU}, 2011. (Vosk's underlying engine.)
+\bibitem{sklearn2011} F. Pedregosa \emph{et al.}, ``Scikit-learn: Machine
+learning in Python,'' \emph{JMLR}, vol.~12, 2011.
+\bibitem{librosa2015} B. McFee \emph{et al.}, ``librosa: Audio and music signal
+analysis in Python,'' in \emph{Proc.\ SciPy}, 2015.
+\bibitem{indictrans} S. Sanskrit-Coders, ``indic-transliteration: Python
+transliteration between Indic scripts and romanisations,'' open-source software,
+\texttt{github.com/indic-transliteration/indic\_transliteration\_py}.
+\bibitem{bohra2018} A. Bohra, D. Vijay, V. Singh, S. S. Akhtar, and M. Shrivastava,
+``A dataset of Hindi-English code-mixed social media text for hate speech
+detection,'' in \emph{Proc.\ NAACL PEOPLES Workshop}, 2018.
+\bibitem{schemathesis} D. Dygalo, ``Schemathesis: property-based testing for
+OpenAPI/GraphQL APIs,'' open-source software,
+\texttt{github.com/schemathesis/schemathesis}.
 \bibitem{wikihi} Wikimedia Foundation, ``Hindi Wikipedia,'' 20231101 snapshot
 (CC-BY-SA), accessed via the \texttt{wikimedia/wikipedia} dataset, 2026.
 \bibitem{das2022} M. Das, S. Banerjee, and A. Mukherjee, ``Data bootstrapping

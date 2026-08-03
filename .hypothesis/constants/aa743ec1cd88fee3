@@ -1,0 +1,4 @@
+# file: C:\Users\KAUSTUBH\AppData\Local\Packages\PythonSoftwareFoundation.Python.3.11_qbz5n2kfra8p0\LocalCache\local-packages\Python311\site-packages\schemathesis\specs\openapi\formats.py
+# hypothesis_version: 6.147.0
+
+[128, 255, 10000, "!#$%&'*+-.^_`|~", '@', 'Bearer {}', 'PyPy', '_basic_auth', '_bearer_auth', '_header_name', '_header_value', 'binary', 'byte', 'duration', 'email', 'idn-email', 'uuid', '\x7f']

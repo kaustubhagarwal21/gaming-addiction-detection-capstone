@@ -1,0 +1,4 @@
+# file: C:\Users\KAUSTUBH\AppData\Local\Packages\PythonSoftwareFoundation.Python.3.11_qbz5n2kfra8p0\LocalCache\local-packages\Python311\site-packages\schemathesis\reporting\ndjson.py
+# hypothesis_version: 6.147.0
+
+['"recorder":', '$base64', '$unresolvable', ',', ':', ':{', 'Accept', 'Accept-Encoding', 'Case', 'CheckFailureInfo', 'Connection', 'Content-Length', 'Initialize', 'LoadingFinished', 'LoadingStarted', 'NonFatalError', 'User-Agent', '_', '_meta', 'ascii', 'base_path', 'base_url', 'body', 'code_sample', 'command', 'config', 'content', 'date', 'elapsed', 'headers', 'info', 'location', 'message', 'meta', 'method', 'operation', 'recorder', 'schema', 'schemathesis_version', 'seed', 'status_code', 'type', 'uri', 'url', 'utf-8', 'w', '{', '}', '}}\n']

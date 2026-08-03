@@ -1,0 +1,4 @@
+# file: C:\Users\KAUSTUBH\AppData\Local\Packages\PythonSoftwareFoundation.Python.3.11_qbz5n2kfra8p0\LocalCache\local-packages\Python311\site-packages\schemathesis\config\_phases.py
+# hypothesis_version: 6.147.0
+
+['[phases]', '_checks_is_default', '_is_default', 'algorithms', 'auto', 'checks', 'coverage', 'delete', 'dependency-analysis', 'enabled', 'error-feedback', 'error_feedback', 'examples', 'extra-data-sources', 'extra_data_sources', 'fill-missing', 'fill_missing', 'fuzzing', 'generation', 'get', 'inference', 'is_enabled', 'link-calibration', 'link_calibration', 'location-headers', 'max-steps', 'max_steps', 'none', 'operation-ordering', 'operation_ordering', 'options', 'patch', 'phases', 'post', 'put', 'query', 'responses', 'stateful', 'trace', 'unexpected-methods', 'unexpected_methods']

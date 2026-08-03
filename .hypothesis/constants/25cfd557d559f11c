@@ -1,0 +1,4 @@
+# file: C:\Users\KAUSTUBH\AppData\Local\Packages\PythonSoftwareFoundation.Python.3.11_qbz5n2kfra8p0\LocalCache\local-packages\Python311\site-packages\schemathesis\specs\openapi\error_feedback.py
+# hypothesis_version: 6.147.0
+
+['\\A', '\\Z', 'additionalProperties', 'allOf', 'anyOf', 'array', 'date', 'date-time', 'enum', 'exclusiveMaximum', 'exclusiveMinimum', 'format', 'integer', 'items', 'java.net.URI', 'java.net.URL', 'java.time.Instant', 'java.time.LocalDate', 'java.util.Date', 'java.util.UUID', 'maxItems', 'maxLength', 'maxProperties', 'maximum', 'minItems', 'minLength', 'minProperties', 'minimum', 'number', 'object', 'oneOf', 'pattern', 'properties', 'required', 'string', 'type', 'uri', 'uuid']

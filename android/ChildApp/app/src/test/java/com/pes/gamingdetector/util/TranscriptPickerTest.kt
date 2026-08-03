@@ -66,4 +66,37 @@ class TranscriptPickerTest {
         assertEquals("", hyp.text)
         assertEquals(0.0, hyp.avgConf, 1e-9)
     }
+
+    // ── pickAll: the mixed-window mitigation ──────────────────────────────
+
+    @Test
+    fun `genuinely mixed window keeps both transcripts`() {
+        // Both models confident, close confidence, no shared words: a real
+        // bilingual segment (one English + one Hindi sentence in one window).
+        val out = TranscriptPicker.pickAll(h("push mid now team", 0.82),
+                                           h("मादरचोद मत आना", 0.78))
+        assertEquals(listOf("push mid now team", "मादरचोद मत आना"), out)
+    }
+
+    @Test
+    fun `junk hypothesis with big confidence gap still yields one line`() {
+        // English speech, Hindi model junk 0.30+ below: single line, no false alert.
+        val out = TranscriptPicker.pickAll(h("good game well played", 0.88),
+                                           h("दूध गेम वेल", 0.41))
+        assertEquals(listOf("good game well played"), out)
+    }
+
+    @Test
+    fun `same utterance heard two ways keeps only the winner`() {
+        // High token overlap = one utterance transcribed twice — never two lines.
+        val out = TranscriptPicker.pickAll(h("uninstall kar de bro", 0.80),
+                                           h("uninstall kar de ब्रो", 0.75))
+        assertEquals(listOf("uninstall kar de bro"), out)
+    }
+
+    @Test
+    fun `low confidence pair falls back to single pick`() {
+        val out = TranscriptPicker.pickAll(h("mumble", 0.30), h("बड़बड़", 0.35))
+        assertEquals(1, out.size)
+    }
 }

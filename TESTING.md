@@ -10,12 +10,14 @@ cloud check, and an on-device manual checklist. Run the automated layers any tim
 
 | Command | What it proves | Expected |
 |---|---|---|
-| `python -m pytest tests/ -q` | 179-test suite: API/OpenAPI contracts, dashboards and canonical risk roll-ups, credential-version revocation, parent/child authorization, strict request validation, consent, session finalization/backfill races, notifications/FCM identity and stale-token pruning, feedback/export/deletion privacy (incl. verdicts on risk-revision and toxicity-streak alerts), SQLite/Postgres compatibility, PDF generation, and ML/audio/text helper regressions — isolated throwaway DB | `179 passed` |
+| `python -m pytest tests/ -q` | 180-test suite: API/OpenAPI contracts, dashboards and canonical risk roll-ups, credential-version revocation, parent/child authorization, strict request validation, consent, session finalization/backfill races, notifications/FCM identity and stale-token pruning, feedback/export/deletion privacy (incl. verdicts on risk-revision and toxicity-streak alerts), SQLite/Postgres compatibility, PDF generation, and ML/audio/text helper regressions — isolated throwaway DB | `180 passed` |
 | `python scripts/functional_sweep.py` | **82 checks in production mode** (`AUTH_ENFORCE=1`, real tokens): registration/family joins, role guards, Family-PIN-authorized current-version consent, session lifecycle + observation mode + idempotent re-end, chat de-dupe/toxicity/nudges, WAV voice upload and late re-score, stale-session healing, heartbeat/tamper/permission alerts, feedback re-rating, dashboards/PDF, and parent-controlled deletion | `82/82 checks passed` |
 | `python scripts/cloud_e2e.py` | **25 checks against the LIVE Render deployment**: every screen's endpoint with real parent/child tokens, PDF bytes, cross-user 403 / no-token 401 guards | `25/25 passed` |
 | `python scripts/concurrency_smoke.py` | 288 mixed requests / 24 threads against a real threaded server (chat scoring + live predictions included) — re-run after any change to per-request cost | `zero server errors` (last: p50 66 ms, p95 684 ms) |
 | `docker build -t capstone-backend .` then run `/api/health` | Production image builds, starts as the non-root user, can create its local SQLite fallback, and loads every model | `"status":"ok", "models_loaded":true` |
 | `python scripts/pg_smoketest.py` with a throwaway Postgres 16 `DATABASE_URL` | Production database dialect, schema initialization, login, family authorization, and parent/child role guards | `ALL PASSED` |
+| `schemathesis run backend/openapi.yaml --url http://127.0.0.1:5058 --max-examples 15` (app booted with `AUTH_ENFORCE=1`) | **Property-based API fuzz** over all 53 documented operations — generates cases nobody wrote. Found the mark_read auth-precedence bug | `no Server error findings` (see docs/API_FUZZ_REPORT.md for the triage of spec-completeness findings) |
+| `python -m pip_audit -r backend/requirements.txt` | Dependency CVE audit against the PyPI advisory DB | only the accepted dev-only `pytest` advisory |
 
 Notes
 - The first `cloud_e2e` call may take ~30–60 s if the free instance was asleep.

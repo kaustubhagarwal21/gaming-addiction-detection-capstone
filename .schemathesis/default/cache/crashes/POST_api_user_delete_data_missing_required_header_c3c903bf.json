@@ -1,0 +1,96 @@
+{
+  "operation": "POST /api/user/delete_data",
+  "method": "POST",
+  "path_template": "/api/user/delete_data",
+  "fingerprint": "c3c903bf",
+  "case_id": "QFtGRl",
+  "code_sample": "curl -X POST -H 'Content-Type: application/json' -d '{\"user_id\": 1, \"scope\": \"data\"}' http://127.0.0.1:5057/api/user/delete_data",
+  "sequence": [
+    {
+      "method": "POST",
+      "url": "http://127.0.0.1:5057/api/user/delete_data",
+      "url_template": "http://127.0.0.1:5057/api/user/delete_data",
+      "headers": {
+        "User-Agent": "schemathesis/4.24.3",
+        "Accept-Encoding": "gzip, deflate",
+        "Accept": "*/*",
+        "Connection": "keep-alive",
+        "X-Schemathesis-TestCaseId": "QFtGRl",
+        "Content-Type": "application/json",
+        "Content-Length": "31"
+      },
+      "response": {
+        "status_code": 200,
+        "headers": {
+          "server": "Werkzeug/3.1.6 Python/3.11.9",
+          "date": "Mon, 03 Aug 2026 22:52:34 GMT",
+          "content-type": "application/json",
+          "content-length": "32",
+          "access-control-allow-origin": "*",
+          "connection": "close"
+        },
+        "body": "{\"scope\":\"data\",\"success\":true}\n"
+      },
+      "link": null,
+      "checks": [
+        {
+          "name": "missing_required_header",
+          "status": "failure",
+          "message": "Missing header not rejected\n\nGot 200 when missing required 'Authorization' header, expected 401"
+        }
+      ],
+      "meta": {
+        "generation": {
+          "time": 8.800008799880743e-06,
+          "mode": "negative"
+        },
+        "components": {
+          "HEADER": "negative",
+          "BODY": "positive"
+        },
+        "phase": {
+          "name": "coverage",
+          "data": {
+            "type": "CoveragePhaseData",
+            "description": "Missing `Authorization` at header",
+            "location": null,
+            "parameter": "Authorization",
+            "parameter_location": "HEADER",
+            "scenario": "missing_parameter"
+          }
+        },
+        "pool_draws": [
+          {
+            "location": "body",
+            "parameter_name": "user_id",
+            "resource_name": "User",
+            "resource_field": "id",
+            "source_operation": "POST /api/consent",
+            "source_status": 200
+          }
+        ],
+        "pool_misses": [],
+        "semantic_draws": [],
+        "dictionary_draws": [],
+        "constants_draws": [],
+        "raw_containers": {
+          "HEADER": {}
+        }
+      },
+      "path": "/api/user/delete_data",
+      "path_parameters": {},
+      "query": {},
+      "case_headers": {},
+      "cookies": {},
+      "case_body": {
+        "encoding": "json",
+        "value": {
+          "user_id": 1,
+          "scope": "data"
+        }
+      },
+      "media_type": "application/json",
+      "parent_index": null
+    }
+  ]
+}

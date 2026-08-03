@@ -1,0 +1,4 @@
+# file: C:\Users\KAUSTUBH\AppData\Local\Packages\PythonSoftwareFoundation.Python.3.11_qbz5n2kfra8p0\LocalCache\local-packages\Python311\site-packages\schemathesis\specs\openapi\checks.py
+# hypothesis_version: 6.147.0
+
+[200, 300, 400, 401, 404, 405, '\nInvalid component: ', '$ref', ',', ', ', '/', 'Cookie', 'DELETE', 'OPTIONS', 'OpenApiSchema', 'POST', 'Response', 'Schema', 'Unknown', 'additionalProperties', 'allOf', 'allow', 'anyOf', 'app', 'array', 'authorization', 'boolean', 'collectionFormat', 'content-type', 'cookie', 'csv', 'default', 'delete', 'explicit', 'generated', 'generated_auth', 'get', 'head', 'header', 'in', 'integer', 'invalid_auth', 'items', 'missing_allow_header', 'name', 'no_auth', 'null', 'number', 'object', 'oneOf', 'options', 'params', 'patch', 'pipes', 'properties', 'property', 'query', 's', 'schema', 'simple', 'ssv', 'string', 'style', 'tsv', 'type', 'value', 'variables', 'wrong_status', '{', '|', '}']

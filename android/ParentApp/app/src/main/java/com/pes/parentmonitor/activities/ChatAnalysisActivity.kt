@@ -121,7 +121,10 @@ class ChatAnalysisActivity : AuthenticatedActivity() {
                     // can tell real chat apart from voice-to-text.
                     val voiceCount = recent.count { isVoice(it.source) }
                     val typedCount = recent.size - voiceCount
-                    sb.append("Channel mix: ⌨️ $typedCount typed · 🎙️ $voiceCount voice\n\n")
+                    val hindiCount = recent.count { langBadge(it.message) == "hi" }
+                    sb.append("Channel mix: ⌨️ $typedCount typed · 🎙️ $voiceCount voice")
+                    if (hindiCount > 0) sb.append(" · $hindiCount in Hindi script")
+                    sb.append("\n\n")
 
                     val flagged = recent.filter { (it.confidence ?: 0.0) > 0.3 }.take(5)
                     if (flagged.isNotEmpty()) {
@@ -129,8 +132,9 @@ class ChatAnalysisActivity : AuthenticatedActivity() {
                         flagged.forEach { m ->
                             val pct = "%.0f".format((m.confidence ?: 0.0) * 100)
                             val msg = (m.message ?: "").let { if (it.length > 50) it.take(47) + "…" else it }
-                            // Tag each line with its origin: ⌨️ typed chat vs 🎙️ voice-to-text.
-                            sb.append("• ${sourceLabel(m.source)} \"$msg\" ($pct%)\n")
+                            // Tag each line with its origin (⌨️ typed vs 🎙️ voice) and
+                            // script-detected language, so the Hindi capability is visible.
+                            sb.append("• ${sourceLabel(m.source)} · ${langBadge(m.message)} \"$msg\" ($pct%)\n")
                         }
                     } else {
                         sb.append("No concerning messages in the recent sample.")
@@ -181,6 +185,13 @@ class ChatAnalysisActivity : AuthenticatedActivity() {
 
     /** A line transcribed from the child's speech (Vosk STT) vs typed in-game text. */
     private fun isVoice(source: String?): Boolean = source?.lowercase() == "voice_stt"
+
+    /** Script-based language tag: any Devanagari character marks the line "hi";
+     *  everything else (incl. romanised Hinglish, which shares the Latin script
+     *  with English) shows "en". Honest label for what is DETECTABLE client-side
+     *  — the server-side model scores all three registers either way. */
+    private fun langBadge(message: String?): String =
+        if (message?.any { it in 'ऀ'..'ॿ' } == true) "hi" else "en"
 
     /** Short tag so the parent can tell typed chat apart from voice-to-text. */
     private fun sourceLabel(source: String?): String =

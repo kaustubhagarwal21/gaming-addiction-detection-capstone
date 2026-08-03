@@ -1,0 +1,4 @@
+# file: C:\Users\KAUSTUBH\AppData\Local\Packages\PythonSoftwareFoundation.Python.3.11_qbz5n2kfra8p0\LocalCache\local-packages\Python311\site-packages\schemathesis\specs\openapi\_auth_retry.py
+# hypothesis_version: 6.147.0
+
+['; ', 'Cookie', 'apiKey', 'auth', 'basic', 'cookie', 'cookies', 'header', 'headers', 'http', 'in', 'name', 'params', 'query', 'session']

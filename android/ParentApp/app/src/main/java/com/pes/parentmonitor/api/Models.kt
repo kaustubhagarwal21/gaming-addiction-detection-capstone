@@ -239,6 +239,9 @@ data class ModelCard(
     // In-domain (real gaming chat) evaluation + real-audio voice metrics — the
     // "why trust this" evidence surfaced to the parent.
     @SerializedName("chat_metrics_gaming") val chatMetricsGaming: ChatGamingMetrics?,
+    // Held-out Hindi evaluation, both scripts (ml/eval_chat_hindi.py) — surfaced
+    // so the parent-facing "why trust this" covers the Hindi capability too.
+    @SerializedName("chat_metrics_hindi") val chatMetricsHindi: ChatMetricsHindi?,
     @SerializedName("voice_metrics") val voiceMetrics: VoiceMetrics?,
     val disclaimer: String?
 )
@@ -254,6 +257,20 @@ data class ThresholdMetrics(
     val threshold: Double?,
     @SerializedName("precision_toxic") val precisionToxic: Double?,
     @SerializedName("recall_toxic") val recallToxic: Double?
+)
+
+/** Held-out Hindi abuse evaluation, per script register (backend key names carry
+ *  an '@', hence SerializedName throughout). */
+data class ChatMetricsHindi(
+    val n: Int?,
+    val devanagari: HindiRegisterMetrics?,
+    val romanized: HindiRegisterMetrics?
+)
+
+data class HindiRegisterMetrics(
+    @SerializedName("pr_auc") val prAuc: Double?,
+    @SerializedName("precision@alert") val precisionAtAlert: Double?,
+    @SerializedName("recall@alert") val recallAtAlert: Double?
 )
 
 data class VoiceMetrics(

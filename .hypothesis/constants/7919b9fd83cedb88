@@ -1,0 +1,4 @@
+# file: C:\Users\KAUSTUBH\AppData\Local\Packages\PythonSoftwareFoundation.Python.3.11_qbz5n2kfra8p0\LocalCache\local-packages\Python311\site-packages\schemathesis\config\_projects.py
+# hypothesis_version: 6.147.0
+
+['_override', '_parent', '_rate_limit', 'analysis', 'auth', 'auto', 'base-url', 'base_url', 'checks', 'continue-on-failure', 'continue_on_failure', 'database', 'default', 'fuzz', 'generation', 'headers', 'hooks', 'info', 'max-redirects', 'max_examples', 'max_redirects', 'named', 'none', 'operations', 'parameters', 'phases', 'project', 'proxy', 'rate-limit', 'rate_limit', 'request-cert', 'request-cert-key', 'request-retries', 'request-timeout', 'request_cert', 'request_cert_key', 'request_retries', 'request_timeout', 'sched_getaffinity', 'servers', 'title', 'tls-verify', 'tls_verify', 'warnings', 'workers']

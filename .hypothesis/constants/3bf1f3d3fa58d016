@@ -1,0 +1,4 @@
+# file: C:\Users\KAUSTUBH\AppData\Local\Packages\PythonSoftwareFoundation.Python.3.11_qbz5n2kfra8p0\LocalCache\local-packages\Python311\site-packages\schemathesis\core\media_types.py
+# hypothesis_version: 6.147.0
+
+['"', '*', '+json', '+xml', '/', ';', '=', '\\', '\\"', '\\\\', 'application', 'application/x-yaml', 'application/yaml', 'event-stream', 'form-data', 'jose+jwe', 'json', 'jwt', 'multipart', 'multipart/form-data', 'plain', 'text', 'text/vnd.yaml', 'text/x-yaml', 'text/yaml', 'x-json', 'xml']

@@ -1,0 +1,4 @@
+# file: C:\Users\KAUSTUBH\AppData\Local\Packages\PythonSoftwareFoundation.Python.3.11_qbz5n2kfra8p0\LocalCache\local-packages\Python311\site-packages\schemathesis\specs\openapi\coverage\_operation.py
+# hypothesis_version: 6.147.0
+
+[',', '/', 'ContainerName', 'HttpMethod', '_components', '_serializers', '_template', 'additionalProperties', 'binary', 'body', 'const', 'content-type', 'cookies', 'default', 'enum', 'example', 'examples', 'false', 'fields', 'format', 'headers', 'in', 'media_type', 'minLength', 'null', 'path', 'path_parameters', 'properties', 'query', 'querystring', 'required', 'schema', 'string', 'true', 'type', 'value']

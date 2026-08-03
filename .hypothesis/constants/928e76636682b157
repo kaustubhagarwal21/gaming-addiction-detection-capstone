@@ -1,0 +1,4 @@
+# file: C:\Users\KAUSTUBH\AppData\Local\Packages\PythonSoftwareFoundation.Python.3.11_qbz5n2kfra8p0\LocalCache\local-packages\Python311\site-packages\schemathesis\core\error_feedback\parsers\symfony.py
+# hypothesis_version: 6.147.0
+
+['"', '([^.\\[]+)|\\[(\\d+)\\]', ',', 'SymfonyParser', '^/(.+)/[a-zA-Z]*$', 'code', 'date', 'date-time', 'email', 'message', 'parameters', 'propertyPath', 'title', 'type', 'uri', 'urn:uuid:', 'uuid', 'violations', '{{ choices }}', '{{ compared_value }}', '{{ limit }}', '{{ max }}', '{{ min }}', '{{ pattern }}', '{{ type }}']

@@ -1,0 +1,4 @@
+# file: C:\Users\KAUSTUBH\AppData\Local\Packages\PythonSoftwareFoundation.Python.3.11_qbz5n2kfra8p0\LocalCache\local-packages\Python311\site-packages\schemathesis\engine\context.py
+# hypothesis_version: 6.147.0
+
+['_cache', '_cache_lock', '_checks', '_checks_lock', '_error_feedback', '_error_feedback_lock', '_extra_data_source', '_supervisor', '_supervisor_lock', '_thread_local', 'all', 'cert', 'control', 'headers', 'health', 'link_calibration', 'max_redirects', 'observations', 'outcome_cache', 'proxies', 'reauth', 'schema', 'session', 'start_time', 'timeout', 'verify']

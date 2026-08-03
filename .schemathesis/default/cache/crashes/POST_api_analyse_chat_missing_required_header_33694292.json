@@ -1,0 +1,81 @@
+{
+  "operation": "POST /api/analyse/chat",
+  "method": "POST",
+  "path_template": "/api/analyse/chat",
+  "fingerprint": "33694292",
+  "case_id": "iZK15T",
+  "code_sample": "curl -X POST http://127.0.0.1:5057/api/analyse/chat",
+  "sequence": [
+    {
+      "method": "POST",
+      "url": "http://127.0.0.1:5057/api/analyse/chat",
+      "url_template": "http://127.0.0.1:5057/api/analyse/chat",
+      "headers": {
+        "User-Agent": "schemathesis/4.24.3",
+        "Accept-Encoding": "gzip, deflate",
+        "Accept": "*/*",
+        "Connection": "keep-alive",
+        "X-Schemathesis-TestCaseId": "iZK15T",
+        "Content-Length": "0"
+      },
+      "response": {
+        "status_code": 415,
+        "headers": {
+          "server": "Werkzeug/3.1.6 Python/3.11.9",
+          "date": "Mon, 03 Aug 2026 22:52:33 GMT",
+          "content-type": "application/json",
+          "content-length": "125",
+          "access-control-allow-origin": "*",
+          "connection": "close"
+        },
+        "body": "{\"message\":\"Did not attempt to load JSON data because the request Content-Type was not 'application/json'.\",\"success\":false}\n"
+      },
+      "link": null,
+      "checks": [
+        {
+          "name": "missing_required_header",
+          "status": "failure",
+          "message": "Missing header not rejected\n\nGot 415 when missing required 'Authorization' header, expected 401"
+        }
+      ],
+      "meta": {
+        "generation": {
+          "time": 8.000002708286047e-06,
+          "mode": "negative"
+        },
+        "components": {
+          "HEADER": "negative"
+        },
+        "phase": {
+          "name": "coverage",
+          "data": {
+            "type": "CoveragePhaseData",
+            "description": "Missing `Authorization` at header",
+            "location": null,
+            "parameter": "Authorization",
+            "parameter_location": "HEADER",
+            "scenario": "missing_parameter"
+          }
+        },
+        "pool_draws": [],
+        "pool_misses": [],
+        "semantic_draws": [],
+        "dictionary_draws": [],
+        "constants_draws": [],
+        "raw_containers": {
+          "HEADER": {}
+        }
+      },
+      "path": "/api/analyse/chat",
+      "path_parameters": {},
+      "query": {},
+      "case_headers": {},
+      "cookies": {},
+      "case_body": {
+        "encoding": "none"
+      },
+      "media_type": null,
+      "parent_index": null
+    }
+  ]
+}

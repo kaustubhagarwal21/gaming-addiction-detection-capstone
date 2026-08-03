@@ -1,0 +1,4 @@
+# file: C:\Users\KAUSTUBH\AppData\Local\Packages\PythonSoftwareFoundation.Python.3.11_qbz5n2kfra8p0\LocalCache\local-packages\Python311\site-packages\schemathesis\config\_checks.py
+# hypothesis_version: 6.147.0
+
+['1', '2', '2xx', '3', '3xx', '4', '400', '401', '403', '404', '405', '406', '409', '422', '428', '4xx', '5', '5xx', 'X', 'XX', '_', 'all', 'enabled', 'expected-statuses', 'ignored_auth', 'max_response_time', 'not_a_server_error', 'unsupported_method', 'use_after_free', 'validate-formats']

@@ -1,0 +1,165 @@
+{
+  "operation": "GET /api/dashboard/child_enriched",
+  "method": "GET",
+  "path_template": "/api/dashboard/child_enriched",
+  "fingerprint": "8e88de4b",
+  "case_id": "KHePLA",
+  "code_sample": "curl -X GET -H 'Authorization: [Filtered]' 'http://127.0.0.1:5057/api/dashboard/user?user_id=53'\ncurl -X GET -H 'Authorization: [Filtered]' 'http://127.0.0.1:5057/api/dashboard/child_enriched?user_id=53'",
+  "sequence": [
+    {
+      "method": "GET",
+      "url": "http://127.0.0.1:5057/api/dashboard/user?user_id=53",
+      "url_template": "http://127.0.0.1:5057/api/dashboard/user",
+      "headers": {
+        "User-Agent": "schemathesis/4.24.3",
+        "Accept-Encoding": "gzip, deflate",
+        "Accept": "*/*",
+        "Connection": "keep-alive",
+        "Authorization": "[Filtered]",
+        "X-Schemathesis-TestCaseId": "XbfqzL"
+      },
+      "response": {
+        "status_code": 200,
+        "headers": {
+          "server": "Werkzeug/3.1.6 Python/3.11.9",
+          "date": "Mon, 03 Aug 2026 22:52:40 GMT",
+          "content-type": "application/json",
+          "content-length": "523",
+          "access-control-allow-origin": "*",
+          "connection": "close"
+        },
+        "body": "{\"current_risk\":\"unknown\",\"disclaimer\":\"Wellbeing screening indicator based on gaming patterns \\u2014 not a medical or clinical diagnosis.\",\"game_breakdown\":[],\"recent_sessions\":[],\"risk_distribution\":{},\"risk_label\":\"unknown\",\"risk_period\":null,\"risk_score\":null,\"risk_thresholds\":{\"high_concern\":0.67,\"some_concern\":0.33},\"stats\":{\"avg_daily_hours\":0.0,\"current_risk\":\"unknown\",\"risk_label\":\"unknown\",\"risk_period\":null,\"risk_score\":null,\"total_hours\":0.0,\"total_sessions\":0},\"success\":true,\"trend_data\":[],\"user_id\":53}\n"
+      },
+      "link": null,
+      "checks": [],
+      "meta": {
+        "generation": {
+          "time": 0.002126600011251867,
+          "mode": "positive"
+        },
+        "components": {
+          "QUERY": "positive",
+          "HEADER": "positive"
+        },
+        "phase": {
+          "name": "stateful",
+          "data": {
+            "type": "StatefulPhaseData",
+            "description": "Positive test case",
+            "location": null,
+            "parameter": null,
+            "parameter_location": null,
+            "mutations": []
+          }
+        },
+        "pool_draws": [
+          {
+            "location": "query",
+            "parameter_name": "user_id",
+            "resource_name": "User",
+            "resource_field": "user_id",
+            "source_operation": "GET /api/dashboard/user",
+            "source_status": 200
+          }
+        ],
+        "pool_misses": [],
+        "semantic_draws": [],
+        "dictionary_draws": [],
+        "constants_draws": [],
+        "raw_containers": {}
+      },
+      "path": "/api/dashboard/user",
+      "path_parameters": {},
+      "query": {
+        "user_id": 53
+      },
+      "case_headers": {
+        "Authorization": "[Filtered]"
+      },
+      "cookies": {},
+      "case_body": {
+        "encoding": "none"
+      },
+      "media_type": null,
+      "parent_index": null
+    },
+    {
+      "method": "GET",
+      "url": "http://127.0.0.1:5057/api/dashboard/child_enriched?user_id=53",
+      "url_template": "http://127.0.0.1:5057/api/dashboard/child_enriched",
+      "headers": {
+        "User-Agent": "schemathesis/4.24.3",
+        "Accept-Encoding": "gzip, deflate",
+        "Accept": "*/*",
+        "Connection": "keep-alive",
+        "Authorization": "[Filtered]",
+        "X-Schemathesis-TestCaseId": "KHePLA"
+      },
+      "response": {
+        "status_code": 200,
+        "headers": {
+          "server": "Werkzeug/3.1.6 Python/3.11.9",
+          "date": "Mon, 03 Aug 2026 22:52:40 GMT",
+          "content-type": "application/json",
+          "content-length": "296",
+          "access-control-allow-origin": "*",
+          "connection": "close"
+        },
+        "body": "{\"child_name\":null,\"daily_goal_hours\":2.0,\"goal_is_parent_set\":false,\"limit_status\":null,\"played_today_hours\":0.0,\"self_awareness_message\":\"Game smart. Stay under your daily limit to start a healthy streak.\",\"streak\":{\"current_streak\":0,\"longest_streak\":0,\"total_healthy_days\":0},\"success\":true}\n"
+      },
+      "link": {
+        "operationId": "GET /api/dashboard/user -> [200] GetUser -> GET /api/dashboard/child_enriched",
+        "parameters": {
+          "query.user_id": "$response.body#/user_id"
+        }
+      },
+      "checks": [
+        {
+          "name": "ignored_auth",
+          "status": "failure",
+          "message": "API accepts invalid authentication\n\nExpected 401, got `200 OK` for `GET /api/dashboard/child_enriched` (generated auth likely invalid)"
+        }
+      ],
+      "meta": {
+        "generation": {
+          "time": 0.0015101999742910266,
+          "mode": "positive"
+        },
+        "components": {
+          "HEADER": "positive"
+        },
+        "phase": {
+          "name": "stateful",
+          "data": {
+            "type": "StatefulPhaseData",
+            "description": "Positive test case",
+            "location": null,
+            "parameter": null,
+            "parameter_location": null,
+            "mutations": []
+          }
+        },
+        "pool_draws": [],
+        "pool_misses": [],
+        "semantic_draws": [],
+        "dictionary_draws": [],
+        "constants_draws": [],
+        "raw_containers": {}
+      },
+      "path": "/api/dashboard/child_enriched",
+      "path_parameters": {},
+      "query": {
+        "user_id": 53
+      },
+      "case_headers": {
+        "Authorization": "[Filtered]"
+      },
+      "cookies": {},
+      "case_body": {
+        "encoding": "none"
+      },
+      "media_type": null,
+      "parent_index": 0
+    }
+  ]
+}

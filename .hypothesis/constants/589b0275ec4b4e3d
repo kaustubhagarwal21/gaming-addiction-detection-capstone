@@ -1,0 +1,4 @@
+# file: C:\Users\KAUSTUBH\AppData\Local\Packages\PythonSoftwareFoundation.Python.3.11_qbz5n2kfra8p0\LocalCache\local-packages\Python311\site-packages\schemathesis\core\warnings.py
+# hypothesis_version: 6.147.0
+
+['constants_extraction', 'method_not_allowed', 'missing_auth', 'missing_deserializer', 'missing_test_data', 'unsupported_regex', 'unused_openapi_auth', 'validation_mismatch']

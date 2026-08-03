@@ -337,8 +337,8 @@ class VoiceRecorderService : Service() {
                 com.pes.gamingdetector.util.TranscriptPicker.Hypothesis("", 0.0)
             }
         }
-        val text = com.pes.gamingdetector.util.TranscriptPicker.pick(run(en), run(hi))
-        if (text != null) submitChat(captureSession, captureUrl, text)
+        com.pes.gamingdetector.util.TranscriptPicker.pickAll(run(en), run(hi))
+            .forEach { submitChat(captureSession, captureUrl, it) }
     }
 
     private fun requestGracefulStop(startId: Int) {

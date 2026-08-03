@@ -391,6 +391,25 @@ def test_alert_unread_total_and_mark_read_validation(client):
         json={'alert_ids': [True]}).status_code == 400
 
 
+def test_mark_read_authenticates_before_parsing_the_body(client):
+    """Auth must be decided BEFORE the JSON body is touched.
+
+    Found by the Schemathesis property-based API fuzz: the handler called
+    request.get_json() first, which raises 415 on a non-JSON Content-Type — so an
+    UNAUTHENTICATED caller sending a form-encoded body got 415 ("I exist and I want
+    JSON") instead of a flat 401. A malformed body from a valid caller must still
+    be a clean 4xx, never a 500.
+    """
+    resp = client.post('/api/alerts/mark_read',
+                       data='alert_ids=1', content_type='application/x-www-form-urlencoded')
+    assert resp.status_code != 415, 'content-type checked before auth leaks endpoint shape'
+    assert resp.status_code < 500
+    # A JSON-less POST from an authorised caller degrades to "nothing to mark",
+    # not an unhandled parse error.
+    empty = client.post('/api/alerts/mark_read', data='', content_type='text/plain')
+    assert empty.status_code < 500
+
+
 def test_alert_backlog_beyond_one_page_is_still_reachable(client):
     """A backlog larger than one page must not become permanently invisible.
 

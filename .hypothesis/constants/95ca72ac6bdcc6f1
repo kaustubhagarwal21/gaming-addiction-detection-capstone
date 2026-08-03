@@ -1,0 +1,4 @@
+# file: C:\Users\KAUSTUBH\AppData\Local\Packages\PythonSoftwareFoundation.Python.3.11_qbz5n2kfra8p0\LocalCache\local-packages\Python311\site-packages\schemathesis\cli\loaders.py
+# hypothesis_version: 6.147.0
+
+['"openapi"', '"swagger"', '.gql', '.graphql', '.json', '.yaml', '.yml', '/graphql', '/graphql/', 'BaseSchema', 'ProjectConfig', 'auth', 'cert', 'headers', 'ignore', 'openapi', 'swagger', 'verify', 'wait_for_schema']

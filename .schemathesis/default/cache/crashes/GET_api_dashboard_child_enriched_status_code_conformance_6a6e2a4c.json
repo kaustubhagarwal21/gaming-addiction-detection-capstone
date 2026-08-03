@@ -1,0 +1,87 @@
+{
+  "operation": "GET /api/dashboard/child_enriched",
+  "method": "GET",
+  "path_template": "/api/dashboard/child_enriched",
+  "fingerprint": "6a6e2a4c",
+  "case_id": "ScfPWw",
+  "code_sample": "curl -X GET -H 'Authorization: [Filtered]' http://127.0.0.1:5058/api/dashboard/child_enriched",
+  "sequence": [
+    {
+      "method": "GET",
+      "url": "http://127.0.0.1:5058/api/dashboard/child_enriched",
+      "url_template": "http://127.0.0.1:5058/api/dashboard/child_enriched",
+      "headers": {
+        "User-Agent": "schemathesis/4.24.3",
+        "Accept-Encoding": "gzip, deflate",
+        "Accept": "*/*",
+        "Connection": "keep-alive",
+        "Authorization": "[Filtered]",
+        "X-Schemathesis-TestCaseId": "ScfPWw"
+      },
+      "response": {
+        "status_code": 400,
+        "headers": {
+          "server": "Werkzeug/3.1.6 Python/3.11.9",
+          "date": "Mon, 03 Aug 2026 22:55:48 GMT",
+          "content-type": "application/json",
+          "content-length": "65",
+          "access-control-allow-origin": "*",
+          "connection": "close"
+        },
+        "body": "{\"message\":\"user_id must be a positive integer\",\"success\":false}\n"
+      },
+      "link": null,
+      "checks": [
+        {
+          "name": "status_code_conformance",
+          "status": "failure",
+          "message": "Undocumented HTTP status code\n\nReceived: 400\nDocumented: 200"
+        }
+      ],
+      "meta": {
+        "generation": {
+          "time": 6.299989763647318e-06,
+          "mode": "negative"
+        },
+        "components": {
+          "HEADER": "positive",
+          "QUERY": "negative"
+        },
+        "phase": {
+          "name": "coverage",
+          "data": {
+            "type": "CoveragePhaseData",
+            "description": "Missing `user_id` at query",
+            "location": null,
+            "parameter": "user_id",
+            "parameter_location": "QUERY",
+            "scenario": "missing_parameter"
+          }
+        },
+        "pool_draws": [],
+        "pool_misses": [],
+        "semantic_draws": [],
+        "dictionary_draws": [],
+        "constants_draws": [],
+        "raw_containers": {
+          "HEADER": {
+            "Authorization": "Bearer "
+          },
+          "QUERY": {}
+        }
+      },
+      "path": "/api/dashboard/child_enriched",
+      "path_parameters": {},
+      "query": {},
+      "case_headers": {
+        "Authorization": "[Filtered]"
+      },
+      "cookies": {},
+      "case_body": {
+        "encoding": "none"
+      },
+      "media_type": null,
+      "parent_index": null
+    }
+  ]
+}

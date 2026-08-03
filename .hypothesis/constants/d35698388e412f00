@@ -1,0 +1,4 @@
+# file: C:\Users\KAUSTUBH\AppData\Local\Packages\PythonSoftwareFoundation.Python.3.11_qbz5n2kfra8p0\LocalCache\local-packages\Python311\site-packages\schemathesis\core\errors.py
+# hypothesis_version: 6.147.0
+
+[' ->\n  ', ' -> ', ' definition', '#/', '#/components', '#/definitions', ', ', '.', ':', 'Connection failed', 'HTTPConnectionPool', 'Parameter Object', 'Responses Object', 'Schema Object', '[root]', '\\(_ssl\\.c:\\d+\\)', '__notes__', 'body', 'components', 'connection_other', 'connection_ssl', 'errors', 'format', 'hook_name', 'http://', 'http_client_error', 'http_forbidden', 'http_not_found', 'http_server_error', 'https://', 'invalid_certificate', 'message', 'module_path', 'name', 'network_other', 'original_error', 'parameter-object', 'parameters', 'paths', 'read timeout=', 'regex', 'responses', 'responses-object', 'schema-object', 'schemas', 'securitySchemes', 'source', 'status_code', 'syntax_error', 'target', 'unclassified', 'yaml_non_string_keys']

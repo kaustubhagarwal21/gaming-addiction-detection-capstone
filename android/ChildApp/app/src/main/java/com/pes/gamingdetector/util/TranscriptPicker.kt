@@ -57,4 +57,41 @@ object TranscriptPicker {
             else -> null
         }
     }
+
+    /** Confidence gap below which a segment is treated as GENUINELY code-mixed
+     *  (both models confidently heard real, different words) rather than one model
+     *  producing junk. Measured offline: same-language junk sat >=0.30 below the
+     *  correct model's confidence, while a real bilingual window kept both models
+     *  close — so a small gap plus low text overlap is the honest "keep both" case. */
+    private const val MIXED_CONF_GAP = 0.15
+
+    /** Segment transcript(s) to submit. Usually one line (see [pick]); returns BOTH
+     *  when the window genuinely contains both languages — both models confident,
+     *  close in confidence, and their texts barely overlap (so we are not
+     *  double-counting the same utterance heard two ways). This closes the
+     *  weak spot where a single segment holding one Hindi and one English sentence
+     *  otherwise loses half its content. Each returned line is scored independently
+     *  server-side; the streak alert already de-duplicates by content. */
+    fun pickAll(english: Hypothesis, hindi: Hypothesis): List<String> {
+        val enOk = english.text.isNotBlank()
+        val hiOk = hindi.text.isNotBlank()
+        if (!enOk || !hiOk) return listOfNotNull(pick(english, hindi))
+        val bothConfident = english.avgConf >= 0.5 && hindi.avgConf >= 0.5
+        val closeConf = kotlin.math.abs(english.avgConf - hindi.avgConf) <= MIXED_CONF_GAP
+        if (bothConfident && closeConf && tokenOverlap(english.text, hindi.text) < 0.5) {
+            return listOf(english.text, hindi.text)
+        }
+        return listOf(pick(english, hindi)!!)
+    }
+
+    /** Jaccard overlap of lowercased word sets — high overlap means the two models
+     *  transcribed the SAME utterance (keep one), low overlap means different
+     *  content (a real mixed window). */
+    private fun tokenOverlap(a: String, b: String): Double {
+        val sa = a.lowercase().split(Regex("\\s+")).filter { it.isNotBlank() }.toSet()
+        val sb = b.lowercase().split(Regex("\\s+")).filter { it.isNotBlank() }.toSet()
+        if (sa.isEmpty() || sb.isEmpty()) return 0.0
+        val inter = sa.intersect(sb).size.toDouble()
+        return inter / (sa.size + sb.size - inter)
+    }
 }

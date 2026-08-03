@@ -1,0 +1,88 @@
+{
+  "operation": "POST /api/consent",
+  "method": "POST",
+  "path_template": "/api/consent",
+  "fingerprint": "1e131a8d",
+  "case_id": "i1l4MA",
+  "code_sample": "curl -X POST -H 'Authorization: [Filtered]' -H 'Content-Type: application/json' -d '{\"version\": \"2026-07-30\", \"user_id\": 1, \"parent_pin\": \"0000\"}' http://127.0.0.1:5057/api/consent",
+  "sequence": [
+    {
+      "method": "POST",
+      "url": "http://127.0.0.1:5057/api/consent",
+      "url_template": "http://127.0.0.1:5057/api/consent",
+      "headers": {
+        "User-Agent": "schemathesis/4.24.3",
+        "Accept-Encoding": "gzip, deflate",
+        "Accept": "*/*",
+        "Connection": "keep-alive",
+        "Authorization": "[Filtered]",
+        "X-Schemathesis-TestCaseId": "i1l4MA",
+        "Content-Type": "application/json",
+        "Content-Length": "61"
+      },
+      "response": {
+        "status_code": 200,
+        "headers": {
+          "server": "Werkzeug/3.1.6 Python/3.11.9",
+          "date": "Mon, 03 Aug 2026 22:52:28 GMT",
+          "content-type": "application/json",
+          "content-length": "48",
+          "access-control-allow-origin": "*",
+          "connection": "close"
+        },
+        "body": "{\"consent_version\":\"2026-07-30\",\"success\":true}\n"
+      },
+      "link": null,
+      "checks": [
+        {
+          "name": "ignored_auth",
+          "status": "failure",
+          "message": "API accepts invalid authentication\n\nExpected 401, got `200 OK` for `POST /api/consent` (generated auth likely invalid)"
+        }
+      ],
+      "meta": {
+        "generation": {
+          "time": 0.017057999968528748,
+          "mode": "positive"
+        },
+        "components": {
+          "HEADER": "positive"
+        },
+        "phase": {
+          "name": "examples",
+          "data": {
+            "type": "ExamplesPhaseData",
+            "description": "Positive test case",
+            "location": null,
+            "parameter": null,
+            "parameter_location": null,
+            "mutations": []
+          }
+        },
+        "pool_draws": [],
+        "pool_misses": [],
+        "semantic_draws": [],
+        "dictionary_draws": [],
+        "constants_draws": [],
+        "raw_containers": {}
+      },
+      "path": "/api/consent",
+      "path_parameters": {},
+      "query": {},
+      "case_headers": {
+        "Authorization": "[Filtered]"
+      },
+      "cookies": {},
+      "case_body": {
+        "encoding": "json",
+        "value": {
+          "version": "2026-07-30",
+          "user_id": 1,
+          "parent_pin": "0000"
+        }
+      },
+      "media_type": "application/json",
+      "parent_index": null
+    }
+  ]
+}

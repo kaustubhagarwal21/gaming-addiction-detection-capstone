@@ -1,0 +1,4 @@
+# file: C:\Users\KAUSTUBH\AppData\Local\Packages\PythonSoftwareFoundation.Python.3.11_qbz5n2kfra8p0\LocalCache\local-packages\Python311\site-packages\schemathesis\core\error_feedback\parsers\spring.py
+# hypothesis_version: 6.147.0
+
+[0.0, 2147483647, 9223372036854775807, '.', 'Integer', 'Long', '[-\\s]+', 'defaultMessage', 'detail', 'dir', 'email', 'error', 'errors', 'field', 'fieldErrors', 'greater', 'inclusive', 'kind', 'message', 'messages', 'msg', 'name', 'negative', 'nonnegative', 'nonpositive', 'param', 'path', 'positive', 'property', 'regex', 'subErrors', 'to', 'type', 'uri', 'uuid', 'value']

@@ -1,0 +1,87 @@
+{
+  "operation": "POST /api/session/{sid}/end",
+  "method": "POST",
+  "path_template": "/api/session/{sid}/end",
+  "fingerprint": "53b6bca2",
+  "case_id": "sDBWQJ",
+  "code_sample": "curl -X POST http://127.0.0.1:5058/api/session/0/end",
+  "sequence": [
+    {
+      "method": "POST",
+      "url": "http://127.0.0.1:5058/api/session/0/end",
+      "url_template": "http://127.0.0.1:5058/api/session/{sid}/end",
+      "headers": {
+        "User-Agent": "schemathesis/4.24.3",
+        "Accept-Encoding": "gzip, deflate",
+        "Accept": "*/*",
+        "Connection": "keep-alive",
+        "X-Schemathesis-TestCaseId": "sDBWQJ",
+        "Content-Length": "0"
+      },
+      "response": {
+        "status_code": 404,
+        "headers": {
+          "server": "Werkzeug/3.1.6 Python/3.11.9",
+          "date": "Mon, 03 Aug 2026 22:55:47 GMT",
+          "content-type": "application/json",
+          "content-length": "48",
+          "access-control-allow-origin": "*",
+          "connection": "close"
+        },
+        "body": "{\"message\":\"Session not found\",\"success\":false}\n"
+      },
+      "link": null,
+      "checks": [
+        {
+          "name": "missing_required_header",
+          "status": "failure",
+          "message": "Missing header not rejected\n\nGot 404 when missing required 'Authorization' header, expected 401"
+        }
+      ],
+      "meta": {
+        "generation": {
+          "time": 9.700015652924776e-06,
+          "mode": "negative"
+        },
+        "components": {
+          "PATH": "positive",
+          "HEADER": "negative"
+        },
+        "phase": {
+          "name": "coverage",
+          "data": {
+            "type": "CoveragePhaseData",
+            "description": "Missing `Authorization` at header",
+            "location": null,
+            "parameter": "Authorization",
+            "parameter_location": "HEADER",
+            "scenario": "missing_parameter"
+          }
+        },
+        "pool_draws": [],
+        "pool_misses": [],
+        "semantic_draws": [],
+        "dictionary_draws": [],
+        "constants_draws": [],
+        "raw_containers": {
+          "PATH": {
+            "sid": 0
+          },
+          "HEADER": {}
+        }
+      },
+      "path": "/api/session/{sid}/end",
+      "path_parameters": {
+        "sid": "0"
+      },
+      "query": {},
+      "case_headers": {},
+      "cookies": {},
+      "case_body": {
+        "encoding": "none"
+      },
+      "media_type": null,
+      "parent_index": null
+    }
+  ]
+}

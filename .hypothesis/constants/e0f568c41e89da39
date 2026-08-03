@@ -1,0 +1,4 @@
+# file: C:\Users\KAUSTUBH\AppData\Local\Packages\PythonSoftwareFoundation.Python.3.11_qbz5n2kfra8p0\LocalCache\local-packages\Python311\site-packages\schemathesis\cli\commands\run\filters.py
+# hypothesis_version: 6.147.0
+
+[' pattern', ',', 'ID', 'Operation name', 'exclude', 'exclude from', 'include', 'include in', 'method', 'name', 'operation-id', 'path', 'regex', 'tag']

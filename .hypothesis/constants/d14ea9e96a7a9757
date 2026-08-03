@@ -1,0 +1,4 @@
+# file: C:\Users\KAUSTUBH\AppData\Local\Packages\PythonSoftwareFoundation.Python.3.11_qbz5n2kfra8p0\LocalCache\local-packages\Python311\site-packages\schemathesis\specs\openapi\semantic_pool.py
+# hypothesis_version: 6.147.0
+
+[0.5, 100, 10000, 'JsonSchemaObject', '^[0-9a-fA-F:]+$', '^\\d{4}-\\d{2}-\\d{2}$', 'allOf', 'anyOf', 'color', 'const', 'currency', 'date', 'date-time', 'duration', 'email', 'enum', 'exclusiveMaximum', 'exclusiveMinimum', 'format', 'hostname', 'int32', 'int64', 'integer', 'ipv4', 'ipv6', 'maximum', 'minimum', 'null', 'number', 'object', 'oneOf', 'pattern', 'phone', 'properties', 'string', 'time', 'type', 'uri', 'url', 'utf-8', 'uuid']

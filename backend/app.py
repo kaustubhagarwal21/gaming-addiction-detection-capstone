@@ -6119,10 +6119,14 @@ def get_alerts():
 
 @app.route('/api/alerts/mark_read', methods=['POST'])
 def mark_alerts_read():
-    data      = request.get_json() or {}
-    alert_ids = data.get('alert_ids', [])
+    # Authenticate BEFORE touching the body. request.get_json() raises 415 on a
+    # non-JSON Content-Type, so parsing first let an UNAUTHENTICATED caller get a
+    # 415 instead of a 401 — leaking that the endpoint exists and expects JSON.
+    # Found by the Schemathesis property-based API fuzz (docs/API_FUZZ_REPORT.md).
     deny = guard()   # require a valid token in enforce mode; populates g.auth
     if deny: return deny
+    data      = request.get_json(silent=True) or {}
+    alert_ids = data.get('alert_ids', [])
     # Parent-only: otherwise a child could mark their own tamper/risk alerts read and
     # hide them from the parent (e.g. the "logged out" alert).
     deny = deny_non_parent()
