@@ -102,5 +102,6 @@ backend/models/threshold_tuning.json
 data/hasoc2019_hindi_heldout.csv
 data/hasoc_hindi_raw.tsv
 
-# Hypothesis/Schemathesis property-test cache (regenerated per run)
+# Hypothesis/Schemathesis property-test caches (regenerated per run, never commit)
 .hypothesis/
+.schemathesis/
