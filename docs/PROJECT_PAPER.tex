@@ -1677,8 +1677,16 @@ assumptions --- drive the next revision.
         an unauthenticated caller received \texttt{415} (``this endpoint wants JSON'')
         instead of \texttt{401} --- now fixed, regression-tested, and confirmed by a
         scripted scan to have been the only such endpoint
-        (\texttt{docs/API\_FUZZ\_REPORT.md}). The audit also retired six dependency
-        CVEs. Both apps pass
+        (\texttt{docs/API\_FUZZ\_REPORT.md}). The same pass retired six dependency
+        CVEs (\texttt{pip-audit}), added Python static security analysis to match the
+        apps' MobSF scan (\texttt{bandit}: 44 medium findings, \emph{43 verified false
+        positives} --- a script proved every flagged SQL string interpolates only a
+        dialect placeholder or a hardcoded identifier, never user input --- and one
+        real \texttt{eval} in test code, replaced with \texttt{ast.literal\_eval}), and
+        confirmed by a committed-secret scan (\texttt{detect-secrets}) that no service-account
+        key, signing keystore or server secret is tracked in this \emph{public}
+        repository or ever was. Statement coverage of the suite is $75\%$ overall
+        ($80\%$ excluding developer-only utility scripts). Both apps pass
         Android Lint with zero errors, and 87 JVM unit tests (run in CI) pin offline
         session/capture-health transitions, profile and risk-presentation rules, the
         offline chat queue's delivery semantics, the WAV container encoding, IME
@@ -2334,6 +2342,11 @@ detection,'' in \emph{Proc.\ NAACL PEOPLES Workshop}, 2018.
 \bibitem{schemathesis} D. Dygalo, ``Schemathesis: property-based testing for
 OpenAPI/GraphQL APIs,'' open-source software,
 \texttt{github.com/schemathesis/schemathesis}.
+\bibitem{bandit} PyCQA, ``Bandit: a security linter for Python,'' open-source
+software, \texttt{github.com/PyCQA/bandit}.
+\bibitem{detectsecrets} Yelp, ``detect-secrets: enterprise-friendly detection and
+prevention of secrets in code,'' open-source software,
+\texttt{github.com/Yelp/detect-secrets}.
 \bibitem{wikihi} Wikimedia Foundation, ``Hindi Wikipedia,'' 20231101 snapshot
 (CC-BY-SA), accessed via the \texttt{wikimedia/wikipedia} dataset, 2026.
 \bibitem{das2022} M. Das, S. Banerjee, and A. Mukherjee, ``Data bootstrapping

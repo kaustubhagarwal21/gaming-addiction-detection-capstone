@@ -1,14 +1,16 @@
-# API Fuzz + Dependency Audit (2026-08-04)
+# Automated Audit Report — API fuzz, dependencies, static analysis, secrets, coverage (2026-08-04)
 
-Two automated tools added as a fifth verification layer, both run against the
-backend at commit `3eacb9b`+. They complement the existing suites: pytest and the
-functional sweep check *known* behaviour with hand-written cases; these two
-generate cases nobody wrote and check *classes of property* instead.
+Five automated tools added as a verification layer beyond the hand-written suites.
+pytest and the functional sweep check *known* behaviour with cases a human wrote;
+these generate cases nobody wrote, or measure properties of the whole codebase.
 
 | Tool | What it does | Result |
 |---|---|---|
-| [Schemathesis](https://github.com/schemathesis/schemathesis) v4.24.3 | Property-based fuzzing derived from `backend/openapi.yaml` — generates schema-valid and schema-violating requests for all 53 documented operations | **0 server errors** under production config; 1 real precedence bug found and fixed |
-| [pip-audit](https://github.com/pypa/pip-audit) | Cross-references pinned dependencies against the PyPI advisory database | 7 CVEs in 3 packages; 6 fixed by upgrade, 1 dev-only accepted |
+| [Schemathesis](https://github.com/schemathesis/schemathesis) v4.24.3 | Property-based fuzzing derived from `backend/openapi.yaml` — schema-valid and schema-violating requests across all 53 documented operations | **0 server errors** under production config; 1 real precedence bug found and fixed |
+| [pip-audit](https://github.com/pypa/pip-audit) | Pinned dependencies vs the PyPI advisory database | 7 CVEs in 3 packages; 6 retired by upgrade, 1 dev-only accepted |
+| [Bandit](https://github.com/PyCQA/bandit) | Python security static analysis — the backend/ML counterpart to the MobSF scan of the apps | 44 medium findings → **43 verified false positives, 1 real, fixed** |
+| [detect-secrets](https://github.com/Yelp/detect-secrets) | Scans every file for committed credentials (this repo is **public**) | **No private key, signing keystore, or server secret is tracked — and none ever was** |
+| [pytest-cov](https://github.com/pytest-dev/pytest-cov) | Statement coverage of the 180-test suite | **75%** overall; **80%** of served code |
 
 ## Schemathesis: what it found
 
@@ -60,10 +62,80 @@ The `flask-cors` jump is a major version, but this project's usage is a single
 `CORS(app, resources={r"/api/*": {"origins": "*"}})` call whose semantics are
 unchanged in 6.x.
 
+## Bandit: Python static security analysis
+
+MobSF audited the two Android apps; nothing had ever statically analysed the
+**backend and ML code**. Bandit at medium-and-above reported 44 findings. Each was
+verified rather than waved away:
+
+**33 × B608 "possible SQL injection".** All false positives — but proven, not
+assumed. A script extracted every interpolated expression from each flagged query:
+21 interpolate only the dialect placeholder (`_PH`, `?` vs `%s`, the SQLite/Postgres
+portability shim), and the remaining 12 interpolate a **code-controlled identifier**
+— `_SESSION_TABLES` (a hardcoded list of table names), `', '.join(BEHAVIORAL_FEATURES)`
+(a constant feature list), or a generated `','.join(['?'] * n)` placeholder run. In
+every case user-supplied values are still passed as parameters in the execute tuple.
+No user input reaches a query string.
+
+**5 × B301 "pickle".** Loading the project's own model artifacts
+(`joblib`/`pickle` on `backend/models/*.pkl`), which ship inside the deployment image.
+No untrusted pickle is ever loaded.
+
+**3 × B310 `urlopen`, 1 × B104 bind-all, 1 × B615 unpinned HF download.** Fixed
+URLs in developer fetch scripts; `0.0.0.0` binding in the dev-server entry point
+(production serves through gunicorn); a dataset download that already pins a
+snapshot name.
+
+**1 × B307 `eval` — REAL, fixed.** A consistency test parsed the threshold-tuner's
+`DEFAULTS` dict out of source with `eval()`. Only ever run on the project's own
+file, so not exploitable — but `eval` has no business there. Replaced with
+`ast.literal_eval`; bandit now reports **zero** B307. Suite still 180 passing.
+
+## detect-secrets: the public-repo check
+
+The repository is public, so a leaked signing key or service-account credential
+would be unrecoverable. The scan flagged 17 files; the three that would actually
+matter were checked directly against git:
+
+| File | Tracked? | In history? |
+|---|---|---|
+| `backend/firebase_key.json` (service-account **private key**) | **No** | **Never** |
+| `android/ChildApp/keystore.properties` (signing password) | **No** | **Never** |
+| `android/ParentApp/keystore.properties` (signing password) | **No** | **Never** |
+| `android/ParentApp/app/google-services.json` | Yes | Yes — **correct**: this is the Firebase *client* config, public by design in every Android app; access is enforced server-side |
+
+Everything else flagged is a test fixture, a documented sample credential in
+`DEPLOY.md`/`docker-compose.yml`, or build-cache noise. **No real secret has ever
+been committed.**
+
+## pytest-cov: how much the 180 tests actually reach
+
+| Scope | Statements | Covered |
+|---|---|---|
+| `app.py` (the served backend) | 3,987 | **74%** |
+| `text_utils.py`, `behavior_features.py` | 38 | **100%** |
+| `audio_features.py` | 85 | 53% (librosa paths need real audio) |
+| **Whole backend package** | 5,784 | **75%** |
+| **Excluding dev-only utilities** (`seed_demo.py`, `verify_captures.py` — 361 statements, never imported by the server) | 5,423 | **80%** |
+
+Reported honestly rather than by picking the flattering scope: the uncovered
+quarter is dominated by error branches for infrastructure failures (Postgres
+reconnects, FCM delivery errors, Sentry paths) that a hermetic suite cannot reach.
+
 ## Reproduce
 
 ```bash
-pip install schemathesis pip-audit
+pip install schemathesis pip-audit bandit detect-secrets pytest-cov
+
+# static security analysis (backend + ML)
+python -m bandit -r backend/ ml/ -ll
+
+# committed-secret scan
+python -m detect_secrets scan --all-files
+
+# coverage
+cd backend && python -m pytest tests/ -q --cov=. --cov-report=term-missing
+
 
 # dependency CVEs
 python -m pip_audit -r backend/requirements.txt

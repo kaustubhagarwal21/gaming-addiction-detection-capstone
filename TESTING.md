@@ -18,6 +18,9 @@ cloud check, and an on-device manual checklist. Run the automated layers any tim
 | `python scripts/pg_smoketest.py` with a throwaway Postgres 16 `DATABASE_URL` | Production database dialect, schema initialization, login, family authorization, and parent/child role guards | `ALL PASSED` |
 | `schemathesis run backend/openapi.yaml --url http://127.0.0.1:5058 --max-examples 15` (app booted with `AUTH_ENFORCE=1`) | **Property-based API fuzz** over all 53 documented operations — generates cases nobody wrote. Found the mark_read auth-precedence bug | `no Server error findings` (see docs/API_FUZZ_REPORT.md for the triage of spec-completeness findings) |
 | `python -m pip_audit -r backend/requirements.txt` | Dependency CVE audit against the PyPI advisory DB | only the accepted dev-only `pytest` advisory |
+| `python -m bandit -r backend/ ml/ -ll` | **Python security static analysis** (the backend counterpart to MobSF on the apps) | 43 findings, all verified false positives — see docs/API_FUZZ_REPORT.md before "fixing" any SQL warning |
+| `python -m detect_secrets scan --all-files` | Committed-credential scan (this repo is public) | no tracked private key / keystore / server secret |
+| `python -m pytest tests/ -q --cov=. --cov-report=term-missing` | Statement coverage of the 180-test suite | **75%** overall, 80% of served code |
 
 Notes
 - The first `cloud_e2e` call may take ~30–60 s if the free instance was asleep.

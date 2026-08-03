@@ -2,6 +2,7 @@
 extractor (silence floor, feature shape, gain invariance), the noisy-OR toxicity
 fusion, the Hinglish-extended keyword lexicon, the deleted-account token check, and
 the feedback threshold-tuner's Beta-posterior math."""
+import ast
 import os
 import sys
 
@@ -263,5 +264,7 @@ def test_tuner_defaults_match_serving():
         )
         assert match, f'could not locate the serving default for {key}'
         served[key] = float(match.group(1))
-    tuner = eval(re.search(r'DEFAULTS\s*=\s*(\{[^}]+\})', tuner_src).group(1))
+    # literal_eval, not eval: this parses a dict literal out of a source file, and
+    # a static-analysis pass (bandit B307) is right that eval never belongs here.
+    tuner = ast.literal_eval(re.search(r'DEFAULTS\s*=\s*(\{[^}]+\})', tuner_src).group(1))
     assert tuner == served, f'tuner DEFAULTS {tuner} != serving defaults {served}'
