@@ -1,39 +1,63 @@
 {
-  "status": "historical_exploratory_snapshot",
-  "analysis_unit": "prediction",
-  "rerun_required": "The audited script now uses one final completed-session prediction and the full 37-point weight grid. The production pilot database is required to regenerate this artifact.",
-  "grid_note": "These retained historical numbers used 23 interior grid points; floating-point boundary comparisons omitted 14 endpoint combinations.",
-  "n": 1961,
-  "replication_max_abs_diff": 0.0001,
+  "n": 134,
+  "analysis_unit": "session",
+  "replication_max_abs_diff": 6e-05,
+  "observation_capped_rows": 0,
   "baseline_shares": {
-    "casual": 0.488,
-    "at_risk": 0.5115,
-    "addicted": 0.0005
+    "casual": 0.4851,
+    "at_risk": 0.5149,
+    "addicted": 0.0
   },
   "weight_sweep": {
-    "combos": 23,
-    "median_band_flip": 0.0,
-    "max_band_flip": 0.0031,
+    "combos": 37,
+    "median_band_flip": 0.0149,
+    "max_band_flip": 0.1045,
     "worst_combo": [
-      0.4,
-      0.2,
-      0.4
+      0.5,
+      0.35,
+      0.15
     ]
   },
   "genre_sweep": {
-    "x0.0": 0.3626,
-    "x0.5": 0.2126,
-    "x1.5": 0.2713,
-    "x2.0": 0.5105
+    "x0.0": 0.3358,
+    "x0.5": 0.2388,
+    "x1.5": 0.4925,
+    "x2.0": 0.5
+  },
+  "channel_contribution": {
+    "behaviour_only": {
+      "usable_rows": 133,
+      "band_agreement": 0.6767,
+      "band_flip": 0.3233,
+      "mean_abs_score_delta": 0.0562
+    },
+    "behaviour_chat": {
+      "usable_rows": 133,
+      "band_agreement": 0.6842,
+      "band_flip": 0.3158,
+      "mean_abs_score_delta": 0.0533
+    },
+    "behaviour_voice": {
+      "usable_rows": 133,
+      "band_agreement": 1.0,
+      "band_flip": 0.0,
+      "mean_abs_score_delta": 0.0018
+    },
+    "chat_voice_only": {
+      "usable_rows": 131,
+      "band_agreement": 0.8626,
+      "band_flip": 0.1374,
+      "mean_abs_score_delta": 0.0727
+    }
   },
   "threshold_sweep": {
-    "T1-0.05_T2-0.05": 0.1979,
-    "T1-0.05_T2+0.00": 0.1973,
-    "T1-0.05_T2+0.05": 0.1979,
-    "T1+0.00_T2-0.05": 0.0005,
-    "T1+0.00_T2+0.05": 0.0005,
-    "T1+0.05_T2-0.05": 0.1362,
-    "T1+0.05_T2+0.00": 0.1356,
-    "T1+0.05_T2+0.05": 0.1362
+    "T1-0.05_T2-0.05": 0.1791,
+    "T1-0.05_T2+0.00": 0.1791,
+    "T1-0.05_T2+0.05": 0.1791,
+    "T1+0.00_T2-0.05": 0.0,
+    "T1+0.00_T2+0.05": 0.0,
+    "T1+0.05_T2-0.05": 0.2612,
+    "T1+0.05_T2+0.00": 0.2612,
+    "T1+0.05_T2+0.05": 0.2612
   }
 }

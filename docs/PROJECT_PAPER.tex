@@ -1607,23 +1607,43 @@ The pilot's findings, positive and negative alike:
         before the device went silent for good}. The uninstall was detected in real
         time, exactly as designed; the removal itself was, of course, the
         participant's right.
-  \item \textbf{The fusion-prior audit exposed both sensitivity and a unit-of-analysis
-        limitation.} An initial exploratory run over 1{,}961 served snapshots suggested
-        that weight perturbations changed at most $0.3\%$ of bands, while removing the
-        genre multiplier changed $36\%$ and $\pm0.05$ threshold shifts changed up to
-        $20\%$. A code audit then found that long sessions contributed many correlated
-        live re-scores and floating-point boundary comparisons omitted 14 of the intended
-        37 weight combinations. The corrected
-        \texttt{ml/analyze\_fusion\_sensitivity.py} uses exactly the latest prediction
-        from each completed session, preserves the observation-mode ceiling, covers all
-        37 grid points, and refuses output if it cannot reproduce the served score and
-        category. The snapshot figures are therefore retained as exploratory evidence,
-        not a confirmatory claim; the production pilot database must be rerun through the
-        corrected analysis. A prevalence-anchoring method for
-        the top-band threshold (match the share of children in the top band to the
-        IGDS9-SF disordered-range rate) is implemented and population-gated
-        (\texttt{ml/calibrate\_thresholds\_prevalence.py}) --- it activates when the
-        cohort, or a locally collected IGDS9-SF survey, provides a population.
+  \item \textbf{The fusion-prior audit exposed sensitivity, a unit-of-analysis
+        limitation --- and, once corrected, a changed conclusion.} An initial
+        exploratory run over 1{,}961 served snapshots suggested weight perturbations
+        changed at most $0.3\%$ of bands. A code audit found that long sessions
+        contributed many correlated live re-scores and floating-point boundary
+        comparisons omitted 14 of the intended 37 weight combinations; the corrected
+        \texttt{ml/analyze\_fusion\_sensitivity.py} uses exactly the latest
+        prediction from each completed session, preserves the observation-mode
+        ceiling, covers all 37 grid points, and refuses output unless it reproduces
+        every served score and category. Rerun on the production pilot database
+        (134 completed sessions; replication max $|\Delta| = 6{\times}10^{-5}$), the
+        honest picture is \emph{less} flattering than the exploratory one --- which
+        is exactly why the rerun mattered: weight perturbations of $\pm 0.15$ flip a
+        median $1.5\%$ and worst-case $10.4\%$ of session bands (not $0.3\%$),
+        removing the genre multiplier flips $33.6\%$, and $\pm 0.05$ threshold
+        shifts flip up to $26.1\%$. The stakes ranking stands --- thresholds and the
+        genre effect are the high-stakes priors, the weights moderate --- and is
+        precisely why the IGDS9-SF anchoring study targets the thresholds first. A
+        prevalence-anchoring method for the top-band threshold is implemented and
+        population-gated (\texttt{ml/calibrate\_thresholds\_prevalence.py}).
+  \item \textbf{Channel contribution to the fused decision, measured on real
+        traffic.} The same replication-gated analysis re-fuses each session using
+        only a subset of its captured channels (weights renormalised, genre and
+        observation-cap policy unchanged --- exactly what serving would have
+        produced had the other channels never been captured). On the pilot's 134
+        sessions: behaviour alone agrees with the full decision in only $67.7\%$ of
+        sessions --- i.e.\ \emph{removing voice changes the parent-visible band
+        roughly a third of the time} --- while dropping behaviour (chat+voice only)
+        flips $13.7\%$. Behaviour+voice reproduces the served decision exactly
+        ($100\%$, mean $|\Delta\text{score}| = 0.002$) because typed chat was
+        structurally absent in this pilot's no-chat title --- the
+        availability-weighted design operating as intended. Two honest readings
+        follow: the multimodal fusion demonstrably changes decisions on real data
+        (it is not behaviour with decoration), and voice's substantial influence is
+        exactly why its documented domain-shift bias (\S6.3) and lowest prior
+        weight matter --- a channel this influential must earn its labels, which is
+        what the shadow-logged mitigation analysis is accumulating evidence for.
   \item \textbf{Pilot attrition is itself a finding.} One of the two enrolled
         families withdrew in the first week (the uninstall above), leaving one active
         device. For a consent-based monitoring system, acceptability is as much a
