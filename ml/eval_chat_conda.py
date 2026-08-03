@@ -44,7 +44,7 @@ MODELS_DIR = os.path.join(ROOT, 'backend', 'models')
 sys.path.insert(0, os.path.join(ROOT, 'backend'))
 from text_utils import clean_text, keyword_toxicity  # noqa: E402  (serving preprocessing)
 
-ALERT_T = float(os.environ.get('CHAT_ALERT_T', '0.90'))   # must match backend/app.py's default
+ALERT_T = float(os.environ.get('CHAT_ALERT_T', '0.95'))   # must match backend/app.py's default
 ALERT_HIGH_T = float(os.environ.get('CHAT_ALERT_HIGH_T', '0.95'))
 
 

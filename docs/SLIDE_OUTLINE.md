@@ -91,16 +91,17 @@ them makes SHAP circular. Ablation: 0.9191 vs 0.9160, CIs overlap — free hones
 ## Slide 6 — Chat Model
 **On slide:**
 - TF-IDF (word 1–2g + char_wb 3–5g) → LogReg → isotonic; noisy-OR keyword fusion
-- In-domain (CONDA game chat): **PR-AUC 0.834** [0.817, 0.849]
-- At alert threshold 0.90: precision **0.950**, recall 0.491
+- In-domain (CONDA game chat): **PR-AUC 0.831** [0.813, 0.846]
+- At alert threshold 0.95: precision **0.962**, recall 0.334
 - Hinglish + Devanagari lexicon (bsdk, चूतिया…) — load-bearing for India
 
 **Figure:** pr_chat.pdf (PR curve)
 
 **Notes:** The threshold story is the strongest 60 s of the talk: at the realistic
-~3.5% toxic base rate, threshold 0.5 gives precision 0.205 — a parent gets ~4
-false alarms per real one and stops reading alerts. At 0.90, precision is 0.950 at
-recall 0.491: we consciously miss half of toxic messages to keep alerts credible.
+~3.5% toxic base rate, threshold 0.5 gives precision 0.248 — a parent gets ~3
+false alarms per real one and stops reading alerts. At the deployed 0.95, precision is 0.962 at
+recall 0.334: we consciously trade recall to keep alerts credible (the session-level
+streak alert recovers coverage; per-message recall 0.87 at its 0.6 bar).
 Threshold is env-tunable and a Beta-posterior tuner adjusts it from parent
 feedback. Why no BERT: 512 MB serving budget, real-time per-message scoring, and
 the data ablation (slide 9) shows domain data mattered far more than architecture.
@@ -132,7 +133,7 @@ Known gap, stated on slide 13: acted adult emotion ≠ child gaming speech.
 **On slide:**
 - Weighted fusion 40/30/30 over channels **present** this session
 - Session chat risk = **max** of per-message calibrated scores, not the mean
-- Alert at 0.90 — deliberately above best-F1 (0.85): false alarms cost trust
+- Alert at 0.95 — deliberately above best-F1 (0.85): false alarms cost trust
 - Parent feedback loop tunes thresholds (Beta posterior)
 
 **Notes:** Max-not-mean: one credible threat matters more than a hundred clean

@@ -1,96 +1,96 @@
 {
-  "alert_threshold": 0.9,
+  "alert_threshold": 0.95,
   "chat": [
     {
       "config": "full recipe (deployed)",
-      "pr_auc": 0.8337,
+      "pr_auc": 0.831,
       "pr_auc_ci95": [
-        0.8166,
-        0.8487
+        0.8134,
+        0.846
       ],
-      "roc_auc": 0.9281,
-      "precision@alert": 0.9499,
-      "recall@alert": 0.4913,
-      "f1@alert": 0.6476,
-      "mcc@alert": 0.6327
+      "roc_auc": 0.9223,
+      "precision@alert": 0.9556,
+      "recall@alert": 0.3889,
+      "f1@alert": 0.5528,
+      "mcc@alert": 0.5582
     },
     {
       "config": "- keyword fusion",
-      "pr_auc": 0.8236,
+      "pr_auc": 0.8204,
       "pr_auc_ci95": [
-        0.8061,
-        0.8384
+        0.8021,
+        0.8357
       ],
-      "roc_auc": 0.9259,
-      "precision@alert": 0.9512,
-      "recall@alert": 0.4341,
-      "f1@alert": 0.5961,
-      "mcc@alert": 0.591
+      "roc_auc": 0.9197,
+      "precision@alert": 0.9715,
+      "recall@alert": 0.2872,
+      "f1@alert": 0.4433,
+      "mcc@alert": 0.4797
     },
     {
       "config": "- calibration",
-      "pr_auc": 0.8459,
+      "pr_auc": 0.8408,
       "pr_auc_ci95": [
-        0.8288,
-        0.8608
+        0.8233,
+        0.8558
       ],
-      "roc_auc": 0.9295,
-      "precision@alert": 0.9507,
-      "recall@alert": 0.4642,
-      "f1@alert": 0.6238,
-      "mcc@alert": 0.6132
+      "roc_auc": 0.9228,
+      "precision@alert": 0.9691,
+      "recall@alert": 0.3582,
+      "f1@alert": 0.5231,
+      "mcc@alert": 0.5393
     },
     {
       "config": "- char_wb n-grams",
-      "pr_auc": 0.8111,
+      "pr_auc": 0.7929,
       "pr_auc_ci95": [
-        0.7942,
-        0.8278
+        0.7739,
+        0.8101
       ],
-      "roc_auc": 0.9119,
-      "precision@alert": 0.9456,
-      "recall@alert": 0.4497,
-      "f1@alert": 0.6095,
-      "mcc@alert": 0.6001
+      "roc_auc": 0.897,
+      "precision@alert": 0.9517,
+      "recall@alert": 0.3679,
+      "f1@alert": 0.5306,
+      "mcc@alert": 0.5398
     },
     {
       "config": "- Davidson corpus",
-      "pr_auc": 0.8051,
+      "pr_auc": 0.7798,
       "pr_auc_ci95": [
-        0.7864,
-        0.8226
+        0.7609,
+        0.7975
       ],
-      "roc_auc": 0.9199,
-      "precision@alert": 0.8582,
-      "recall@alert": 0.6303,
-      "f1@alert": 0.7268,
-      "mcc@alert": 0.678
+      "roc_auc": 0.9097,
+      "precision@alert": 0.8848,
+      "recall@alert": 0.4949,
+      "f1@alert": 0.6347,
+      "mcc@alert": 0.6028
     },
     {
       "config": "- CONDA corpus (domain data)",
-      "pr_auc": 0.513,
+      "pr_auc": 0.5124,
       "pr_auc_ci95": [
-        0.4873,
-        0.5361
+        0.4872,
+        0.5355
       ],
-      "roc_auc": 0.7426,
-      "precision@alert": 0.8663,
-      "recall@alert": 0.0897,
-      "f1@alert": 0.1626,
-      "mcc@alert": 0.2392
+      "roc_auc": 0.7267,
+      "precision@alert": 0.982,
+      "recall@alert": 0.0656,
+      "f1@alert": 0.123,
+      "mcc@alert": 0.2254
     },
     {
       "config": "original (general-only, word-only)",
-      "pr_auc": 0.5571,
+      "pr_auc": 0.5156,
       "pr_auc_ci95": [
-        0.5317,
-        0.5806
+        0.4904,
+        0.5392
       ],
-      "roc_auc": 0.7391,
-      "precision@alert": 0.8804,
-      "recall@alert": 0.1951,
-      "f1@alert": 0.3194,
-      "mcc@alert": 0.3622
+      "roc_auc": 0.7264,
+      "precision@alert": 0.8885,
+      "recall@alert": 0.1391,
+      "f1@alert": 0.2405,
+      "mcc@alert": 0.3059
     }
   ],
   "voice": [

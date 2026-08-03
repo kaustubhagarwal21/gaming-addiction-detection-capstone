@@ -785,26 +785,27 @@ if not 0.0 < RISK_T1 < RISK_T2 < 1.0:
 # Per-message chat-toxicity alert cutoffs. Deliberately high: a per-message alert is
 # an accusation about a SPECIFIC line the parent may confront the child over, so it is
 # precision-first. Defaults are chosen from the MEASURED held-out curve of the served
-# pipeline on real gaming chat (CONDA_valid; model trained on general corpus + CONDA
-# train split + Davidson offensive-language tweets):
-#   0.90 → toxic precision 0.950, recall 0.491  (the alert)
-#   0.95 → toxic precision 0.987               (the 'high'-severity marker)
-# Each model revision re-derives these from its own curve — calibration shifts where
-# probabilities land, so thresholds never survive a model change unexamined.
+# pipeline on real gaming chat (CONDA_valid; model trained on the de-duplicated
+# general + CONDA train + Davidson assembly):
+#   0.95 → toxic precision 0.962, recall 0.334  (the alert)
+#   0.97 → toxic precision 0.991               (the 'high'-severity marker)
+# The pre-dedupe model's curve put the same ~0.95-precision operating point at
+# 0.90 — calibration shifts where probabilities land, so thresholds never survive
+# a model change unexamined; each revision re-derives them from its own curve.
 # Recall that per-message recall gives up is recovered by the SESSION-level streak
 # alert below, which aggregates repeated moderately-flagged messages.
 # Env-overridable for the same feedback-driven tuning as the risk bands above.
-CHAT_ALERT_T = _env_float('CHAT_ALERT_T', 0.90, minimum=0.0, maximum=1.0)
+CHAT_ALERT_T = _env_float('CHAT_ALERT_T', 0.95, minimum=0.0, maximum=1.0)
 CHAT_ALERT_HIGH_T = _env_float(
-    'CHAT_ALERT_HIGH_T', 0.95, minimum=0.0, maximum=1.0)
+    'CHAT_ALERT_HIGH_T', 0.97, minimum=0.0, maximum=1.0)
 
-# Session-level escalation. The per-message threshold is precision-first (in-domain
-# recall ~0.26 per message) — but toxic players repeat, and repetition is itself
-# evidence: at 3 moderately-flagged messages the chance the session contained real
-# toxicity is far higher than any single message conveys (P[>=1 true hit] rises
-# 0.26 -> ~0.59 at 3 messages). So when CHAT_STREAK_N messages in one session score
-# >= CHAT_STREAK_BAR (a lower, "concerning" bar), ONE aggregate alert is raised even
-# though no single message crossed the per-message cutoff.
+# Session-level escalation. The per-message threshold is precision-first — but toxic
+# players repeat, and repetition is itself evidence. When CHAT_STREAK_N messages in
+# one session score >= CHAT_STREAK_BAR (a lower, "concerning" bar — measured
+# in-domain P 0.53 / R 0.87 per message on the deduped-retrain curve), ONE aggregate
+# alert is raised even though no single message crossed the per-message cutoff.
+# The hits are correlated (same speaker, same session): the bar is a repetition
+# heuristic against one-off false positives, not an independence-based bound.
 CHAT_STREAK_BAR = _env_float(
     'CHAT_STREAK_BAR', 0.6, minimum=0.0, maximum=1.0)
 CHAT_STREAK_N = _env_int('CHAT_STREAK_N', 3, minimum=1)

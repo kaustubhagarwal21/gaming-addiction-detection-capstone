@@ -69,19 +69,20 @@ feature importances is unchanged.
 
 **Q: Why logistic regression + TF-IDF and not BERT?**
 Measured, not assumed. The deployed recipe (word 1–2 gram + char_wb 3–5 gram TF-IDF
-union → LogReg → isotonic) reaches PR-AUC 0.834 [0.817, 0.849] on CONDA in-game chat.
+union → LogReg → isotonic) reaches PR-AUC 0.831 [0.813, 0.846] on CONDA in-game chat.
 A transformer needs GPU or slow CPU inference; we serve on a 512 MB free-tier instance
 scoring every chat message in real time. The char_wb n-grams are the cheap trick that
 buys robustness to gamer spelling ("noooob", "f4ggot") — removing them drops PR-AUC to
-0.811 (ablation row "- char_wb n-grams").
+0.793 (ablation row "- char_wb n-grams").
 
-**Q: The balanced-holdout F1 is 0.92 but realistic precision at 0.5 is 0.205. Which is real?**
+**Q: The balanced-holdout F1 is 0.92 but realistic precision at 0.5 is 0.248. Which is real?**
 Both — and the gap is the most important number in the chat section. At the realistic
 ~3.5% toxic base rate, a 0.5 threshold floods parents with false alarms (precision
-0.205 — roughly four false alarms per real one). That is *why* the alert threshold is
-0.90, where in-domain precision is 0.950 at recall 0.491
-(`chat_metrics_gaming.at_alert_threshold`). We chose to miss half of toxic messages
-rather than train parents to ignore alerts. The threshold is env-tunable
+0.248 — roughly three false alarms per real one). That is *why* the alert threshold is
+0.95 (post-dedupe retrain; was 0.90 on the old calibration), where in-domain precision is 0.962 at recall 0.334
+(`chat_metrics_gaming.at_alert_threshold`). We chose to miss most single toxic messages
+rather than train parents to ignore alerts (the session streak alert recovers coverage:
+per-message recall 0.87 at its 0.6 bar). The threshold is env-tunable
 (`CHAT_ALERT_T`) and `ml/tune_from_feedback.py` adjusts it from real parent feedback
 using a Beta posterior.
 
@@ -159,9 +160,9 @@ session are renormalised out instead of being imputed. Session chat risk is the 
 of per-message calibrated confidences, not an average — one credible threat matters
 more than a hundred clean messages diluting it.
 
-**Q: Why alert at 0.90 and not the F1-optimal threshold?**
-The CONDA threshold sweep puts best-F1 at 0.85 (P 0.888 / R 0.660) and 0.90 at
-P 0.950 / R 0.491. We deliberately sit above best-F1 because the asymmetric cost is
+**Q: Why alert at 0.95 and not the F1-optimal threshold?**
+The CONDA threshold sweep puts best-F1 at 0.85 (P 0.841 / R 0.709) and the deployed
+0.95 at P 0.962 / R 0.334 (0.90 reads P 0.922 / R 0.606, env-selectable). We deliberately sit above best-F1 because the asymmetric cost is
 false alarms: a parent who gets three wrong alerts stops reading them. Both points are
 in `model_metadata.json`; the threshold is an env var, and the feedback tuner moves it
 with real parent responses.

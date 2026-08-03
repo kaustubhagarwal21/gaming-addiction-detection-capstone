@@ -47,7 +47,7 @@ from sklearn.preprocessing import StandardScaler                           # noq
 
 DATA    = os.path.join(ROOT, 'data')
 DOCS    = os.path.join(ROOT, 'docs')
-ALERT_T = float(os.environ.get('CHAT_ALERT_T', '0.90'))
+ALERT_T = float(os.environ.get('CHAT_ALERT_T', '0.95'))
 SEED    = 42
 
 
@@ -104,6 +104,10 @@ def train_chat(sources, use, char_ngrams=True, calibrated=True):
     combo = pd.concat([sources[k][['text', 'toxic']] for k in use], ignore_index=True)
     combo['clean'] = combo['text'].map(clean_text)
     combo = combo[combo['clean'].str.len() > 2]
+    # Mirror the deployed assembly's de-duplication (retrain_models.assemble_chat_dataset,
+    # dedupe=True): one row per cleaned text, majority label, ties -> toxic.
+    combo = (combo.groupby('clean', as_index=False)['toxic']
+                  .agg(lambda s: int(s.mean() >= 0.5)))
     tox = combo[combo['toxic'] == 1]
     cln = combo[combo['toxic'] == 0].sample(n=len(tox), random_state=SEED)
     bal = pd.concat([tox, cln]).sample(frac=1, random_state=SEED)

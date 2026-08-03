@@ -8,7 +8,7 @@ Key honesty points:
 - Chat is reported on TWO sets: (a) the balanced held-out split it was tested on
   (optimistic), and (b) a REALISTIC, naturally-imbalanced held-out set the model never
   trained on (the truthful view — this is where toxic precision is low). Both at the
-  default 0.5 cut and at the live alert threshold (CHAT_ALERT_T, default 0.90).
+  default 0.5 cut and at the live alert threshold (CHAT_ALERT_T, default 0.95).
 - Voice: only evaluated here if the deployed model is the old synthetic-features one.
   When ml/train_voice_real.py has produced the real-audio model, that trainer owns
   voice_metrics and this script leaves them untouched (see main()).
@@ -31,7 +31,7 @@ sys.path.insert(0, os.path.join(ROOT, 'backend'))
 # NOTE: no clean_text here on purpose — assemble_chat_dataset() already applies the
 # serving clean_text to every row, so transforming df['text'] directly is consistent.
 
-ALERT_T = float(os.environ.get('CHAT_ALERT_T', '0.90'))   # must match backend/app.py's default
+ALERT_T = float(os.environ.get('CHAT_ALERT_T', '0.95'))   # must match backend/app.py's default
 
 
 def _load(name):

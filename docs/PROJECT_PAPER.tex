@@ -87,7 +87,7 @@ deployability, and a privacy design that reduces raw media to compact features
 and deletes it. Within that class, every model-family choice is backed by a measured bake-off,
 feature and corpus choices by ablations with bootstrap confidence intervals, and
 the fusion priors by sensitivity analyses on live pilot decisions. The pipeline
-is grounded in \emph{nine real, open datasets}: the chat model reaches $0.95$
+is grounded in \emph{nine real, open datasets}: the chat model reaches $0.96$
 precision at its alert threshold on held-out real gaming chat and detects
 code-mixed Hinglish/Devanagari abuse whether typed or \emph{spoken} (transcribed
 on-device; uploaded audio is deleted after feature extraction); the voice model
@@ -528,7 +528,7 @@ had to \emph{earn} their place with a measured, held-out effect (reported in
 Gamers \& Anxiety (OSF, $n{=}13{,}464$) & adopted & real survey; grounds play-time bands + peer percentiles (hand-set table was measurably wrong) \\
 IGDS9-SF Latin America (OSF, $n{=}11{,}191$) & adopted & real IGD labels; severity base rate + chat-premise validation \\
 General toxicity corpus~\cite{jigsaw2018} & adopted & chat training base --- Jigsaw Wikipedia talk-page comments ($86\%$), plus a Davidson copy and a small YouTube set \\
-CONDA (real Dota~2 chat) & adopted & the in-domain anchor: its removal collapses PR-AUC $0.834 \rightarrow 0.513$ \\
+CONDA (real Dota~2 chat) & adopted & the in-domain anchor: its removal collapses PR-AUC $0.831 \rightarrow 0.512$ \\
 Davidson et al.\ tweets & adopted & real informal/slang register; $+0.029$ PR-AUC measured \\
 RAVDESS + CREMA-D & adopted & real labelled English speech, 115 speakers \\
 EMO-DB + URDU & adopted & speaker/language diversity; Urdu $\approx$ target users' Hindi \\
@@ -560,7 +560,7 @@ lineage above.
         CONDA gaming-chat train split, and the Davidson offensive-language tweets
         (balanced), with its \emph{own} isotonic calibration layer (fitted on a
         slice carved from the training data, so held-out evaluation stays untouched;
-        held-out Brier $0.074 \rightarrow 0.070$). The character channel was \emph{originally rejected} --- trained on
+        held-out Brier $0.061 \rightarrow 0.058$). The character channel was \emph{originally rejected} --- trained on
         the general corpus alone, raw char n-grams over-fired on clean gaming
         phrases --- but re-tested with gaming-domain training data and word-bounded
         analysis it wins decisively on held-out real gaming chat
@@ -1133,7 +1133,7 @@ adjacent bands: both Casual$\leftrightarrow$Addicted corners are zero.}
 Metrics are for the pipeline \emph{as served}: the isotonic-calibrated probability of
 the word~$\cup$~char\_wb model trained on three real corpora (general toxicity +
 CONDA train split + Davidson offensive-language tweets; held-out Brier
-$0.074 \rightarrow 0.070$), fused with the keyword lexicon. The held-out set is
+$0.061 \rightarrow 0.058$), fused with the keyword lexicon. The held-out set is
 reconstructed from the \emph{same} corpus assembly the trainer uses (shared code
 path), so no training \emph{row} can re-enter it --- an earlier draft rebuilt this split
 from the general corpus alone, which admitted trained CONDA/Davidson rows and
@@ -1144,9 +1144,9 @@ audited below.)
 \toprule
 \textbf{Evaluation set} & \textbf{Precision (toxic)} & \textbf{Recall (toxic)} & \textbf{Note} \\
 \midrule
-Balanced held-out & 0.882 & 0.954 & optimistic view; PR-AUC 0.926 \\
-General realistic stream @0.50 & 0.205 & 0.954 & 3.5\% toxic base rate \\
-General realistic stream @0.90 (alert) & 0.331 & 0.471 & out-of-domain view \\
+Balanced held-out & 0.906 & 0.953 & optimistic view; PR-AUC 0.944 \\
+General realistic stream @0.50 & 0.248 & 0.953 & 3.5\% toxic base rate \\
+General realistic stream @0.95 (alert) & 0.426 & 0.280 & out-of-domain view \\
 \bottomrule
 \end{tabular}
 \end{center}
@@ -1156,20 +1156,24 @@ assembled corpus found $18{,}038$ duplicate rows ($7.8\%$): the general corpus
 itself carries a copy of the Davidson tweets alongside the canonical
 \texttt{chat\_extra} file, and $6{,}542$ texts carried \emph{conflicting} labels
 between their copies. Exact-duplicate texts therefore straddle the train/test
-boundary ($10.6\%$ of balanced test rows have a training-side twin). Measured on
-the deployed model, the net effect is \emph{conservative}, not inflationary: the
-overlapping subset scores \emph{worse} than the rest (accuracy $0.840$ vs.\
+boundary ($10.6\%$ of balanced test rows had a training-side twin). Measured on
+the pre-dedupe model, the net effect was \emph{conservative}, not inflationary:
+the overlapping subset scored \emph{worse} than the rest (accuracy $0.840$ vs.\
 $0.913$ overall), because a label conflict guarantees an error on one copy of the
-text --- outweighing any memorisation gain --- so the leak-free subset reads
+text --- outweighing any memorisation gain --- so the leak-free subset read
 accuracy $0.922$, PR-AUC $0.935$, Brier $0.062$, all slightly \emph{better} than
-the reported figures. The reported (lower) numbers are retained unchanged --- the
-conservative choice; the assembly now de-duplicates for future retrains (majority
-label per text, ties resolved toward toxic), recorded by a metadata flag so
-evaluation always reproduces the exact assembly the deployed model was trained on.
-The deployed model itself is deliberately retained unchanged until the pilot
-concludes --- swapping models mid-pilot would confound the longitudinal score
-series of \S\ref{sec:pilot} --- so the first de-duplicated retrain is scheduled
-with the post-pilot cycle.
+the then-published figures. That model was deliberately retained until the pilot
+concluded (swapping models mid-pilot would confound the longitudinal score series
+of \S\ref{sec:pilot}); the chat model was then retrained on the de-duplicated
+assembly (one row per cleaned text, majority label, ties resolved toward toxic;
+recorded by a metadata flag so evaluation always reproduces the exact assembly
+the deployed model was trained on). The retrain confirmed the leakage analysis's
+prediction: balanced held-out accuracy $0.913 \rightarrow 0.927$, PR-AUC
+$0.926 \rightarrow 0.944$, Brier $0.070 \rightarrow 0.058$, while in-domain
+\emph{ranking} is statistically unchanged (PR-AUC $0.833$ vs.\ $0.834$, inside
+the bootstrap CI) --- and the alert threshold was re-derived from the new
+calibrated curve per the standing procedure (below), moving from $0.90$ to
+$0.95$. The tables in this section report the retrained model.
 
 \paragraph{In-domain evaluation on real gaming chat (held-out CONDA split).}
 The serving domain is gaming chat, so the decisive evaluation is on \textbf{CONDA's
@@ -1180,15 +1184,16 @@ validation split} --- $7{,}721$ real Dota~2 utterances the retrained model
 \toprule
 \textbf{Operating point} & \textbf{Precision (toxic)} & \textbf{Recall (toxic)} & \textbf{F1} \\
 \midrule
-@0.90 (deployed alert threshold) & \textbf{0.950} & 0.491 & 0.648 \\
-@0.85 (near best F1; selectable via env) & 0.888 & 0.660 & 0.758 \\
-@0.95 (high-severity marker) & 0.987 & 0.134 & 0.235 \\
+@0.95 (deployed alert threshold) & \textbf{0.962} & 0.334 & 0.496 \\
+@0.90 (recall-preferring option, env-selectable) & 0.922 & 0.606 & 0.731 \\
+@0.85 (near best F1; selectable via env) & 0.841 & 0.709 & 0.769 \\
+@0.97 (high-severity marker) & 0.991 & 0.065 & 0.122 \\
 \bottomrule
 \end{tabular}
 \end{center}
-The promised secondary views on this in-domain set: ROC-AUC $0.928$ and MCC $0.633$
-at the alert threshold (per-configuration values for every ablation row are in the
-released \texttt{ablation\_results.json} artifact).
+The promised secondary views on this in-domain set: ROC-AUC $0.922$ and MCC $0.517$
+at the alert threshold ($0.698$ at the $0.90$ point; per-configuration values for
+every ablation row are in the released \texttt{ablation\_results.json} artifact).
 Fig.~\ref{fig:prchat} shows the full precision--recall curve against the original
 recipe: the deployed pipeline dominates at every operating point.
 Three successive, measured improvements produced it, each adopted
@@ -1208,21 +1213,26 @@ the earlier weak in-domain performance was a domain artifact. The
 word~$\cup$~char\_wb feature union selected by the bake-off
 (\S\ref{sec:modelselection}) lifted it to $0.805$, and adding the Davidson
 offensive-language corpus (real informal/slang text) lifted it again to
-$\mathbf{0.834}$ (served, with keyword fusion). Each revision \emph{re-derived the
+$0.834$; the post-pilot de-duplicated retrain (audit above) holds at
+$\mathbf{0.833}$ served, statistically unchanged. Each revision \emph{re-derived the
 alert threshold from its own held-out curve} --- calibration shifts where
-probabilities land, so a threshold never survives a model change unexamined. The
-deployed point now \emph{strictly dominates} the previous one: precision $0.950$ at
-recall $0.491$, versus $0.924/0.445$ before Davidson and $0.891/0.266$ for the
-original general-corpus deployment --- per-message accusations are right $95\%$ of
-the time while catching $1.8\times$ the toxic lines the original system did; the
-high-severity marker is right $99\%$ of the time.
+probabilities land, so a threshold never survives a model change unexamined. On the
+retrained model's calibrated scale the $\sim$$0.95$-precision operating point sits at
+threshold $0.95$: the deployed alert reads precision $0.962$ at recall $0.334$
+(the same curve's $0.90$ point reads $0.922/0.606$, available to a guardian who
+prefers recall --- \texttt{CHAT\_ALERT\_T} is env-tunable), and the high-severity
+marker ($0.97$) is right $99\%$ of the time. The pre-dedupe deployment's point read
+$0.950/0.491$ on its own scale, itself strictly dominating its predecessors
+($0.924/0.445$ before Davidson, $0.891/0.266$ for the original general-corpus
+model). Per-message recall deliberately traded away here is recovered at session
+level by the streak alert below.
 
 \paragraph{Session-level escalation recovers the remaining recall.}
 Per-message alerting is deliberately precision-first, which caps per-message recall
 --- but toxic players repeat, and repetition is itself evidence. The backend
 therefore raises \emph{one aggregate ``repeated concerning language'' alert} when
 three messages in a session score above a lower bar ($0.6$, where per-message recall
-is $0.84$ in-domain at precision $0.62$), so repeated toxicity in a session
+is $0.87$ in-domain at precision $0.53$), so repeated toxicity in a session
 surfaces even when no single line crosses the per-message cutoff. The three
 flagged messages are correlated (same speaker, same session), so the bar is a
 repetition heuristic that suppresses one-off false positives, not an
@@ -1303,27 +1313,27 @@ $95\%$ CIs (\S\ref{sec:evalmethod}).
 \begin{center}
 \begin{tabular}{lcc}
 \toprule
-\textbf{Configuration} & \textbf{PR-AUC [95\% CI]} & \textbf{Precision@0.90} \\
+\textbf{Configuration} & \textbf{PR-AUC [95\% CI]} & \textbf{Precision@0.95} \\
 \midrule
-Full recipe (deployed)            & 0.834 [0.817, 0.849] & 0.950 \\
-$-$ keyword-lexicon fusion        & 0.824 [0.806, 0.838] & 0.951 \\
-$-$ calibration                   & 0.846 [0.829, 0.861] & 0.951 \\
-$-$ char\_wb n-grams              & 0.811 [0.794, 0.828] & 0.946 \\
-$-$ Davidson corpus               & 0.805 [0.786, 0.823] & 0.858 \\
-$-$ CONDA corpus (domain data)    & 0.513 [0.487, 0.536] & 0.866 \\
-Original (general-only, word-only) & 0.557 [0.532, 0.581] & 0.880 \\
+Full recipe (deployed)            & 0.831 [0.813, 0.846] & 0.956 \\
+$-$ keyword-lexicon fusion        & 0.820 [0.802, 0.836] & 0.972 \\
+$-$ calibration                   & 0.841 [0.823, 0.856] & 0.969 \\
+$-$ char\_wb n-grams              & 0.793 [0.774, 0.810] & 0.952 \\
+$-$ Davidson corpus               & 0.780 [0.761, 0.797] & 0.885 \\
+$-$ CONDA corpus (domain data)    & 0.512 [0.487, 0.535] & 0.982 \\
+Original (general-only, word-only) & 0.516 [0.490, 0.539] & 0.889 \\
 \bottomrule
 \end{tabular}
 \end{center}
 Domain data dominates everything else combined ($+0.32$ PR-AUC) --- removing CONDA
 collapses the model below even the original recipe's curve shape. Character n-grams
-($+0.023$) and Davidson ($+0.029$, and $+0.09$ precision at the alert point) are
-each significant. Two nuances: the keyword fusion buys only $+0.010$ PR-AUC
+($+0.038$) and Davidson ($+0.051$, and $+0.071$ precision at the alert point) are
+each significant. Two nuances: the keyword fusion buys only $+0.011$ PR-AUC
 --- it is retained primarily for \emph{coverage} (Hinglish/Devanagari abuse the
 TF-IDF vocabulary cannot see) and interpretability, not ranking. And
-\textbf{calibration costs $0.012$ PR-AUC}: isotonic regression creates probability
+\textbf{calibration costs $0.010$ PR-AUC}: isotonic regression creates probability
 plateaus (ties) that coarsen ranking. We accept that deliberately --- on the
-calibrated scale the $0.90$ threshold \emph{empirically achieved} $95\%$ held-out
+calibrated scale the $0.95$ threshold \emph{empirically achieved} $96\%$ held-out
 in-domain precision (the served score is the calibrated probability fused with the
 lexicon by noisy-OR, so the guarantee is the measured operating point, not
 calibration theory), and threshold
@@ -1398,7 +1408,8 @@ and the measured (not asserted) consequence. Figures are \emph{as measured at th
 revision}; where a later revision re-measured the same quantity, the final number in
 the Results sections supersedes it --- notably the chat calibration row's held-out
 Brier ($0.088 \rightarrow 0.075$ then) predates the eval-leakage correction of
-\S\ref{sec:chatresults}, whose final held-out Brier is $0.074 \rightarrow 0.070$.
+\S\ref{sec:chatresults}, whose final held-out Brier (post-dedupe retrain) is
+$0.061 \rightarrow 0.058$.
 
 \begin{xltabular}{\linewidth}{p{3.1cm}XX}
 \caption{ML pipeline revisions: motivation and measured effect of each change.}
