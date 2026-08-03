@@ -1304,24 +1304,31 @@ tests original clips only.)
 
 \textbf{Behaviour} (synthetic, survey-grounded generator):
 \begin{center}
-\begin{tabular}{lcc}
+\begin{tabular}{lcccc}
 \toprule
-\textbf{Feature set} & \textbf{Accuracy [95\% CI]} & \textbf{Macro-F1} \\
+\textbf{Feature set} & \textbf{Accuracy [95\% CI]} & \textbf{Macro-F1} & \textbf{QWK} & \textbf{Non-adj.} \\
 \midrule
-Screen-time only (hours --- the baseline) & 0.702 [0.690, 0.714] & 0.709 \\
-Objective-10 (deployed)          & 0.916 [0.909, 0.923] & 0.918 \\
-All-20 (incl.\ derived proxies)  & 0.919 [0.912, 0.926] & 0.921 \\
-Volume features only (5)         & 0.871 [0.861, 0.879] & 0.874 \\
-Pattern features only (5)        & 0.902 [0.894, 0.910] & 0.905 \\
+Screen-time only (hours --- the baseline) & 0.702 [0.690, 0.714] & 0.709 & 0.757 & 7 \\
+Objective-10 (deployed)          & 0.916 [0.909, 0.923] & 0.918 & 0.928 & 0 \\
+All-20 (incl.\ derived proxies)  & 0.919 [0.912, 0.926] & 0.921 & 0.931 & 0 \\
+Volume features only (5)         & 0.871 [0.861, 0.879] & 0.874 & 0.890 & 0 \\
+Pattern features only (5)        & 0.902 [0.894, 0.910] & 0.905 & 0.916 & 0 \\
 \bottomrule
 \end{tabular}
 \end{center}
-The first row is the \emph{thesis baseline}: the project's core claim is that
-multimodal behaviour patterns beat screen-time counting, so the table must contain
-screen-time counting. Deliberately given its best shot --- both hours features, the
-same model family, protocol and CIs as every other row --- a well-fit hours-only
-model reaches $0.702$, \textbf{21.4 points below the deployed feature set} with
-cleanly disjoint intervals: the central claim is measured, not asserted. The derived
+Because Casual $<$ At-Risk $<$ Addicted is an \emph{ordered} scale, the table also
+reports quadratic-weighted kappa (QWK --- errors penalised by squared band
+distance) and the count of \emph{non-adjacent} errors (two-band jumps,
+Casual$\leftrightarrow$Addicted), which plain accuracy and F1 price no differently
+from a one-band miss. The first row is the \emph{thesis baseline}: the project's
+core claim is that multimodal behaviour patterns beat screen-time counting, so the
+table must contain screen-time counting. Deliberately given its best shot --- both
+hours features, the same model family, protocol and CIs as every other row --- a
+well-fit hours-only model reaches $0.702$, \textbf{21.4 points below the deployed
+feature set} with cleanly disjoint intervals; and the ordinal view sharpens the
+verdict --- the hours-only model commits \textbf{seven} Casual$\leftrightarrow$Addicted
+two-band errors on the 5{,}000-row test set, a failure mode \emph{every} multimodal
+feature set avoids entirely. The central claim is measured, not asserted. The derived
 proxies add nothing beyond the objective ten (overlapping CIs --- confirming
 \S\ref{sec:features} empirically). More interesting: the five \emph{pattern}
 features (late-night ratio, streak, binges, breaks, rapid re-logins) alone recover
@@ -1644,6 +1651,18 @@ The pilot's findings, positive and negative alike:
         exactly why its documented domain-shift bias (\S6.3) and lowest prior
         weight matter --- a channel this influential must earn its labels, which is
         what the shadow-logged mitigation analysis is accumulating evidence for.
+        The same replication-gated harness also tested the fusion \emph{rule}
+        itself: a weighted sum assumes channel evidence combines additively, so we
+        re-banded every session under the two standard alternatives. Noisy-OR
+        (union of independent evidence) would have flipped $46.3\%$ of session
+        bands and max-pooling $33.6\%$ --- and in \emph{every single case the flip
+        is upward}. Both alternatives let the loudest channel decide, which in
+        this pilot means letting the frustrated-biased voice model unilaterally
+        escalate a third to half of all sessions. The weighted mean is therefore
+        not an unexamined default but the measured conservative choice: it
+        requires corroboration across channels, damping precisely the known-biased
+        signal the alternatives would amplify --- consistent with the
+        precision-first alerting philosophy throughout the system.
   \item \textbf{Pilot attrition is itself a finding.} One of the two enrolled
         families withdrew in the first week (the uninstall above), leaving one active
         device. For a consent-based monitoring system, acceptability is as much a

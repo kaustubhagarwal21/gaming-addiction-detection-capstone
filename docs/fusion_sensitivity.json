@@ -50,6 +50,20 @@
       "mean_abs_score_delta": 0.0727
     }
   },
+  "fusion_rule_counterfactual": {
+    "noisy_or": {
+      "band_flip": 0.4627,
+      "flips_up": 62,
+      "flips_down": 0,
+      "mean_abs_score_delta": 0.1756
+    },
+    "max": {
+      "band_flip": 0.3358,
+      "flips_up": 45,
+      "flips_down": 0,
+      "mean_abs_score_delta": 0.068
+    }
+  },
   "threshold_sweep": {
     "T1-0.05_T2-0.05": 0.1791,
     "T1-0.05_T2+0.00": 0.1791,
