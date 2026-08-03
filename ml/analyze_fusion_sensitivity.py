@@ -250,6 +250,40 @@ def main():
         else:
             print(f"channel subset {name:<16} no rows with evidence")
 
+    # 2c) FUSION-RULE COUNTERFACTUAL: the weighted SUM is itself a design choice —
+    # it assumes channel evidence combines additively. The two standard alternatives
+    # behave differently exactly when one channel screams while the others are calm:
+    # noisy-OR (union of independent evidence, as the chat channel already uses
+    # internally) and max-pooling (the loudest channel decides). Serving is not
+    # changed; this measures, on real pilot sessions, how many parent-visible bands
+    # each alternative would have flipped and in which direction.
+    def fuse_rule(r, rule):
+        comps = [(w, s) for w, s, p in ((0.40, r['b'], r['bp']),
+                                        (0.30, r['c'], r['cp']),
+                                        (0.30, r['v'], r['vp'])) if p]
+        if not comps:
+            raw = 0.5
+        elif rule == 'noisy_or':
+            raw = 1.0 - float(np.prod([1.0 - s for _, s in comps]))
+        else:                                   # max-pooling
+            raw = max(s for _, s in comps)
+        return float(np.clip(raw * r['g'], 0.0, 1.0))
+
+    report['fusion_rule_counterfactual'] = {}
+    order = {'casual': 0, 'at_risk': 1, 'addicted': 2}
+    for rule in ('noisy_or', 'max'):
+        lab = [served_band(r, fuse_rule(r, rule), RISK_T1, RISK_T2) for r in rows]
+        flips_total = sum(1 for a, x in zip(baseline, lab) if a != x)
+        ups = sum(1 for a, x in zip(baseline, lab) if order[x] > order[a])
+        downs = flips_total - ups
+        deltas = [abs(fuse_rule(r, rule) - r['fin']) for r in rows]
+        report['fusion_rule_counterfactual'][rule] = {
+            'band_flip': round(flips_total / len(rows), 4),
+            'flips_up': ups, 'flips_down': downs,
+            'mean_abs_score_delta': round(float(np.mean(deltas)), 4)}
+        print(f"fusion rule {rule:<9} band-flip {flips_total / len(rows):.1%} "
+              f"(up {ups} / down {downs})  mean |dScore| {np.mean(deltas):.3f}")
+
     # 3) Threshold sweep: +/-0.05 on each cut independently.
     report['threshold_sweep'] = {}
     scores = [fuse(r, 0.40, 0.30, 0.30) for r in rows]

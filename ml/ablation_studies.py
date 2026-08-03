@@ -281,9 +281,18 @@ def ablate_behavior():
         y_hat = clf.predict(sc.transform(X_te))
         acc = accuracy_score(y_te, y_hat)
         lo, hi = boot_ci(lambda a, b: accuracy_score(a, b), y_te, y_hat)
+        # ORDINAL metrics. casual < at_risk < addicted is an ordered scale; plain
+        # accuracy/F1 price a casual->addicted error the same as casual->at_risk.
+        # Quadratic-weighted kappa penalises by squared band distance, and the
+        # non-adjacent error count states the two-band-jump failure mode directly.
+        from sklearn.metrics import cohen_kappa_score
+        qwk = cohen_kappa_score(y_te, y_hat, weights='quadratic')
+        nonadj = int(np.sum(np.abs(np.asarray(y_te) - np.asarray(y_hat)) > 1))
         out.append({'config': name, 'accuracy': round(float(acc), 4), 'acc_ci95': [lo, hi],
-                    'macro_f1': round(float(f1_score(y_te, y_hat, average='macro')), 4)})
-        print(f"  {name:<34} acc {out[-1]['accuracy']:.4f} CI {out[-1]['acc_ci95']}")
+                    'macro_f1': round(float(f1_score(y_te, y_hat, average='macro')), 4),
+                    'qwk': round(float(qwk), 4), 'nonadjacent_errors': nonadj})
+        print(f"  {name:<38} acc {out[-1]['accuracy']:.4f} CI {out[-1]['acc_ci95']} "
+              f"QWK {qwk:.4f} nonadj {nonadj}")
     return out
 
 

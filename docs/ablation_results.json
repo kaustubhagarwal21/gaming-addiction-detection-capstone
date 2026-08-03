@@ -147,7 +147,9 @@
         0.6899,
         0.7136
       ],
-      "macro_f1": 0.7091
+      "macro_f1": 0.7091,
+      "qwk": 0.757,
+      "nonadjacent_errors": 7
     },
     {
       "config": "objective-10 (deployed)",
@@ -156,7 +158,9 @@
         0.9087,
         0.9233
       ],
-      "macro_f1": 0.9184
+      "macro_f1": 0.9184,
+      "qwk": 0.9283,
+      "nonadjacent_errors": 0
     },
     {
       "config": "all-20 (incl. derived proxies)",
@@ -165,7 +169,9 @@
         0.9122,
         0.9259
       ],
-      "macro_f1": 0.9211
+      "macro_f1": 0.9211,
+      "qwk": 0.9307,
+      "nonadjacent_errors": 0
     },
     {
       "config": "volume features only (5)",
@@ -174,7 +180,9 @@
         0.8614,
         0.8793
       ],
-      "macro_f1": 0.8749
+      "macro_f1": 0.8749,
+      "qwk": 0.8901,
+      "nonadjacent_errors": 0
     },
     {
       "config": "pattern features only (5)",
@@ -183,7 +191,9 @@
         0.8943,
         0.9101
       ],
-      "macro_f1": 0.9049
+      "macro_f1": 0.9049,
+      "qwk": 0.9161,
+      "nonadjacent_errors": 0
     }
   ],
   "protocol": "One component removed per row from the deployed recipe; fixed held-out data per table; bootstrap 95% CIs over 1,000 test-set resamples. Voice rows use speaker-independent splits with a FIXED test set of un-augmented clips from unseen speakers; chat rows evaluate on CONDA_valid, which no config trains on."
