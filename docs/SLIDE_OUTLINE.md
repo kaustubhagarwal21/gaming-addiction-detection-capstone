@@ -178,7 +178,7 @@ with-reasons more than adopted-without-reasons. (DEFENSE_NOTES §7)
 
 ## Slide 11 — Engineering Quality
 **On slide:**
-- **267 automated tests in CI**: 180 backend (run on BOTH SQLite & Postgres 16) + 87 Android JVM
+- **280 automated tests in CI**: 180 backend (run on BOTH SQLite & Postgres 16) + 100 Android JVM
 - Load-verified: 288 concurrent requests, **0 errors**, p50 80 ms
 - Weekly drift monitor vs production DB (PSI/KS) — live, verified against Neon
 - Signed-token auth, rate limiting, authz regression tests

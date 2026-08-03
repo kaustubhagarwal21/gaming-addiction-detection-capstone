@@ -36,7 +36,7 @@ Notes
 ```
 .\gradlew.bat testDebugUnitTest
 ```
-87 tests across the two apps (56 Child, 31 Parent) pin the pure decision logic:
+100 tests across the two apps (69 Child, 31 Parent) pin the pure decision logic:
 offline-session backfill and persisted capture-health rules
 (OfflineSessionLogic/CaptureHealthLogic), profile-edit validation
 (`ProfileValidation`), auth revision/origin handling, server URL validation,
@@ -44,7 +44,9 @@ notification routing/unread totals, the shared risk-label presentation
 (`RiskPresentation`, both apps), the offline chat queue's
 delivered-or-deliberately-dropped semantics (`ChatQueueLogic`), the WAV container
 header the voice channel depends on (`WavUtil`), IME keystroke-to-sentence
-reconstruction incl. the word-vs-key regression (`KeystrokeBuffer`), and the
+reconstruction incl. the word-vs-key regression and Devanagari matra handling
+(`KeystrokeBuffer`), the dual-language STT segment picker incl. the genuinely-mixed
+window, junk-hypothesis and same-utterance cases (`TranscriptPicker`), and the
 parent-alert triage rules incl. regressions for the sibling high-water-mark and
 risk-flap bugs (`AlertTriage`).
 

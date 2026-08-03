@@ -164,15 +164,21 @@ rather than to maximise a headline accuracy number.
         accessibility API cannot read --- without resorting to screen OCR --- while
         capturing only the child's own typing.
   \item An \textbf{India-ready abuse channel} for code-mixed gaming chat: a curated
-        Hinglish lexicon (romanised Hindi \emph{and} Devanagari script) fused with the
+        Hinglish lexicon (romanised Hindi \emph{and} Devanagari script; screened
+        against the Bohra et al.\ code-mixed hate lexicon~\cite{bohra2018}, from
+        which only unambiguous slur families were adopted --- generic negativity
+        such as \emph{fake} or \emph{selfish} is precision-poison for an alerting
+        channel) fused with the
         calibrated English toxicity model via noisy-OR --- a \emph{trained}
         dual-script Hindi path (HASOC 2019 in Devanagari \emph{and} colloquial
         romanisation: held-out alert precision $\geq$$0.95$ on both scripts where
         the pre-adoption model caught almost nothing, \S6.2 --- the trained rows
         now carry most of what the hand lexicon alone once provided) --- and an
         \emph{on-device} Indian-English speech-to-text path (Vosk) that routes what the
-        child \emph{says} through the same toxicity model, so spoken abuse is caught
-        without raw audio ever being retained. English-centric keyword monitors cover
+        child \emph{says} through the same toxicity model, so spoken \emph{English}
+        abuse is caught without raw audio ever being retained (spoken \emph{Hindi}
+        words remain outside the validated build --- a dual-recogniser mode is
+        implemented but off by default, \S9). English-centric keyword monitors cover
         neither.
   \item Tamper resistance and resilient delivery: a self-restarting foreground service,
         a battery-optimisation exemption step (OEM power managers silently killing the
@@ -556,7 +562,7 @@ CONDA (real Dota~2 chat) & adopted & the in-domain anchor: its removal collapses
 Davidson et al.\ tweets & adopted & real informal/slang register; measured PR-AUC gain (ablation table, \S6.4) \\
 HASOC 2019 Hindi~\cite{hasoc2019} & adopted & real Hindi abuse, trained in both scripts (Devanagari + romanised); measured trials: CONDA holds in-CI, Hindi alert capability near-$0 \rightarrow \geq 0.95$ precision on each script \\
 Hindi Wikipedia clean sample~\cite{wikihi} & adopted & drains a measured script-level toxicity prior (friendly Devanagari chat read $0.78$--$0.88$ before; the counterweight also lifts every Hindi held-out metric) \\
-Mechanical loanword code-mixing of CONDA & \textbf{rejected} & measured whack-a-mole: clean-only conversion collapsed an abusive transcript ($0.73 \rightarrow 0.45$); label-neutral conversion pushed held-out precision below the $0.95$ bar (\texttt{ml/make\_hindi\_gaming\_codemixed.py} kept as the negative result) \\
+Mechanical loanword code-mixing of CONDA (a \emph{synthetic augmentation}, not a corpus) & \textbf{rejected} & measured whack-a-mole: clean-only conversion collapsed an abusive transcript ($0.73 \rightarrow 0.45$); label-neutral conversion pushed held-out precision below the $0.95$ bar (\texttt{ml/make\_hindi\_gaming\_codemixed.py} kept as the negative result) \\
 RAVDESS + CREMA-D & adopted & real labelled English speech, 115 speakers \\
 EMO-DB + URDU & adopted & speaker/language diversity; Urdu $\approx$ target users' Hindi \\
 \addlinespace
@@ -729,7 +735,7 @@ numbers, which also include the keyword fusion). A \emph{deep} reference point w
 also measured: the off-the-shelf Jigsaw-trained toxic-BERT
 (\texttt{unitaryai/detoxify}~\cite{detoxify2020}, $\sim$110M parameters) reads PR-AUC $\mathbf{0.709}$
 on this same held-out CONDA split --- \textbf{12 points below the deployed
-classical pipeline} ($0.833$) --- and at a $\geq$$0.95$-precision operating point
+classical pipeline} ($0.821$) --- and at a $\geq$$0.95$-precision operating point
 its recall is $0.12$ vs.\ the classical $0.42$. The comparison is deliberately
 asymmetric (general-purpose transformer vs.\ domain-trained classical model),
 because that asymmetry \emph{is} the design question this system faced: under a
@@ -1176,9 +1182,9 @@ adjacent bands: both Casual$\leftrightarrow$Addicted corners are zero.}
 \subsection{Chat toxicity model (gaming-domain trained; two evaluation views)}
 \label{sec:chatresults}
 Metrics are for the pipeline \emph{as served}: the isotonic-calibrated probability of
-the word~$\cup$~char\_wb model trained on four real corpora (general toxicity +
+the word~$\cup$~char\_wb model trained on five real corpora (general toxicity +
 CONDA train split + Davidson offensive-language tweets + HASOC 2019 Hindi in both
-scripts, + the clean-Hindi counterweight; held-out Brier $0.066 \rightarrow 0.063$), fused with the keyword lexicon. The held-out set is
+scripts + the clean-Hindi Wikipedia counterweight; held-out Brier $0.066 \rightarrow 0.063$), fused with the keyword lexicon. The held-out set is
 reconstructed from the \emph{same} corpus assembly the trainer uses (shared code
 path), so no training \emph{row} can re-enter it --- an earlier draft rebuilt this split
 from the general corpus alone, which admitted trained CONDA/Davidson rows and
@@ -1266,7 +1272,8 @@ $\geq$$0.95$ precision on \emph{every} register the system can capture
 guarantee the alert philosophy demands. The register recalls at the fixed
 threshold are deliberately conservative; on the English in-domain set the
 capability at \emph{matched} precision is unchanged through both adoptions
-(CONDA PR-AUC $0.827$ vs.\ $0.833$, inside the bootstrap CI). Capture-path
+(CONDA PR-AUC $0.821$ after both Hindi adoptions vs.\ $0.833$ before them, inside
+the bootstrap CI). Capture-path
 honesty: the trained Devanagari path is fed by the accessibility capture
 (system keyboards in non-canvas apps), the romanised path by the bundled
 keyboard everywhere including canvas games, and spoken Hindi remains gated by
@@ -1303,8 +1310,11 @@ word~$\cup$~char\_wb feature union selected by the bake-off
 (\S\ref{sec:modelselection}) lifted it to $0.805$, and adding the Davidson
 offensive-language corpus (real informal/slang text) lifted it again to
 $0.834$; the post-pilot de-duplicated retrain and the two Hindi adoptions
-(audit and Hindi paragraphs above) hold at $\mathbf{0.827}$ served,
-statistically unchanged through all three. Each revision \emph{re-derived the
+(audit and Hindi paragraphs above) hold at $\mathbf{0.821}$ served,
+statistically unchanged through all three (every value in this chain lies inside
+the others' bootstrap intervals; the $0.825$ in the ablation table of
+\Sef{sec:ablations} is the same recipe re-trained under that section's own
+split and seed). Each revision \emph{re-derived the
 alert threshold from its own held-out curve} --- calibration shifts where
 probabilities land, so a threshold never survives a model change unexamined. On
 the final model's calibrated scale the deployed $0.95$ threshold reads precision
@@ -1687,7 +1697,7 @@ assumptions --- drive the next revision.
         key, signing keystore or server secret is tracked in this \emph{public}
         repository or ever was. Statement coverage of the suite is $75\%$ overall
         ($80\%$ excluding developer-only utility scripts). Both apps pass
-        Android Lint with zero errors, and 87 JVM unit tests (run in CI) pin offline
+        Android Lint with zero errors, and 100 JVM unit tests (run in CI) pin offline
         session/capture-health transitions, profile and risk-presentation rules, the
         offline chat queue's delivery semantics, the WAV container encoding, IME
         keystroke-to-sentence reconstruction, and parent-alert triage.
@@ -1982,7 +1992,7 @@ Parent value & Per-day weighted risk + ``why'' (SHAP), live ``playing now'' + mo
 Child wellbeing & Mira check-in (typing indicator, double-send guard), gamified daily check-in + streak, reflections, breathing, break/limit nudges, today-vs-goal progress \\
 Reliability/anti-tamper & Heartbeat watchdog (uninstall/kill/offline alert, child-local quiet hours), optional Device Admin (uninstall block + instant disable alert), battery-optimisation exemption, double-start-safe services, consent-gated boot resume, parent-PIN lock on logout/settings (server-verified, constant-time), logout \emph{and} login alerts with truthful monitoring status, idempotent session-end, self-scoring stale-session guard, per-child risk notifications, multi-guardian FCM push (lazy-init) \\
 Privacy/Security & Token auth + \emph{role} checks on every parent-only endpoint, deleted-account tokens locked out despite the stateless 30-day TTL (TTL-cached existence probe), peppered PIN hashes (validated, family-wide PIN change), HTTPS-only, encrypted token store, consent (versioned), raw-audio deletion, retention purge, parent-controlled data export mirroring the deletion scope (credentials excluded), 16\,MB body cap, opt-in Sentry crash monitoring (stack traces only, no PII), family code always recoverable in PIN-gated Settings \\
-Engineering & Dual-dialect DB with pooled validated Postgres connections + composite indexes on the hot query paths, per-client rate limiting, hot-path caching/throttling + audio-concurrency cap + bounded throttle caches, thread-safe device-side shared state (concurrent cache, crash-safe confirm-then-delete offline queue, WorkManager network-aware retry), signed APKs, layered tests (179 API + 87 Android JVM + 82 production-mode + 25 live-cloud) + concurrency smoke + CI (pytest on SQLite \emph{and} PostgreSQL, Android lint + unit tests per push, weekly drift monitor against the production DB), real-device validated, lint-clean, deployed + durable DB \\
+Engineering & Dual-dialect DB with pooled validated Postgres connections + composite indexes on the hot query paths, per-client rate limiting, hot-path caching/throttling + audio-concurrency cap + bounded throttle caches, thread-safe device-side shared state (concurrent cache, crash-safe confirm-then-delete offline queue, WorkManager network-aware retry), signed APKs, layered tests (180 API + 100 Android JVM + 82 production-mode + 25 live-cloud) + concurrency smoke + CI (pytest on SQLite \emph{and} PostgreSQL, Android lint + unit tests per push, weekly drift monitor against the production DB), real-device validated, lint-clean, deployed + durable DB \\
 \bottomrule
 \end{tabularx}
 \end{center}
