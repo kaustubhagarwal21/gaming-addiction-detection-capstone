@@ -1320,7 +1320,18 @@ $\approx 9$-point gap \emph{is the quantified speaker leakage} --- the model par
 recognising people rather than emotions (\S\ref{sec:evalmethod}). $0.574$ on unseen
 speakers across three languages is the corrected generalisation number, and it is why
 voice keeps its low, corroborating-only ensemble weight ($0.30$, tied with chat and
-below behaviour's $0.40$). That weight is \emph{nominal}: availability reweighting
+below behaviour's $0.40$). A transformer reference point was measured here too
+(2026-08-04): the audEERING wav2vec2 \emph{dimensional} emotion model (trained on
+natural, non-acted speech; arousal/valence outputs) scored zero-shot on the same
+speaker-independent test clips under a common collapsed 3-class space
+(negative-aroused / positive-aroused / neutral) reads $0.39$ vs.\ the deployed
+model's $0.66$ --- with fixed quadrant thresholds it maps most negative-class
+clips to neutral. The comparison cuts both ways (the transformer's home domain is
+natural speech, the test set is acted corpora) and its lesson is narrower than
+the chat channel's: an off-the-shelf dimensional model is \emph{not} a free
+upgrade --- threshold calibration or fine-tuning would be required --- but its
+natural-speech training remains the right starting point for the live domain gap
+(Future Work names the deployable path). That weight is \emph{nominal}: availability reweighting
 raises voice's effective share when other channels are absent, and the pilot's
 channel-contribution analysis (\S\ref{sec:pilot}) measures the real influence ---
 removing voice would change roughly a third of served bands --- which is why the
@@ -2064,7 +2075,14 @@ value depends on accumulating real usage data the prototype does not yet have:
         underlying $57.4\%$ speaker-independent skill --- that is bounded by training
         data, and only real child-condition labelled speech (an opt-in retained-clip
         consent tier) closes it. Instrument now, correct on evidence, retrain on real
-        labels later.
+        labels later. The upgrade path now has named, measured artifacts: the
+        audEERING wav2vec2 dimensional model (natural-speech-trained;
+        arousal/valence maps directly onto the \S5.3 fusion rule; zero-shot
+        benchmark in \S\ref{sec:voiceresults} shows calibration/fine-tuning is
+        required, not a drop-in swap), its 72K-parameter Wav2Small distillation
+        (small enough for the current serving budget), and the EmoReact corpus
+        (63 children aged 4--14, research-access) as the child-speech validation
+        target.
   \item \textbf{Code-mixed text model and Hindi speech recognition.} The lexicon
         covers romanised and Devanagari Hindi abuse, and the trained model now reads
         Devanagari directly (HASOC 2019 adoption, \S4.2/\S\ref{sec:chatresults}).

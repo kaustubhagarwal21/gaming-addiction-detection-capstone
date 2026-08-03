@@ -3038,6 +3038,7 @@ def model_card():
         'model_features':      m.get('model_features'),
         'chat_metrics':        m.get('chat_metrics'),
         'chat_metrics_gaming': m.get('chat_metrics_gaming'),   # in-domain eval (ml/eval_chat_conda.py)
+        'chat_metrics_hindi':  m.get('chat_metrics_hindi'),    # held-out Devanagari eval (ml/eval_chat_hindi.py)
         'voice_metrics':       m.get('voice_metrics'),
         'risk_bands': {
             'casual':   f'score < {RISK_T1}',
