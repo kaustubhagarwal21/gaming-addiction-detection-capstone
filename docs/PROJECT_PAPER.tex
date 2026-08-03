@@ -2124,7 +2124,11 @@ value depends on accumulating real usage data the prototype does not yet have:
         spoken Hindi reaches
         the word-level signals. The latter is a device-side swap (Vosk ships a small
         Hindi model and the lexicon is Devanagari-ready) but doubles on-device STT
-        cost, so it needs on-device testing --- not a blind change.
+        cost, so it needs on-device testing --- not a blind change. A third, smaller
+        item closes the one remaining capture blind spot (\S5.2): a transliteration
+        layer on the bundled QWERTY keyboard would route Devanagari through the IME
+        path everywhere --- including canvas games, where a third-party Hindi
+        keyboard currently bypasses capture entirely.
 \end{itemize}
 
 \textbf{Longer-term research directions.}
