@@ -1256,7 +1256,17 @@ honesty: the trained Devanagari path is fed by the accessibility capture
 (system keyboards in non-canvas apps), the romanised path by the bundled
 keyboard everywhere including canvas games, and spoken Hindi remains gated by
 the Indian-English recogniser (\S5.2). \texttt{ml/eval\_chat\_hindi.py}
-reproduces both views.
+reproduces both views. A transformer reference completes the pattern here too: a
+MuRIL-based Hindi abusive-speech model~\cite{das2022} ($\sim$236M parameters,
+fine-tuned on aggregated Indic abusive corpora) reads PR-AUC $0.96$ on the
+Devanagari view --- an upper bound, since overlap between its aggregated
+training data and HASOC 2019 cannot be excluded --- but $0.837$ on the
+\emph{romanised} view, \emph{below} the deployed pipeline's $0.872$: on the
+register the bundled keyboard actually carries, the deliberately
+script-augmented classical model wins outright. The reading is consistent with
+the chat and voice benchmarks (\S\ref{sec:modelselection},
+\S\ref{sec:voiceresults}): capacity helps in-distribution; domain and register
+fit decide.
 Fig.~\ref{fig:prchat} shows the full precision--recall curve against the original
 recipe: the deployed pipeline dominates at every operating point.
 Three successive, measured improvements produced it, each adopted
@@ -2264,6 +2274,9 @@ open-source software, \texttt{github.com/MobSF/Mobile-Security-Framework-MobSF}.
 \bibitem{emoreact2016} B. Nojavanasghari, T. Baltru\v{s}aitis, C. E. Hughes, and
 L.-P. Morency, ``EmoReact: A multimodal approach and dataset for recognizing
 emotional responses in children,'' in \emph{Proc.\ ICMI}, 2016.
+\bibitem{das2022} M. Das, S. Banerjee, and A. Mukherjee, ``Data bootstrapping
+approaches to improve low resource abusive language detection for Indic
+languages,'' in \emph{Proc.\ ACM Hypertext}, 2022.
 \bibitem{cremad2014} H. Cao, D. G. Cooper, M. K. Keutmann, R. C. Gur, A. Nenkova, and
 R. Verma, ``CREMA-D: Crowd-sourced emotional multimodal actors dataset,'' \emph{IEEE
 Trans.\ Affective Computing}, vol.~5, no.~4, 2014.
