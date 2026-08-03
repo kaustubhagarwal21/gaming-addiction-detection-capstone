@@ -2127,7 +2127,20 @@ value depends on accumulating real usage data the prototype does not yet have:
         spoken Hindi reaches
         the word-level signals. The latter is a device-side swap (Vosk ships a small
         Hindi model and the lexicon is Devanagari-ready) but doubles on-device STT
-        cost, so it needs on-device testing --- not a blind change. A third, smaller
+        cost, so it needs on-device testing --- not a blind change. An offline chain
+        test (2026-08-04, \texttt{ml/smoke\_spoken\_hindi.py}) de-risks the swap:
+        synthesized spoken-Hindi abuse run through the exact candidate recogniser
+        (\texttt{vosk-model-small-hi-0.22}) transcribed every lexicon term
+        essentially verbatim, and the served dual-script pipeline scored the
+        abusive utterances $0.73$--$0.95$ vs.\ clean controls $0.17$--$0.61$ ---
+        short spoken lines land below the per-message alert but all clear the
+        $0.6$ streak bar, so the session-level path would carry spoken-Hindi
+        detection. The test also surfaced the calibration item to fix first: the
+        Hindi training rows' $53\%$ offensive base rate leaves clean Devanagari
+        slightly prior-elevated (one clean control read $0.61$, at the streak
+        bar), so the Hindi corpus needs clean-text balancing before a rollout.
+        (Synthetic studio speech; field conditions remain the on-device
+        question.) A third, smaller
         item closes the one remaining capture blind spot (\S5.2): a transliteration
         layer on the bundled QWERTY keyboard would route Devanagari through the IME
         path everywhere --- including canvas games, where a third-party Hindi

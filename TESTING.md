@@ -55,6 +55,7 @@ risk-flap bugs (`AlertTriage`).
 | `python ml/fetch_hasoc_hindi.py` | Rebuilds the HASOC 2019 Hindi corpus files deterministically (80% → `data/chat_extra/`, 20% held out; registration-gated upstream, not redistributed in this repo) |
 | `python ml/eval_chat_hindi.py` | Held-out Devanagari/Hindi abuse evaluation (HASOC 2019 20% split, never trained on) → `chat_metrics_hindi` |
 | `python ml/monitor_drift_evidently.py` | Optional Evidently companion to the drift monitor: 20+ maintained drift tests incl. small-sample-appropriate ones; HTML report + JSON. Primary PSI/KS monitor stays authoritative for CI |
+| `python ml/smoke_spoken_hindi.py` | Offline spoken-Hindi chain smoke test (gTTS → Vosk Hindi STT → served pipeline); de-risks the future Hindi-recogniser swap. Needs `pip install vosk gtts`, ffmpeg, and the vosk-model-small-hi-0.22 download (see docstring) |
 | `python ml/tune_from_feedback.py` | Converts parent-feedback verdicts into conservative threshold recommendations (`threshold_tuning.json`) + labelled CSV export |
 | `python ml/analyze_reflections.py` | Correlates daily risk vs next-day mood/sleep/energy self-reports (Spearman) |
 | `python ml/ablation_studies.py` | One-component-at-a-time ablations for all three channels (bootstrap 95% CIs) → `docs/ablation_results.json`; `--only chat\|voice\|behaviour` re-runs a section |
