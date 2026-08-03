@@ -1680,9 +1680,12 @@ than not looking --- is part of the production-readiness this paper claims.
 
 \subsection{Live family pilot: first real-world results}
 \label{sec:pilot}
-A consented family pilot ran from 6~July~2026 to early August 2026 ($\sim$4 weeks):
-release APKs sideloaded onto family
-devices, talking to the production cloud deployment. Over the first 12 days the system
+A consented family pilot began on 6~July~2026: release APKs sideloaded onto family
+devices, talking to the production cloud deployment. Instrumented data collection
+spans 6--28~July (23 days); a consent-version rollout then required a re-consent
+that was never completed on the pilot device, so ingestion ceased \emph{fail-closed}
+--- the consent architecture operating exactly as designed --- and enrolment
+formally concluded in early August 2026. Over the first 12 days the system
 recorded, unattended, \textbf{55 auto-detected sessions} across 11 active days
 ($\sim$7 hours of play, dominated by a casual title with no in-game chat),
 \textbf{1{,}660 served predictions}, 1{,}211 chat-channel rows, 1{,}759 voice events,
