@@ -26,8 +26,16 @@ SLANG_MAP = {
     'madarchd': 'madarchod', 'mdrchod': 'madarchod', 'maderchod': 'madarchod',
     'bhenchod': 'behenchod', 'bhnchod': 'behenchod', 'benchod': 'behenchod',
     'gaandu': 'gandu', 'gandoo': 'gandu',
-    'lawde': 'laude', 'lodu': 'laude',
+    'lawde': 'laude', 'lodu': 'laude', 'lode': 'laude',
     'kamine': 'kamina', 'kutte': 'kutta', 'saala': 'sala', 'saale': 'sala',
+    # 2026-08-04: unambiguous-abuse additions screened from the Bohra et al. (2018)
+    # Hinglish hate lexicon — the bulk of that list (generic negativity: 'fake',
+    # 'selfish', 'oppose', 'jail') was REJECTED as precision-poison for a noisy-OR
+    # alert channel; only slur families with no legitimate gaming meaning were taken.
+    'bhosri': 'bhosdi', 'haramkhoor': 'haramkhor', 'haraamkhor': 'haramkhor',
+    'haramzade': 'haramzada', 'haramzaade': 'haramzada', 'haramiyio': 'harami',
+    'bhadwe': 'bhadwa', 'hijde': 'hijda', 'kuttiya': 'kutiya',
+    'kameenon': 'kamina', 'kamino': 'kamina',
 }
 
 # Words that signal genuine hostility regardless of gaming context: profanity, a slur,
@@ -46,7 +54,9 @@ SLANG_MAP = {
 TOXIC_HIGH = {'fuck', 'shit', 'bitch', 'retard', 'suicide',
               'madarchod', 'behenchod', 'bhosdike', 'bhosdi', 'chutiya',
               'randi', 'gandu', 'laude',
-              'मादरचोद', 'बहनचोद', 'भेनचोद', 'भोसड़ीके', 'चूतिया', 'रंडी', 'गांडू', 'लौड़े'}
+              'haramzada', 'haramkhor', 'bhadwa', 'hijda', 'kutiya',
+              'मादरचोद', 'बहनचोद', 'भेनचोद', 'भोसड़ीके', 'चूतिया', 'रंडी', 'गांडू', 'लौड़े',
+              'हरामज़ादा', 'हरामजादा', 'हरामखोर', 'भड़वा', 'हिजड़ा', 'कुतिया'}
 TOXIC_MEDIUM = {'stupid', 'idiot', 'loser', 'trash', 'garbage', 'suck', 'worst',
                 'pathetic', 'useless',
                 'kamina', 'harami', 'kutta', 'sala', 'tatti', 'nalayak',

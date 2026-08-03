@@ -718,7 +718,7 @@ Here the evaluation is real and in-domain, so the $+0.08$ PR-AUC is meaningful a
 the winner was adopted (\S\ref{sec:chatresults} reports the deployed pipeline's final
 numbers, which also include the keyword fusion). A \emph{deep} reference point was
 also measured: the off-the-shelf Jigsaw-trained toxic-BERT
-(\texttt{unitaryai/detoxify}, $\sim$110M parameters) reads PR-AUC $\mathbf{0.709}$
+(\texttt{unitaryai/detoxify}~\cite{detoxify2020}, $\sim$110M parameters) reads PR-AUC $\mathbf{0.709}$
 on this same held-out CONDA split --- \textbf{12 points below the deployed
 classical pipeline} ($0.833$) --- and at a $\geq$$0.95$-precision operating point
 its recall is $0.12$ vs.\ the classical $0.42$. The comparison is deliberately
@@ -1244,8 +1244,8 @@ bundled keyboard is QWERTY (typed Hinglish is \emph{romanised} in practice ---
 (ITRANS-based; the fetch script reproduces it deterministically). On the
 $933$-row held-out split ($20\%$, stratified, never trained on; $52.9\%$
 offensive base rate) the deployed model now reads, at the unchanged $0.95$
-alert threshold: \textbf{Devanagari PR-AUC $0.869$, precision $0.957$ / recall
-$0.316$; romanised PR-AUC $0.871$, precision $0.973$ / recall $0.215$} ---
+alert threshold: \textbf{Devanagari PR-AUC $0.873$, precision $0.958$ / recall
+$0.320$; romanised PR-AUC $0.872$, precision $0.973$ / recall $0.217$} ---
 $\geq$$0.95$ precision on \emph{every} register the system can capture
 (English, Devanagari, romanised Hinglish), which is the uniform precision-first
 guarantee the alert philosophy demands. The register recalls at the fixed
@@ -1345,7 +1345,8 @@ recognising people rather than emotions (\S\ref{sec:evalmethod}). $0.574$ on uns
 speakers across three languages is the corrected generalisation number, and it is why
 voice keeps its low, corroborating-only ensemble weight ($0.30$, tied with chat and
 below behaviour's $0.40$). A transformer reference point was measured here too
-(2026-08-04): the audEERING wav2vec2 \emph{dimensional} emotion model (trained on
+(2026-08-04): the audEERING wav2vec2 \emph{dimensional} emotion
+model~\cite{wagner2023} (trained on
 natural, non-acted speech; arousal/valence outputs) scored zero-shot on the same
 speaker-independent test clips under a common collapsed 3-class space
 (negative-aroused / positive-aroused / neutral) reads $0.39$ vs.\ the deployed
@@ -1978,7 +1979,7 @@ privacy-sensitive component in the system: an Android keyboard technically
 sees all typing. Capture is code-gated to a consented, logged-in state during
 monitored sessions; password fields are excluded via input-type and
 accessibility flags; logged-out typing records nothing. These gates are
-unit-tested, and an automated independent static audit (MobSF v4.5.1, August
+unit-tested, and an automated independent static audit (MobSF~\cite{mobsf} v4.5.1, August
 2026) of both signed release APKs found no exploitable high-severity issue ---
 the single flagged item is the standard development-loopback cleartext
 exception, now a hardening item; the full finding-by-finding triage ships in
@@ -2107,11 +2108,13 @@ value depends on accumulating real usage data the prototype does not yet have:
         data, and only real child-condition labelled speech (an opt-in retained-clip
         consent tier) closes it. Instrument now, correct on evidence, retrain on real
         labels later. The upgrade path now has named, measured artifacts: the
-        audEERING wav2vec2 dimensional model (natural-speech-trained;
+        audEERING wav2vec2 dimensional model~\cite{wagner2023} (natural-speech-trained;
         arousal/valence maps directly onto the \S5.3 fusion rule; zero-shot
         benchmark in \S\ref{sec:voiceresults} shows calibration/fine-tuning is
-        required, not a drop-in swap), its 72K-parameter Wav2Small distillation
-        (small enough for the current serving budget), and the EmoReact corpus
+        required, not a drop-in swap), its 72K-parameter Wav2Small
+        distillation~\cite{wav2small2024}
+        (small enough for the current serving budget), and the EmoReact
+        corpus~\cite{emoreact2016}
         (63 children aged 4--14, research-access) as the child-speech validation
         target.
   \item \textbf{Code-mixed text model and Hindi speech recognition.} The lexicon
@@ -2232,6 +2235,22 @@ Kaggle, 2018.
 \bibitem{hasoc2019} T. Mandl, S. Modha, P. Majumder, D. Patel, M. Dave, C. Mandlia,
 and A. Patel, ``Overview of the HASOC track at FIRE 2019: Hate speech and offensive
 content identification in Indo-European languages,'' in \emph{Proc.\ FIRE}, 2019.
+\bibitem{detoxify2020} L. Hanu and Unitary team, ``Detoxify: toxic comment
+classification models,'' open-source software,
+\texttt{github.com/unitaryai/detoxify}, 2020.
+\bibitem{wagner2023} J. Wagner, A. Triantafyllopoulos, H. Wierstorf, M. Schmitt,
+F. Burkhardt, F. Eyben, and B. W. Schuller, ``Dawn of the transformer era in speech
+emotion recognition: Closing the valence gap,'' \emph{IEEE Trans.\ Pattern Analysis
+and Machine Intelligence}, vol.~45, no.~9, 2023.
+\bibitem{wav2small2024} D. Kounadis-Bastian, O. Schr\"ufer, A. Derington,
+H. Wierstorf, F. Eyben, F. Burkhardt, and B. Schuller, ``Wav2Small: Distilling
+Wav2Vec2 to 72K parameters for low-resource speech emotion recognition,''
+\emph{arXiv:2408.13920}, 2024.
+\bibitem{mobsf} A. Abraham \emph{et al.}, ``Mobile Security Framework (MobSF),''
+open-source software, \texttt{github.com/MobSF/Mobile-Security-Framework-MobSF}.
+\bibitem{emoreact2016} B. Nojavanasghari, T. Baltru\v{s}aitis, C. E. Hughes, and
+L.-P. Morency, ``EmoReact: A multimodal approach and dataset for recognizing
+emotional responses in children,'' in \emph{Proc.\ ICMI}, 2016.
 \bibitem{cremad2014} H. Cao, D. G. Cooper, M. K. Keutmann, R. C. Gur, A. Nenkova, and
 R. Verma, ``CREMA-D: Crowd-sourced emotional multimodal actors dataset,'' \emph{IEEE
 Trans.\ Affective Computing}, vol.~5, no.~4, 2014.

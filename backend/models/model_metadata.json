@@ -272,14 +272,14 @@
     "n": 933,
     "toxic_rate": 0.5295,
     "devanagari": {
-      "pr_auc": 0.8685,
-      "precision@alert": 0.9571,
-      "recall@alert": 0.3158
+      "pr_auc": 0.8725,
+      "precision@alert": 0.9576,
+      "recall@alert": 0.3198
     },
     "romanized": {
-      "pr_auc": 0.8714,
-      "precision@alert": 0.9725,
-      "recall@alert": 0.2146
+      "pr_auc": 0.8717,
+      "precision@alert": 0.9727,
+      "recall@alert": 0.2166
     },
     "alert_threshold": 0.95,
     "scoring": "as served: clean_text -> TF-IDF -> LogReg + isotonic, noisy-OR keyword fusion; romanized view = held-out rows romanised at eval time (fetch_hasoc_hindi.romanize)"
