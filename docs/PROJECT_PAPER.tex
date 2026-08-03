@@ -1308,6 +1308,7 @@ tests original clips only.)
 \toprule
 \textbf{Feature set} & \textbf{Accuracy [95\% CI]} & \textbf{Macro-F1} \\
 \midrule
+Screen-time only (hours --- the baseline) & 0.702 [0.690, 0.714] & 0.709 \\
 Objective-10 (deployed)          & 0.916 [0.909, 0.923] & 0.918 \\
 All-20 (incl.\ derived proxies)  & 0.919 [0.912, 0.926] & 0.921 \\
 Volume features only (5)         & 0.871 [0.861, 0.879] & 0.874 \\
@@ -1315,13 +1316,22 @@ Pattern features only (5)        & 0.902 [0.894, 0.910] & 0.905 \\
 \bottomrule
 \end{tabular}
 \end{center}
-The derived proxies add nothing beyond the objective ten (overlapping CIs ---
-confirming \S\ref{sec:features} empirically). More interesting: the five
-\emph{pattern} features (late-night ratio, streak, binges, breaks, rapid re-logins)
-alone recover $0.902$, while the five \emph{volume} features (hours, sessions,
-duration) reach only $0.871$ --- the model leans on \emph{how} a child plays more
-than on \emph{how much}, which is precisely the DSM-5/ICD-11 framing that motivated
-the feature design.
+The first row is the \emph{thesis baseline}: the project's core claim is that
+multimodal behaviour patterns beat screen-time counting, so the table must contain
+screen-time counting. Deliberately given its best shot --- both hours features, the
+same model family, protocol and CIs as every other row --- a well-fit hours-only
+model reaches $0.702$, \textbf{21.4 points below the deployed feature set} with
+cleanly disjoint intervals: the central claim is measured, not asserted. The derived
+proxies add nothing beyond the objective ten (overlapping CIs --- confirming
+\S\ref{sec:features} empirically). More interesting: the five \emph{pattern}
+features (late-night ratio, streak, binges, breaks, rapid re-logins) alone recover
+$0.902$, while the five \emph{volume} features (hours, sessions, duration) reach
+only $0.871$ --- the model leans on \emph{how} a child plays more than on \emph{how
+much}, which is precisely the DSM-5/ICD-11 framing that motivated the feature
+design. (Caveat, stated once for the whole table: these rows share the
+survey-grounded synthetic generator, so they measure the information structure of
+the feature space, not clinical validity --- the IGDS9-SF study remains the
+external anchor.)
 
 \subsection{ML pipeline revisions: what changed, why, and the measured effect}
 \label{sec:mlrevisions}

@@ -208,6 +208,48 @@ def main():
         report['genre_sweep'][f'x{scale}'] = round(f, 4)
         print(f"genre effect x{scale}: band-flip {f:.1%}")
 
+    # 2b) CHANNEL CONTRIBUTION: what does each modality add to the final decision?
+    # Re-fuse every row using only a SUBSET of its present channels (weights
+    # renormalised over the subset, same genre effect and observation cap — i.e.
+    # exactly what serving would have produced had the other channels never been
+    # captured) and compare bands against the served all-channels result. This is
+    # the fused-decision counterpart of the per-model ablation table: it justifies
+    # the multimodal design on real pilot traffic rather than held-out corpora.
+    subsets = {
+        'behaviour_only':   ('bp',),
+        'behaviour_chat':   ('bp', 'cp'),
+        'behaviour_voice':  ('bp', 'vp'),
+        'chat_voice_only':  ('cp', 'vp'),
+    }
+    report['channel_contribution'] = {}
+    for name, keep in subsets.items():
+        agree = flips_n = usable = 0
+        deltas = []
+        for r, base_cat in zip(rows, baseline):
+            masked = dict(r)
+            for flag in ('bp', 'cp', 'vp'):
+                if flag not in keep:
+                    masked[flag] = False
+            if not any(masked[f] for f in ('bp', 'cp', 'vp')):
+                continue                      # subset has no evidence for this row
+            usable += 1
+            s = fuse(masked, 0.40, 0.30, 0.30)
+            deltas.append(abs(s - r['fin']))
+            if served_band(r, s, RISK_T1, RISK_T2) == base_cat:
+                agree += 1
+            else:
+                flips_n += 1
+        entry = {'usable_rows': usable,
+                 'band_agreement': round(agree / usable, 4) if usable else None,
+                 'band_flip': round(flips_n / usable, 4) if usable else None,
+                 'mean_abs_score_delta': round(float(np.mean(deltas)), 4) if deltas else None}
+        report['channel_contribution'][name] = entry
+        if usable:
+            print(f"channel subset {name:<16} n={usable:>4}  band-agree "
+                  f"{entry['band_agreement']:.1%}  mean |dScore| {entry['mean_abs_score_delta']:.3f}")
+        else:
+            print(f"channel subset {name:<16} no rows with evidence")
+
     # 3) Threshold sweep: +/-0.05 on each cut independently.
     report['threshold_sweep'] = {}
     scores = [fuse(r, 0.40, 0.30, 0.30) for r in rows]

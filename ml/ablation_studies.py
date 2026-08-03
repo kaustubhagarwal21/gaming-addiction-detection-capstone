@@ -251,6 +251,14 @@ def ablate_behavior():
     from retrain_models import generate_behavior_dataset
     df, names = generate_behavior_dataset(25000)
     groupsets = {
+        # THE THESIS BASELINE. The project's core claim is "multimodal behaviour
+        # patterns beat screen-time alone" — so the table must contain screen-time
+        # alone. Deliberately given its best shot (both hours features + the same
+        # model family and protocol as every other row): if the full feature set
+        # still wins against a well-fit hours model, the claim is measured, not
+        # asserted.
+        'screen-time only (hours, the baseline)': ['daily_play_time_hours',
+                                                   'weekly_play_time_hours'],
         'objective-10 (deployed)': names[:10],
         'all-20 (incl. derived proxies)': names,
         'volume features only (5)': ['daily_play_time_hours', 'weekly_play_time_hours',

@@ -22,7 +22,9 @@ jobs:
         with:
           python-version: '3.11'
       - name: Install dependencies
-        run: pip install numpy scipy psycopg2-binary
+        # scikit-learn/joblib/pandas/flask etc. because the fusion-sensitivity step
+        # imports the backend app (for the exact serving constants) and its models.
+        run: pip install -r backend/requirements.txt psycopg2-binary
       - name: Aggregate pilot snapshot
         env:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
@@ -36,6 +38,10 @@ jobs:
           python ml/analyze_reflections.py > reflections_check.txt 2>&1 || true
           python ml/analyze_voice_shadow.py --since "${{ inputs.since || '2026-07-06' }}" \
             > voice_shadow_check.txt 2>&1 || true
+          # Corrected per-session fusion sensitivity + channel-contribution analysis
+          # (replication-gated; refuses output if serving logic has diverged).
+          python ml/analyze_fusion_sensitivity.py --since "${{ inputs.since || '2026-07-06' }}" \
+            --output fusion_sensitivity.json > fusion_sensitivity_log.txt 2>&1 || true
       - name: Upload report
         uses: actions/upload-artifact@v4
         with:
@@ -44,4 +50,6 @@ jobs:
             pilot_report.json
             reflections_check.txt
             voice_shadow_check.txt
+            fusion_sensitivity.json
+            fusion_sensitivity_log.txt
           retention-days: 2

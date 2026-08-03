@@ -141,6 +141,15 @@
   ],
   "behaviour": [
     {
+      "config": "screen-time only (hours, the baseline)",
+      "accuracy": 0.7019,
+      "acc_ci95": [
+        0.6899,
+        0.7136
+      ],
+      "macro_f1": 0.7091
+    },
+    {
       "config": "objective-10 (deployed)",
       "accuracy": 0.916,
       "acc_ci95": [
