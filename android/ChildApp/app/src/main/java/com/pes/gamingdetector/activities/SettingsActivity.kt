@@ -89,6 +89,15 @@ class SettingsActivity : AuthenticatedActivity() {
                 startActivity(Intent(this, ManageGamesActivity::class.java))
             }
         }
+
+        // Dual-language STT toggle is a monitoring-behaviour change, so it is
+        // parent-gated like game management. Takes effect from the next session's
+        // recorder start (the running recorder is not restarted mid-session).
+        binding.switchHindiStt.visibility = if (parentUnlocked) View.VISIBLE else View.GONE
+        binding.switchHindiStt.isChecked = prefs.hindiVoiceStt
+        binding.switchHindiStt.setOnCheckedChangeListener { _, checked ->
+            prefs.hindiVoiceStt = checked
+        }
     }
 
     private fun testConnection() {

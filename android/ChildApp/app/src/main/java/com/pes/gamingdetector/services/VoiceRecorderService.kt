@@ -150,7 +150,16 @@ class VoiceRecorderService : Service() {
 
     private suspend fun recordLoop(captureSession: Int, captureUrl: String) {
         val model = withContext(Dispatchers.IO) { loadVoskModel() }
-        val recognizer = model?.let {
+        // Dual-language mode (parent-gated toggle, default off): the streaming
+        // English recogniser is replaced by per-SEGMENT decoding through BOTH
+        // models with a confidence picker (TranscriptPicker) — measured offline:
+        // each model destroys the other language, and submitting both hypotheses
+        // would let the junk one raise false alerts. Toggle off = this code path
+        // does not exist and behaviour is byte-identical to previous releases.
+        val hindiModel = if (prefs.hindiVoiceStt)
+            withContext(Dispatchers.IO) { loadHindiModel() } else null
+        val dualMode = hindiModel != null
+        val recognizer = if (dualMode) null else model?.let {
             try { Recognizer(it, sampleRate.toFloat()) } catch (_: Exception) { null }
         }
 
@@ -237,6 +246,8 @@ class VoiceRecorderService : Service() {
                     pcmAccumulator.reset()
                     segmentStartElapsed = SystemClock.elapsedRealtime()
                     if (pcmCopy.isNotEmpty()) {
+                        if (dualMode) decodeSegmentDual(
+                            captureSession, captureUrl, pcmCopy, model, hindiModel)
                         // Bound the network queue to one request. A 90-second cloud wake
                         // must not accumulate nine WAV uploads/jobs in memory.
                         if (uploadJob?.isActive != true) {
@@ -257,8 +268,12 @@ class VoiceRecorderService : Service() {
                 if (text.isNotBlank()) submitChat(captureSession, captureUrl, text)
             }
             finalPcm = pcmAccumulator.toByteArray()
+            if (dualMode && finalPcm.isNotEmpty()) {
+                decodeSegmentDual(captureSession, captureUrl, finalPcm, model, hindiModel)
+            }
         } finally {
             recognizer?.close()
+            hindiModel?.close()
             model?.close()
             try { recorder.stop() } catch (_: Exception) {}
             recorder.release()
@@ -284,6 +299,7 @@ class VoiceRecorderService : Service() {
         // when the dir was missing), silently ignoring a bundled model swap — e.g.
         // the en-us -> Indian-English (en-in) change for Hinglish-speaking users.
         private const val VOSK_MODEL_VERSION = "small-en-in-0.4"
+        private const val VOSK_HI_MODEL_VERSION = "small-hi-0.22"
     }
 
     /** True only while the exact game this session belongs to is the foreground app.
@@ -301,6 +317,30 @@ class VoiceRecorderService : Service() {
             tracked, com.pes.gamingdetector.util.ForegroundResolver.current(this))
     }
 
+    /** Dual-language segment decode: run the same PCM through both recognisers
+     *  (fresh per segment — Vosk recognisers are cheap; the MODELS are the heavy
+     *  part and stay loaded), then submit the single higher-confidence transcript.
+     *  Synchronous on the record loop by design: a 10s segment decodes in ~1-3s
+     *  on-device and the AudioRecord buffer absorbs the gap; the pcm accumulator
+     *  was already reset by the caller so no audio is lost. */
+    private fun decodeSegmentDual(captureSession: Int, captureUrl: String,
+                                  pcm: ByteArray, en: Model?, hi: Model?) {
+        fun run(model: Model?): com.pes.gamingdetector.util.TranscriptPicker.Hypothesis {
+            if (model == null) return com.pes.gamingdetector.util.TranscriptPicker.Hypothesis("", 0.0)
+            return try {
+                Recognizer(model, sampleRate.toFloat()).use { r ->
+                    r.setWords(true)
+                    r.acceptWaveForm(pcm, pcm.size)   // vosk java api: (data, length)
+                    com.pes.gamingdetector.util.TranscriptPicker.parse(r.finalResult)
+                }
+            } catch (_: Exception) {
+                com.pes.gamingdetector.util.TranscriptPicker.Hypothesis("", 0.0)
+            }
+        }
+        val text = com.pes.gamingdetector.util.TranscriptPicker.pick(run(en), run(hi))
+        if (text != null) submitChat(captureSession, captureUrl, text)
+    }
+
     private fun requestGracefulStop(startId: Int) {
         gracefulStopRequested = true
         if (recordingJob?.isActive != true) {
@@ -315,15 +355,24 @@ class VoiceRecorderService : Service() {
         }
     }
 
-    private fun loadVoskModel(): Model? {
+    private fun loadVoskModel(): Model? =
+        loadVoskModel("vosk_model", "vosk_model.zip", VOSK_MODEL_VERSION)
+
+    /** The optional Hindi model (assets/vosk_model_hi.zip), only when the
+     *  parent-gated dual-language toggle is on. Null on any failure — the
+     *  English-only path then behaves exactly as before. */
+    private fun loadHindiModel(): Model? =
+        loadVoskModel("vosk_model_hi", "vosk_model_hi.zip", VOSK_HI_MODEL_VERSION)
+
+    private fun loadVoskModel(dirName: String, assetZip: String, version: String): Model? {
         return try {
-            val modelDir = File(filesDir, "vosk_model")
+            val modelDir = File(filesDir, dirName)
             val marker = File(modelDir, ".model_version")
-            val stale = !marker.exists() || marker.readText().trim() != VOSK_MODEL_VERSION
+            val stale = !marker.exists() || marker.readText().trim() != version
             if (stale && modelDir.exists()) modelDir.deleteRecursively()
             if (!modelDir.exists() || modelDir.list().isNullOrEmpty()) {
-                extractModelZip(modelDir)
-                if (modelDir.exists()) marker.writeText(VOSK_MODEL_VERSION)
+                extractModelZip(modelDir, assetZip)
+                if (modelDir.exists()) marker.writeText(version)
             }
             if (modelDir.exists() && !modelDir.list().isNullOrEmpty()) {
                 Model(modelDir.absolutePath)
@@ -331,11 +380,11 @@ class VoiceRecorderService : Service() {
         } catch (_: Exception) { null }
     }
 
-    // Extracts assets/vosk_model.zip, stripping the top-level directory prefix,
-    // so that filesDir/vosk_model/am/, /conf/, /graph/ etc. are created directly.
-    private fun extractModelZip(destDir: File) {
+    // Extracts the given asset zip, stripping the top-level directory prefix,
+    // so that filesDir/<dir>/am/, /conf/, /graph/ etc. are created directly.
+    private fun extractModelZip(destDir: File, assetZip: String = "vosk_model.zip") {
         val zipStream = try {
-            assets.open("vosk_model.zip")
+            assets.open(assetZip)
         } catch (_: Exception) {
             return  // zip not bundled — STT disabled, tone analysis still runs
         }

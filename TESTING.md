@@ -117,6 +117,15 @@ signed release APKs from `android/*/app/build/outputs/apk/release/app-release.ap
       monitoring notification appears; Parent app/status shows playing.
 - [ ] **Typed chat capture**: with the Wellbeing Keyboard active, type a sentence
       into the game's chat → it appears in Parent → Chat Analysis (⌨️ tag).
+- [ ] **Devanagari typing (v2.4.0-beta)**: tap the हिं key → Devanagari layout;
+      type a Hindi word (consonants page + अआ vowels/matras page), matras render
+      combined (कुत्ते not क ु त ् त े); ABC returns to QWERTY; captured Hindi
+      text reaches Chat Analysis and is scored (dual-script model).
+- [ ] **Hindi + English voice (v2.4.0-beta, parent-gated Settings toggle,
+      default OFF)**: enable → next session speaks one Hindi and one English
+      sentence near the phone → each yields ONE 🎙️ line in the correct language
+      (never two lines for one utterance); watch CPU/battery — two Vosk models
+      are resident. Toggle OFF → behaviour identical to v2.3.11.
 - [ ] **Voice capture**: speak near the phone during the session → voice events +
       🎙️ STT lines appear (verified working on real hardware already).
 - [ ] **Auto session end**: leave the game (Home / screen off) → ~25 s later the

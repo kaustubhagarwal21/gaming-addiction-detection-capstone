@@ -180,6 +180,13 @@ class PrefsManager(context: Context) {
 
     /** Whether the recorder actually opened the microphone for the current session.
      * null = not attempted/legacy, false = blocked or failed, true = actively recording. */
+    /** Dual-language (English + Hindi) speech recognition, parent-gated, default
+     *  OFF. When on, VoiceRecorderService decodes each segment through both Vosk
+     *  models and submits the higher-confidence transcript (TranscriptPicker). */
+    var hindiVoiceStt: Boolean
+        get() = prefs.getBoolean("hindi_voice_stt", false)
+        set(v) = prefs.edit().putBoolean("hindi_voice_stt", v).apply()
+
     var voiceCaptureActive: Boolean?
         get() = when (prefs.getInt("voice_capture_active", -1)) {
             0 -> false

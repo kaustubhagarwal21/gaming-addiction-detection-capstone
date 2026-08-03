@@ -24,6 +24,18 @@ class KeystrokeBufferTest {
     }
 
     @Test
+    fun `devanagari keys assemble with combining matras intact`() {
+        // The Devanagari layout commits base consonants and combining matras as
+        // separate key events (क + ू + त + ् + ...); the buffer must pass them
+        // through untouched so the dual-script model sees the exact typed word.
+        val out = mutableListOf<String>()
+        val kb = buffer(out)
+        "कुत्ते भाग".forEach { kb.handleKey(if (it == ' ') "space" else it.toString()) }
+        kb.handleKey("Send")
+        assertEquals(listOf("कुत्ते भाग"), out)
+    }
+
+    @Test
     fun `shift is one-shot uppercase`() {
         val out = mutableListOf<String>()
         val kb = buffer(out)

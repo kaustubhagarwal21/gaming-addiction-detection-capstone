@@ -38,6 +38,8 @@ class GamingKeyboardService : InputMethodService(), KeyboardView.OnKeyboardActio
     private lateinit var keyboardView: KeyboardView
     private lateinit var qwerty: Keyboard
     private lateinit var symbols: Keyboard
+    private lateinit var devanagari: Keyboard
+    private lateinit var devanagariVowels: Keyboard
     private val prefs by lazy { PrefsManager(this) }
 
     private var caps = false
@@ -47,6 +49,12 @@ class GamingKeyboardService : InputMethodService(), KeyboardView.OnKeyboardActio
     override fun onCreateInputView(): View {
         qwerty = Keyboard(this, R.xml.qwerty)
         symbols = Keyboard(this, R.xml.symbols)
+        // Devanagari pages: consonants + vowels/matras. Exists so Hindi can be
+        // typed ON the capture path — previously Devanagari needed a third-party
+        // keyboard, invisible to the IME everywhere and to accessibility in
+        // canvas games (the capture matrix in the paper, Sec 5.2).
+        devanagari = Keyboard(this, R.xml.devanagari)
+        devanagariVowels = Keyboard(this, R.xml.devanagari_vowels)
         keyboardView = layoutInflater.inflate(R.layout.keyboard_view, null) as KeyboardView
         keyboardView.keyboard = qwerty
         keyboardView.isPreviewEnabled = false      // no per-key popup bubbles
@@ -79,6 +87,22 @@ class GamingKeyboardService : InputMethodService(), KeyboardView.OnKeyboardActio
             }
             Keyboard.KEYCODE_MODE_CHANGE -> {
                 keyboardView.keyboard = if (keyboardView.keyboard === qwerty) symbols else qwerty
+                keyboardView.invalidateAllKeys()
+            }
+            KEY_LANG_TOGGLE -> {                   // हिं on qwerty; अआ on devanagari
+                keyboardView.keyboard = when (keyboardView.keyboard) {
+                    devanagari -> devanagariVowels
+                    else -> devanagari
+                }
+                keyboardView.invalidateAllKeys()
+            }
+            KEY_TO_CONSONANTS -> {                 // कख on the vowels page
+                keyboardView.keyboard = devanagari
+                keyboardView.invalidateAllKeys()
+            }
+            KEY_TO_QWERTY -> {                     // ABC on both devanagari pages
+                keyboardView.keyboard = qwerty
+                qwerty.isShifted = caps
                 keyboardView.invalidateAllKeys()
             }
             10 -> {                                 // enter / send
@@ -170,6 +194,13 @@ class GamingKeyboardService : InputMethodService(), KeyboardView.OnKeyboardActio
     override fun onDestroy() {
         scope.cancel()
         super.onDestroy()
+    }
+
+    private companion object {
+        // Custom layout-switch key codes (negative = never committed as text).
+        const val KEY_TO_QWERTY = -100
+        const val KEY_LANG_TOGGLE = -101
+        const val KEY_TO_CONSONANTS = -102
     }
 
     // ── unused OnKeyboardActionListener callbacks ─────────────────────────

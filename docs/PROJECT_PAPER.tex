@@ -861,7 +861,10 @@ keyboard is a QWERTY layout: romanised Hinglish types natively on it, while
 \emph{Devanagari} entry requires a system keyboard (e.g.\ Gboard transliteration),
 whose text reaches capture only through the accessibility path in
 non-canvas apps --- the register implications are measured in
-\S\ref{sec:chatresults}. Capture is gated to
+\S\ref{sec:chatresults}. (Release v2.4.0-beta \emph{implements} a native
+Devanagari layout with a language toggle on the bundled keyboard, and a
+dual-recogniser voice mode --- both behind the standing on-device-validation
+gate; \S9.) Capture is gated to
 monitored games with an active session (it records nothing in other apps such as banking
 or search), and an 8-second server-side de-duplicate prevents the keyboard and
 accessibility paths from logging the same line twice. The prediction engine feeds
@@ -2166,10 +2169,23 @@ value depends on accumulating real usage data the prototype does not yet have:
         data --- the mechanical conversion shortcut was measured and rejected
         (\S4.2). (Synthetic studio speech; field conditions remain the
         on-device question.) A third, smaller
-        item closes the one remaining capture blind spot (\S5.2): a transliteration
-        layer on the bundled QWERTY keyboard would route Devanagari through the IME
+        item closes the one remaining capture blind spot (\S5.2): routing
+        Devanagari through the IME
         path everywhere --- including canvas games, where a third-party Hindi
-        keyboard currently bypasses capture entirely.
+        keyboard currently bypasses capture entirely. Both this and the
+        recogniser swap are now \emph{implemented} in release v2.4.0-beta: a
+        native Devanagari layout (consonant + vowel/matra pages, language
+        toggle) on the bundled keyboard, and a dual-recogniser voice mode ---
+        each audio segment decoded through \emph{both} Vosk models with exactly
+        one transcript kept by mean word confidence. The single-model
+        alternative was measured and rejected first (English abuse through the
+        Hindi model collapses to unscorable junk --- ``kill yourself\dots''
+        scored $0.08$ --- and vice versa), and submitting both hypotheses would
+        double-count toward the streak alert. The mode ships behind a
+        parent-gated toggle, default \emph{off}: until the on-device validation
+        checklist runs on real hardware (STT quality on real speech, CPU and
+        battery with two models resident), the deployed default behaviour is
+        byte-identical to v2.3.11.
 \end{itemize}
 
 \textbf{Longer-term research directions.}

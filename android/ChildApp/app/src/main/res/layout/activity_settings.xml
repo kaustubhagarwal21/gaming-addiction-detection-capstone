@@ -103,6 +103,30 @@
             android:text="Test Connection"
             style="@style/Widget.MaterialComponents.Button.OutlinedButton" />
 
+        <!-- Speech recognition -->
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="24dp"
+            android:text="Speech Recognition"
+            android:textStyle="bold"
+            android:textSize="14sp" />
+
+        <com.google.android.material.switchmaterial.SwitchMaterial
+            android:id="@+id/switchHindiStt"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="4dp"
+            android:text="Hindi + English speech (beta)"
+            android:textSize="14sp" />
+
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Recognises spoken Hindi as well as English during monitored games. Uses more battery while a game is playing. Off = English only (default)."
+            android:textSize="12sp"
+            android:textColor="@color/text_secondary" />
+
         <!-- Game detection -->
         <TextView
             android:layout_width="wrap_content"
