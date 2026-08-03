@@ -67,64 +67,64 @@
   "chat_metrics": {
     "model": "LogisticRegression + TF-IDF (word 1-2gram + char_wb 3-5gram union) + isotonic calibration",
     "balanced_holdout": {
-      "precision_toxic": 0.889,
-      "recall_toxic": 0.9555,
-      "f1_toxic": 0.9211,
-      "accuracy": 0.9181,
+      "precision_toxic": 0.8855,
+      "recall_toxic": 0.9583,
+      "f1_toxic": 0.9204,
+      "accuracy": 0.9172,
       "confusion": [
         [
-          5406,
-          732
+          5712,
+          808
         ],
         [
-          273,
-          5865
+          272,
+          6248
         ]
       ],
-      "pr_auc": 0.9372,
-      "brier": 0.0639,
-      "brier_uncalibrated": 0.0661
+      "pr_auc": 0.9369,
+      "brier": 0.0655,
+      "brier_uncalibrated": 0.0678
     },
     "realistic_holdout": {
-      "toxic_base_rate": 0.0364,
+      "toxic_base_rate": 0.0385,
       "alert_threshold": 0.95,
       "at_threshold_0.5": {
-        "precision_toxic": 0.2308,
-        "recall_toxic": 0.9555,
-        "f1_toxic": 0.3718,
-        "accuracy": 0.8826,
+        "precision_toxic": 0.2405,
+        "recall_toxic": 0.9583,
+        "f1_toxic": 0.3845,
+        "accuracy": 0.8818,
         "confusion": [
           [
-            143077,
-            19544
+            142937,
+            19734
           ],
           [
-            273,
-            5865
+            272,
+            6248
           ]
         ],
-        "pr_auc": 0.3889,
-        "brier": 0.0826,
-        "brier_uncalibrated": 0.078
+        "pr_auc": 0.3978,
+        "brier": 0.0853,
+        "brier_uncalibrated": 0.0788
       },
       "at_alert_threshold": {
-        "precision_toxic": 0.4259,
-        "recall_toxic": 0.4355,
-        "f1_toxic": 0.4306,
-        "accuracy": 0.9581,
+        "precision_toxic": 0.4576,
+        "recall_toxic": 0.2794,
+        "f1_toxic": 0.347,
+        "accuracy": 0.9595,
         "confusion": [
           [
-            159018,
-            3603
+            160511,
+            2160
           ],
           [
-            3465,
-            2673
+            4698,
+            1822
           ]
         ],
-        "pr_auc": 0.3889,
-        "brier": 0.0826,
-        "brier_uncalibrated": 0.078
+        "pr_auc": 0.3978,
+        "brier": 0.0853,
+        "brier_uncalibrated": 0.0788
       }
     },
     "note": "Balanced split flatters the model; the realistic set reflects the true ~imbalanced stream. Toxic precision is low at 0.5 (the model over-flags gaming language), which is exactly why the live alert threshold is 0.95 (higher precision, lower recall). The real fix is real gaming-chat data.",
@@ -181,87 +181,87 @@
     "dataset": "CONDA_valid.csv",
     "rows": 7721,
     "toxic_base_rate": 0.2151,
-    "pr_auc": 0.8258,
-    "roc_auc": 0.9195,
-    "brier": 0.1363,
+    "pr_auc": 0.8268,
+    "roc_auc": 0.9205,
+    "brier": 0.1319,
     "at_threshold_0.5": {
       "threshold": 0.5,
-      "precision_toxic": 0.4856,
-      "recall_toxic": 0.9055,
-      "f1_toxic": 0.6322,
-      "mcc": 0.5388
+      "precision_toxic": 0.5043,
+      "recall_toxic": 0.8844,
+      "f1_toxic": 0.6423,
+      "mcc": 0.5478
     },
     "at_alert_threshold": {
       "threshold": 0.95,
-      "precision_toxic": 0.9538,
-      "recall_toxic": 0.4226,
-      "f1_toxic": 0.5857,
-      "mcc": 0.5835
+      "precision_toxic": 0.9713,
+      "recall_toxic": 0.2848,
+      "f1_toxic": 0.4404,
+      "mcc": 0.4774
     },
     "threshold_sweep": [
       {
         "threshold": 0.3,
-        "precision_toxic": 0.4088,
-        "recall_toxic": 0.9326,
-        "f1_toxic": 0.5684,
-        "mcc": 0.4627
+        "precision_toxic": 0.3999,
+        "recall_toxic": 0.9302,
+        "f1_toxic": 0.5594,
+        "mcc": 0.4501
       },
       {
         "threshold": 0.5,
-        "precision_toxic": 0.4856,
-        "recall_toxic": 0.9055,
-        "f1_toxic": 0.6322,
-        "mcc": 0.5388
+        "precision_toxic": 0.5043,
+        "recall_toxic": 0.8844,
+        "f1_toxic": 0.6423,
+        "mcc": 0.5478
       },
       {
         "threshold": 0.6,
-        "precision_toxic": 0.5585,
-        "recall_toxic": 0.8651,
-        "f1_toxic": 0.6788,
-        "mcc": 0.5908
+        "precision_toxic": 0.5982,
+        "recall_toxic": 0.8453,
+        "f1_toxic": 0.7006,
+        "mcc": 0.6161
       },
       {
         "threshold": 0.7,
-        "precision_toxic": 0.7587,
-        "recall_toxic": 0.7592,
-        "f1_toxic": 0.759,
-        "mcc": 0.6929
+        "precision_toxic": 0.7445,
+        "recall_toxic": 0.7682,
+        "f1_toxic": 0.7561,
+        "mcc": 0.6881
       },
       {
         "threshold": 0.85,
-        "precision_toxic": 0.8011,
-        "recall_toxic": 0.7104,
-        "f1_toxic": 0.753,
-        "mcc": 0.6924
+        "precision_toxic": 0.8512,
+        "recall_toxic": 0.6851,
+        "f1_toxic": 0.7592,
+        "mcc": 0.7084
       },
       {
         "threshold": 0.9,
-        "precision_toxic": 0.9239,
-        "recall_toxic": 0.5774,
-        "f1_toxic": 0.7106,
-        "mcc": 0.6798
+        "precision_toxic": 0.9272,
+        "recall_toxic": 0.59,
+        "f1_toxic": 0.7211,
+        "mcc": 0.6901
       },
       {
         "threshold": 0.95,
-        "precision_toxic": 0.9538,
-        "recall_toxic": 0.4226,
-        "f1_toxic": 0.5857,
-        "mcc": 0.5835
+        "precision_toxic": 0.9713,
+        "recall_toxic": 0.2848,
+        "f1_toxic": 0.4404,
+        "mcc": 0.4774
       },
       {
         "threshold": 0.97,
         "precision_toxic": 1.0,
-        "recall_toxic": 0.0271,
-        "f1_toxic": 0.0528,
-        "mcc": 0.1462
+        "recall_toxic": 0.0247,
+        "f1_toxic": 0.0482,
+        "mcc": 0.1396
       }
     ],
     "best_f1_threshold": {
-      "threshold": 0.7,
-      "precision_toxic": 0.7587,
-      "recall_toxic": 0.7592,
-      "f1_toxic": 0.759,
-      "mcc": 0.6929
+      "threshold": 0.85,
+      "precision_toxic": 0.8512,
+      "recall_toxic": 0.6851,
+      "f1_toxic": 0.7592,
+      "mcc": 0.7084
     },
     "scoring": "as served: clean_text -> TF-IDF -> LogReg + isotonic fused with keyword lexicon (noisy-OR)",
     "note": "In-DOMAIN evaluation on real in-game chat \u2014 the honest complement to the general-corpus metrics in chat_metrics. Use best_f1_threshold to inform CHAT_ALERT_T (env-overridable), alongside the false-alarm evidence from ml/tune_from_feedback.py."
@@ -271,10 +271,17 @@
     "eval_set": "HASOC 2019 Hindi held-out 20% (933 rows, never trained on)",
     "n": 933,
     "toxic_rate": 0.5295,
-    "pr_auc": 0.8748,
-    "precision@alert": 0.9476,
-    "recall@alert": 0.4393,
+    "devanagari": {
+      "pr_auc": 0.8685,
+      "precision@alert": 0.9571,
+      "recall@alert": 0.3158
+    },
+    "romanized": {
+      "pr_auc": 0.8714,
+      "precision@alert": 0.9725,
+      "recall@alert": 0.2146
+    },
     "alert_threshold": 0.95,
-    "scoring": "as served: clean_text -> TF-IDF -> LogReg + isotonic, noisy-OR keyword fusion"
+    "scoring": "as served: clean_text -> TF-IDF -> LogReg + isotonic, noisy-OR keyword fusion; romanized view = held-out rows romanised at eval time (fetch_hasoc_hindi.romanize)"
   }
 }

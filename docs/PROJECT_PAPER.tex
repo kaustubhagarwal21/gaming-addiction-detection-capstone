@@ -87,13 +87,13 @@ deployability, and a privacy design that reduces raw media to compact features
 and deletes it. Within that class, every model-family choice is backed by a measured bake-off,
 feature and corpus choices by ablations with bootstrap confidence intervals, and
 the fusion priors by sensitivity analyses on live pilot decisions. The pipeline
-is grounded in \emph{ten real, open datasets}: the chat model reaches $0.95$
+is grounded in \emph{ten real, open datasets}: the chat model reaches $0.97$
 precision at its alert threshold on held-out real gaming chat, detects
 code-mixed Hinglish/Devanagari abuse whether typed or \emph{spoken} (transcribed
 on-device; uploaded audio is deleted after feature extraction) --- with the
-Devanagari path now \emph{trained and held-out-validated} on the HASOC 2019
-Hindi corpus (precision $0.95$, recall $0.44$ at the alert threshold, from zero
-model coverage before adoption); the voice model
+Hindi path \emph{trained and held-out-validated} on the HASOC 2019 corpus in
+both scripts, Devanagari and colloquial romanisation ($\geq$$0.95$ precision at
+the alert threshold on each, from near-zero model coverage before adoption); the voice model
 is trained on $9{,}817$ real speech clips across $154$ ingested speakers in
 three languages and evaluated speaker-independently; play-time distributions and
 peer percentiles follow a real survey of $13{,}464$ gamers; and an
@@ -165,11 +165,11 @@ rather than to maximise a headline accuracy number.
         capturing only the child's own typing.
   \item An \textbf{India-ready abuse channel} for code-mixed gaming chat: a curated
         Hinglish lexicon (romanised Hindi \emph{and} Devanagari script) fused with the
-        calibrated English toxicity model via noisy-OR --- ablation-measured to lift
-        recall at the alert threshold from $0.332$ to $0.385$ (precision
-        $0.97 \rightarrow 0.95$) --- a \emph{trained} Devanagari path (HASOC 2019
-        Hindi corpus: held-out alert precision $0.95$ where the pre-adoption model
-        caught nothing, \S6.2) --- and an
+        calibrated English toxicity model via noisy-OR --- a \emph{trained}
+        dual-script Hindi path (HASOC 2019 in Devanagari \emph{and} colloquial
+        romanisation: held-out alert precision $\geq$$0.95$ on both scripts where
+        the pre-adoption model caught almost nothing, \S6.2 --- the trained rows
+        now carry most of what the hand lexicon alone once provided) --- and an
         \emph{on-device} Indian-English speech-to-text path (Vosk) that routes what the
         child \emph{says} through the same toxicity model, so spoken abuse is caught
         without raw audio ever being retained. English-centric keyword monitors cover
@@ -502,11 +502,13 @@ CONDA train split~\cite{conda2021} (real Dota~2
 in-game utterances with toxicity labels), the Davidson et al.\ offensive-language
 dataset~\cite{davidson2017} ($24{,}783$ real tweets --- informal, slang-heavy language close to gaming
 chat's register), and the HASOC 2019 Hindi corpus~\cite{hasoc2019} ($4{,}665$
-labeled Devanagari/Hindi social-media posts; an $80\%$ split is trained on, the
-remaining $20\%$ is held out for the Hindi evaluation of
-\S\ref{sec:chatresults} --- adopted 2026-08-04 after a measured trial showed the
-in-domain CONDA metrics hold while Devanagari alert capability goes from zero to
-precision $0.95$); the model is evaluated on CONDA's \emph{held-out} validation split it
+labeled Hindi social-media posts; an $80\%$ split is trained on in \emph{both
+scripts} --- original Devanagari plus a deterministic colloquial romanisation
+matching how Hinglish is typed on a QWERTY keyboard --- and the remaining $20\%$
+is held out for the two-register Hindi evaluation of
+\S\ref{sec:chatresults}. Both adoptions followed measured trials: the in-domain
+CONDA metrics hold while Hindi alert capability goes from near zero to
+$\geq$$0.95$ precision on each script); the model is evaluated on CONDA's \emph{held-out} validation split it
 never saw (\S\ref{sec:chatresults}). The voice model is trained on \emph{four real
 speech corpora} --- RAVDESS~\cite{ravdess2018} + CREMA-D~\cite{cremad2014} (English),
 EMO-DB~\cite{emodb2005} (German) and URDU~\cite{urdu2018} ---
@@ -545,7 +547,7 @@ IGDS9-SF Latin America (OSF, $n{=}11{,}191$) & adopted & real IGD labels; severi
 General toxicity corpus~\cite{jigsaw2018} & adopted & chat training base --- Jigsaw Wikipedia talk-page comments ($86\%$), plus a Davidson copy and a small YouTube set \\
 CONDA (real Dota~2 chat) & adopted & the in-domain anchor: its removal collapses PR-AUC $0.831 \rightarrow 0.512$ \\
 Davidson et al.\ tweets & adopted & real informal/slang register; measured PR-AUC gain (ablation table, \S6.4) \\
-HASOC 2019 Hindi~\cite{hasoc2019} & adopted & real Devanagari/Hindi abuse; measured trial: CONDA holds in-CI, Hindi alert capability $0 \rightarrow 0.95$ precision \\
+HASOC 2019 Hindi~\cite{hasoc2019} & adopted & real Hindi abuse, trained in both scripts (Devanagari + romanised); measured trials: CONDA holds in-CI, Hindi alert capability near-$0 \rightarrow \geq 0.95$ precision on each script \\
 RAVDESS + CREMA-D & adopted & real labelled English speech, 115 speakers \\
 EMO-DB + URDU & adopted & speaker/language diversity; Urdu $\approx$ target users' Hindi \\
 \addlinespace
@@ -576,7 +578,7 @@ lineage above.
         CONDA gaming-chat train split, and the Davidson offensive-language tweets
         (balanced), with its \emph{own} isotonic calibration layer (fitted on a
         slice carved from the training data, so held-out evaluation stays untouched;
-        held-out Brier $0.066 \rightarrow 0.064$). The character channel was \emph{originally rejected} --- trained on
+        held-out Brier $0.068 \rightarrow 0.066$). The character channel was \emph{originally rejected} --- trained on
         the general corpus alone, raw char n-grams over-fired on clean gaming
         phrases --- but re-tested with gaming-domain training data and word-bounded
         analysis it wins decisively on held-out real gaming chat
@@ -846,7 +848,12 @@ deterministically --- and without the unreliability of screen OCR (which cannot 
 where each game draws its chat) --- the Child app ships its own \emph{Input Method
 Editor} (a custom keyboard). Because every keystroke passes through the keyboard before
 reaching the game, it captures exactly the child's own typed text in \emph{any} app,
-canvas games included, and never other players' messages or game UI. Capture is gated to
+canvas games included, and never other players' messages or game UI. The bundled
+keyboard is a QWERTY layout: romanised Hinglish types natively on it, while
+\emph{Devanagari} entry requires a system keyboard (e.g.\ Gboard transliteration),
+whose text reaches capture only through the accessibility path in
+non-canvas apps --- the register implications are measured in
+\S\ref{sec:chatresults}. Capture is gated to
 monitored games with an active session (it records nothing in other apps such as banking
 or search), and an 8-second server-side de-duplicate prevents the keyboard and
 accessibility paths from logging the same line twice. The prediction engine feeds
@@ -1158,8 +1165,8 @@ adjacent bands: both Casual$\leftrightarrow$Addicted corners are zero.}
 \label{sec:chatresults}
 Metrics are for the pipeline \emph{as served}: the isotonic-calibrated probability of
 the word~$\cup$~char\_wb model trained on four real corpora (general toxicity +
-CONDA train split + Davidson offensive-language tweets + HASOC 2019 Hindi; held-out
-Brier $0.066 \rightarrow 0.064$), fused with the keyword lexicon. The held-out set is
+CONDA train split + Davidson offensive-language tweets + HASOC 2019 Hindi in both
+scripts; held-out Brier $0.068 \rightarrow 0.066$), fused with the keyword lexicon. The held-out set is
 reconstructed from the \emph{same} corpus assembly the trainer uses (shared code
 path), so no training \emph{row} can re-enter it --- an earlier draft rebuilt this split
 from the general corpus alone, which admitted trained CONDA/Davidson rows and
@@ -1170,9 +1177,9 @@ audited below.)
 \toprule
 \textbf{Evaluation set} & \textbf{Precision (toxic)} & \textbf{Recall (toxic)} & \textbf{Note} \\
 \midrule
-Balanced held-out & 0.889 & 0.956 & optimistic view; PR-AUC 0.937 \\
-General realistic stream @0.50 & 0.231 & 0.956 & 3.5\% toxic base rate \\
-General realistic stream @0.95 (alert) & 0.426 & 0.436 & out-of-domain view \\
+Balanced held-out & 0.886 & 0.958 & optimistic view; PR-AUC 0.937 \\
+General realistic stream @0.50 & 0.241 & 0.958 & 3.5\% toxic base rate \\
+General realistic stream @0.95 (alert) & 0.458 & 0.279 & out-of-domain view \\
 \bottomrule
 \end{tabular}
 \end{center}
@@ -1199,10 +1206,11 @@ $0.926 \rightarrow 0.944$, Brier $0.070 \rightarrow 0.058$, while in-domain
 \emph{ranking} is statistically unchanged (PR-AUC $0.833$ vs.\ $0.834$, inside
 the bootstrap CI) --- and the alert threshold was re-derived from the new
 calibrated curve per the standing procedure (below), moving from $0.90$ to
-$0.95$. The subsequently adopted HASOC Hindi corpus (\S4.2) re-measured these
-figures once more (its Devanagari rows make the balanced holdout slightly
-harder --- accuracy $0.918$, Brier $0.064$ --- the price of a whole new language
-in the corpus); the tables in this section report the final deployed model.
+$0.95$. The subsequently adopted HASOC Hindi corpus (\S4.2, both scripts)
+re-measured these figures once more (its Hindi rows make the balanced holdout
+slightly harder --- accuracy $0.917$, Brier $0.066$ --- the price of a whole new
+language in the corpus); the tables in this section report the final deployed
+model.
 
 \paragraph{In-domain evaluation on real gaming chat (held-out CONDA split).}
 The serving domain is gaming chat, so the decisive evaluation is on \textbf{CONDA's
@@ -1213,30 +1221,42 @@ validation split} --- $7{,}721$ real Dota~2 utterances the retrained model
 \toprule
 \textbf{Operating point} & \textbf{Precision (toxic)} & \textbf{Recall (toxic)} & \textbf{F1} \\
 \midrule
-@0.95 (deployed alert threshold) & \textbf{0.954} & 0.423 & 0.586 \\
-@0.90 (recall-preferring option, env-selectable) & 0.924 & 0.577 & 0.711 \\
-@0.85 (near best F1; selectable via env) & 0.801 & 0.710 & 0.753 \\
-@0.97 (high-severity marker) & 1.000 & 0.027 & 0.053 \\
+@0.95 (deployed alert threshold) & \textbf{0.971} & 0.285 & 0.440 \\
+@0.90 (recall-preferring option, env-selectable) & 0.927 & 0.590 & 0.721 \\
+@0.85 (near best F1; selectable via env) & 0.851 & 0.685 & 0.759 \\
+@0.97 (high-severity marker) & 1.000 & 0.025 & 0.048 \\
 \bottomrule
 \end{tabular}
 \end{center}
-The promised secondary views on this in-domain set: ROC-AUC $0.920$ and MCC $0.584$
-at the alert threshold ($0.680$ at the $0.90$ point; per-configuration values for
+The promised secondary views on this in-domain set: ROC-AUC $0.921$ and MCC $0.477$
+at the alert threshold ($0.690$ at the $0.90$ point; per-configuration values for
 every ablation row are in the released \texttt{ablation\_results.json} artifact).
 
-\paragraph{Held-out Hindi/Devanagari evaluation (new capability, measured).}
+\paragraph{Held-out Hindi evaluation --- both scripts (new capability, measured).}
 Before the HASOC adoption the served pipeline caught \textbf{zero} Devanagari
 abuse at the alert threshold (precision/recall $0.000$/$0.000$ on the held-out
-Hindi set --- the Hinglish keyword lexicon covers romanised abuse, but no
-trained model component read Devanagari). On the $933$-row HASOC 2019 Hindi
-held-out split ($20\%$, stratified, never trained on; $52.9\%$ offensive base
-rate), the deployed model now reads \textbf{PR-AUC $0.875$, precision $0.948$ /
-recall $0.439$ at the alert threshold} --- the same precision-first profile as
-the English in-domain operating point, on a language the model previously could
-not score at all. The in-domain CONDA metrics held within the bootstrap CI
-through the adoption (PR-AUC $0.826$ vs.\ $0.833$) with alert-point recall
-\emph{up} nine points --- the measured trial that justified adoption
-(\texttt{ml/eval\_chat\_hindi.py} reproduces this evaluation).
+Hindi set) and was nearly blind to \emph{romanised} Hindi abuse beyond the
+keyword lexicon (PR-AUC $0.61$, recall $0.04$ at the alert point on the same
+rows romanised). Two measured adoptions closed both registers. First the
+Devanagari rows (held-out PR-AUC $0.579 \rightarrow 0.875$); then, because the
+bundled keyboard is QWERTY (typed Hinglish is \emph{romanised} in practice ---
+\S5.2), each training row was added again in a colloquial romanisation
+(ITRANS-based; the fetch script reproduces it deterministically). On the
+$933$-row held-out split ($20\%$, stratified, never trained on; $52.9\%$
+offensive base rate) the deployed model now reads, at the unchanged $0.95$
+alert threshold: \textbf{Devanagari PR-AUC $0.869$, precision $0.957$ / recall
+$0.316$; romanised PR-AUC $0.871$, precision $0.973$ / recall $0.215$} ---
+$\geq$$0.95$ precision on \emph{every} register the system can capture
+(English, Devanagari, romanised Hinglish), which is the uniform precision-first
+guarantee the alert philosophy demands. The register recalls at the fixed
+threshold are deliberately conservative; on the English in-domain set the
+capability at \emph{matched} precision is unchanged through both adoptions
+(CONDA PR-AUC $0.827$ vs.\ $0.833$, inside the bootstrap CI). Capture-path
+honesty: the trained Devanagari path is fed by the accessibility capture
+(system keyboards in non-canvas apps), the romanised path by the bundled
+keyboard everywhere including canvas games, and spoken Hindi remains gated by
+the Indian-English recogniser (\S5.2). \texttt{ml/eval\_chat\_hindi.py}
+reproduces both views.
 Fig.~\ref{fig:prchat} shows the full precision--recall curve against the original
 recipe: the deployed pipeline dominates at every operating point.
 Three successive, measured improvements produced it, each adopted
@@ -1256,26 +1276,30 @@ the earlier weak in-domain performance was a domain artifact. The
 word~$\cup$~char\_wb feature union selected by the bake-off
 (\S\ref{sec:modelselection}) lifted it to $0.805$, and adding the Davidson
 offensive-language corpus (real informal/slang text) lifted it again to
-$0.834$; the post-pilot de-duplicated retrain (audit above) holds at
-$\mathbf{0.833}$ served, statistically unchanged. Each revision \emph{re-derived the
+$0.834$; the post-pilot de-duplicated retrain and the two Hindi adoptions
+(audit and Hindi paragraphs above) hold at $\mathbf{0.827}$ served,
+statistically unchanged through all three. Each revision \emph{re-derived the
 alert threshold from its own held-out curve} --- calibration shifts where
-probabilities land, so a threshold never survives a model change unexamined. On the
-retrained model's calibrated scale the $\sim$$0.95$-precision operating point sits at
-threshold $0.95$: the deployed alert reads precision $0.962$ at recall $0.334$
-(the same curve's $0.90$ point reads $0.922/0.606$, available to a guardian who
-prefers recall --- \texttt{CHAT\_ALERT\_T} is env-tunable), and the high-severity
-marker ($0.97$) is right $99\%$ of the time. The pre-dedupe deployment's point read
-$0.950/0.491$ on its own scale, itself strictly dominating its predecessors
-($0.924/0.445$ before Davidson, $0.891/0.266$ for the original general-corpus
-model). Per-message recall deliberately traded away here is recovered at session
-level by the streak alert below.
+probabilities land, so a threshold never survives a model change unexamined. On
+the final model's calibrated scale the deployed $0.95$ threshold reads precision
+$0.971$ at recall $0.285$ on English in-domain chat --- deliberately above the
+$\sim$$0.95$-precision point so that \emph{every} register clears $0.95$
+precision at one shared threshold (the same curve's $0.90$ point reads
+$0.927/0.590$, available to a guardian who prefers recall ---
+\texttt{CHAT\_ALERT\_T} is env-tunable), and the high-severity marker ($0.97$)
+is right every time it fires (precision $1.00$ at recall $0.025$). The
+pre-dedupe deployment's point read $0.950/0.491$ on its own scale, itself
+strictly dominating its predecessors ($0.924/0.445$ before Davidson,
+$0.891/0.266$ for the original general-corpus model). Per-message recall
+deliberately traded away here is recovered at session level by the streak alert
+below.
 
 \paragraph{Session-level escalation recovers the remaining recall.}
 Per-message alerting is deliberately precision-first, which caps per-message recall
 --- but toxic players repeat, and repetition is itself evidence. The backend
 therefore raises \emph{one aggregate ``repeated concerning language'' alert} when
 three messages in a session score above a lower bar ($0.6$, where per-message recall
-is $0.87$ in-domain at precision $0.53$), so repeated toxicity in a session
+is $0.85$ in-domain at precision $0.60$), so repeated toxicity in a session
 surfaces even when no single line crosses the per-message cutoff. The three
 flagged messages are correlated (same speaker, same session), so the bar is a
 repetition heuristic that suppresses one-off false positives, not an
@@ -1369,28 +1393,32 @@ $95\%$ CIs (\S\ref{sec:evalmethod}).
 \toprule
 \textbf{Configuration} & \textbf{PR-AUC [95\% CI]} & \textbf{Precision@0.95} \\
 \midrule
-Full recipe (deployed)            & 0.833 [0.816, 0.849] & 0.954 \\
-$-$ keyword-lexicon fusion        & 0.827 [0.809, 0.843] & 0.965 \\
-$-$ calibration                   & 0.844 [0.827, 0.859] & 0.964 \\
-$-$ char\_wb n-grams              & 0.799 [0.781, 0.817] & 0.957 \\
-$-$ Davidson corpus               & 0.796 [0.778, 0.814] & 0.944 \\
-$-$ HASOC Hindi corpus            & 0.831 [0.813, 0.846] & 0.956 \\
-$-$ CONDA corpus (domain data)    & 0.523 [0.498, 0.547] & 0.964 \\
+Full recipe (deployed)            & 0.830 [0.813, 0.845] & 0.959 \\
+$-$ keyword-lexicon fusion        & 0.821 [0.804, 0.837] & 0.958 \\
+$-$ calibration                   & 0.841 [0.825, 0.856] & 0.969 \\
+$-$ char\_wb n-grams              & 0.802 [0.784, 0.819] & 0.956 \\
+$-$ Davidson corpus               & 0.806 [0.789, 0.823] & 0.931 \\
+$-$ HASOC Hindi corpus (both scripts) & 0.831 [0.813, 0.846] & 0.956 \\
+$-$ CONDA corpus (domain data)    & 0.534 [0.508, 0.557] & 0.969 \\
 Original (general-only, word-only) & 0.516 [0.490, 0.539] & 0.889 \\
 \bottomrule
 \end{tabular}
 \end{center}
-Domain data dominates everything else combined ($+0.31$ PR-AUC) --- removing CONDA
+Domain data dominates everything else combined ($+0.30$ PR-AUC) --- removing CONDA
 collapses the model below even the original recipe's curve shape. Character n-grams
-($+0.034$) and Davidson ($+0.037$) are
+($+0.028$) and Davidson ($+0.024$) are
 each significant. The HASOC Hindi row is deliberately read differently: its CONDA
-delta is $\approx 0$ \emph{by design} --- a Devanagari corpus cannot move an
+delta is $\approx 0$ \emph{by design} --- a Hindi corpus cannot move an
 English-chat metric --- and its measured contribution lives entirely in the
-held-out Hindi evaluation above ($0 \rightarrow 0.95$ alert precision), which is
+held-out Hindi evaluation above ($\geq$$0.95$ alert precision on both scripts,
+from near-zero), which is
 why corpus adoptions are judged on capability, not on a single aggregate score.
-Two nuances: the keyword fusion buys only $+0.006$ PR-AUC
---- it is retained primarily for \emph{coverage} (romanised-Hinglish abuse the
-TF-IDF vocabulary cannot see) and interpretability, not ranking. And
+Two nuances: the keyword fusion buys only $+0.009$ PR-AUC --- and a telling
+second-order effect: with the romanised-Hindi rows trained in, the lexicon's
+alert-recall contribution shrank from $+0.05$ to under $+0.01$, because the
+trained model now carries most of what the hand-curated lexicon alone once
+provided; the lexicon is retained for interpretability and same-day coverage of
+novel slang, not ranking. And
 \textbf{calibration costs $0.011$ PR-AUC}: isotonic regression creates probability
 plateaus (ties) that coarsen ranking. We accept that deliberately --- on the
 calibrated scale the $0.95$ threshold \emph{empirically achieved} $96\%$ held-out
@@ -1469,7 +1497,7 @@ revision}; where a later revision re-measured the same quantity, the final numbe
 the Results sections supersedes it --- notably the chat calibration row's held-out
 Brier ($0.088 \rightarrow 0.075$ then) predates the eval-leakage correction of
 \S\ref{sec:chatresults}, whose final held-out Brier (post-dedupe retrain with the
-HASOC Hindi corpus) is $0.066 \rightarrow 0.064$.
+dual-script HASOC Hindi corpus) is $0.068 \rightarrow 0.066$.
 
 \begin{xltabular}{\linewidth}{p{3.1cm}XX}
 \caption{ML pipeline revisions: motivation and measured effect of each change.}

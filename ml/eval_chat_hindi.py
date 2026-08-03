@@ -36,26 +36,34 @@ def _load(name):
         return pickle.load(f)
 
 
+def _score_view(tag, texts, y, served, vec):
+    ml = served.predict_proba(vec.transform([clean_text(t) for t in texts]))[:, 1]
+    kw = np.array([keyword_toxicity(t) for t in texts])
+    s = 1.0 - (1.0 - ml) * (1.0 - kw)          # noisy-OR, exactly as app.py serves
+    yh = (s >= ALERT_T).astype(int)
+    return {
+        'pr_auc': round(float(average_precision_score(y, s)), 4),
+        'precision@alert': round(float(precision_score(y, yh, zero_division=0)), 4),
+        'recall@alert': round(float(recall_score(y, yh, zero_division=0)), 4),
+    }
+
+
 def main():
+    from fetch_hasoc_hindi import romanize
     df = pd.read_csv(os.path.join(ROOT, 'data', 'hasoc2019_hindi_heldout.csv'))
     texts, y = df['text'].astype(str).tolist(), df['toxic'].values
     vec = _load('tfidf_vectorizer.pkl')
     cal_path = os.path.join(MODELS_DIR, 'chat_calibrated.pkl')
     served = _load('chat_calibrated.pkl') if os.path.exists(cal_path) else _load('chat_model.pkl')
 
-    ml = served.predict_proba(vec.transform([clean_text(t) for t in texts]))[:, 1]
-    kw = np.array([keyword_toxicity(t) for t in texts])
-    s = 1.0 - (1.0 - ml) * (1.0 - kw)          # noisy-OR, exactly as app.py serves
-    yh = (s >= ALERT_T).astype(int)
-
     res = {
         'eval_set': 'HASOC 2019 Hindi held-out 20% (933 rows, never trained on)',
         'n': len(y), 'toxic_rate': round(float(np.mean(y)), 4),
-        'pr_auc': round(float(average_precision_score(y, s)), 4),
-        'precision@alert': round(float(precision_score(y, yh, zero_division=0)), 4),
-        'recall@alert': round(float(recall_score(y, yh, zero_division=0)), 4),
+        'devanagari': _score_view('devanagari', texts, y, served, vec),
+        'romanized': _score_view('romanized', [romanize(t) for t in texts], y, served, vec),
         'alert_threshold': ALERT_T,
-        'scoring': 'as served: clean_text -> TF-IDF -> LogReg + isotonic, noisy-OR keyword fusion',
+        'scoring': 'as served: clean_text -> TF-IDF -> LogReg + isotonic, noisy-OR keyword fusion; '
+                   'romanized view = held-out rows romanised at eval time (fetch_hasoc_hindi.romanize)',
     }
     print(json.dumps(res, indent=2))
     meta_path = os.path.join(MODELS_DIR, 'model_metadata.json')

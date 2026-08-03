@@ -69,17 +69,17 @@ feature importances is unchanged.
 
 **Q: Why logistic regression + TF-IDF and not BERT?**
 Measured, not assumed. The deployed recipe (word 1–2 gram + char_wb 3–5 gram TF-IDF
-union → LogReg → isotonic) reaches PR-AUC 0.833 [0.816, 0.849] on CONDA in-game chat. Measured against a real transformer (2026-08-04): off-the-shelf Jigsaw toxic-BERT (detoxify, ~110M params) reads PR-AUC 0.709 on the same split — 12 points BELOW the domain-trained classical pipeline; at >=0.95 precision its recall is 0.12 vs our 0.42. Domain data beats model capacity, measured.
+union → LogReg → isotonic) reaches PR-AUC 0.830 [0.813, 0.845] on CONDA in-game chat. Measured against a real transformer (2026-08-04): off-the-shelf Jigsaw toxic-BERT (detoxify, ~110M params) reads PR-AUC 0.709 on the same split — 12 points BELOW the domain-trained classical pipeline; at >=0.95 precision its recall is 0.12; the deployed pipeline reads 0.29 at an even higher 0.97 precision. Domain data beats model capacity, measured.
 A transformer needs GPU or slow CPU inference; we serve on a 512 MB free-tier instance
 scoring every chat message in real time. The char_wb n-grams are the cheap trick that
 buys robustness to gamer spelling ("noooob", "f4ggot") — removing them drops PR-AUC to
-0.799 (ablation row "- char_wb n-grams").
+0.802 (ablation row "- char_wb n-grams").
 
-**Q: The balanced-holdout F1 is 0.92 but realistic precision at 0.5 is 0.231. Which is real?**
+**Q: The balanced-holdout F1 is 0.92 but realistic precision at 0.5 is 0.241. Which is real?**
 Both — and the gap is the most important number in the chat section. At the realistic
 ~3.5% toxic base rate, a 0.5 threshold floods parents with false alarms (precision
-0.231 — roughly three false alarms per real one). That is *why* the alert threshold is
-0.95 (post-dedupe + HASOC retrain; was 0.90 on the old calibration), where in-domain precision is 0.954 at recall 0.423
+0.241 — roughly three false alarms per real one). That is *why* the alert threshold is
+0.95 (dual-script HASOC retrain; was 0.90 on the old calibration), where in-domain precision is 0.971 at recall 0.285 — deliberately above the ~0.95-precision point so EVERY register (English, Devanagari, romanised Hinglish) clears 0.95 precision at one shared threshold
 (`chat_metrics_gaming.at_alert_threshold`). We chose to miss most single toxic messages
 rather than train parents to ignore alerts (the session streak alert recovers coverage:
 per-message recall 0.87 at its 0.6 bar). The threshold is env-tunable
@@ -161,8 +161,8 @@ of per-message calibrated confidences, not an average — one credible threat ma
 more than a hundred clean messages diluting it.
 
 **Q: Why alert at 0.95 and not the F1-optimal threshold?**
-The CONDA threshold sweep puts best-F1 near 0.70 (P 0.759 / R 0.759; 0.85 reads P 0.801 / R 0.710) and the deployed
-0.95 at P 0.954 / R 0.423 (0.90 reads P 0.924 / R 0.577, env-selectable). We deliberately sit above best-F1 because the asymmetric cost is
+The CONDA threshold sweep puts best-F1 near 0.85 (P 0.851 / R 0.685) and the deployed
+0.95 at P 0.971 / R 0.285 (0.90 reads P 0.927 / R 0.590, env-selectable). We deliberately sit above best-F1 because the asymmetric cost is
 false alarms: a parent who gets three wrong alerts stops reading them. Both points are
 in `model_metadata.json`; the threshold is an env var, and the feedback tuner moves it
 with real parent responses.
@@ -276,12 +276,18 @@ constraints; (4) threshold personalisation per family from the feedback tuner's
 posterior. Nothing on that list is a new model — the gap is data, not architecture.
 
 **Q: Does the chat model understand Hindi/Devanagari?**
-Yes — as of the 2026-08-04 HASOC 2019 adoption (4,665 labeled Hindi posts; 80% trained,
-20% held out). Before: the served pipeline caught ZERO Devanagari abuse at the alert
-threshold (lexicon covers romanised Hinglish only). After: held-out Hindi PR-AUC 0.875,
-precision 0.948 / recall 0.439 at the alert point — same precision-first profile as
-English — while CONDA in-domain held within the bootstrap CI. `ml/eval_chat_hindi.py`
-reproduces it. Adoption followed the standing measured-trial rule (dataset audit table).
+Yes — BOTH scripts, as of the 2026-08-04 HASOC 2019 adoptions (4,665 labeled Hindi
+posts; 80% trained in Devanagari AND a colloquial romanisation, 20% held out).
+Before: zero Devanagari coverage, near-blind on romanised beyond the lexicon
+(PR-AUC 0.61, recall 0.04). After, at the unchanged 0.95 threshold: Devanagari
+P 0.957 / R 0.316 (PR-AUC 0.869), romanised P 0.973 / R 0.215 (PR-AUC 0.871) —
+>=0.95 precision on every capturable register. CONDA held in-CI through both
+adoptions. Capture paths: our QWERTY keyboard carries romanised Hinglish
+(incl. canvas games); Devanagari arrives via system keyboards through the
+accessibility path; spoken Hindi is still gated by the English STT.
+Second-order finding: the lexicon's alert-recall contribution shrank from +5pp
+to <1pp — the trained model now knows what the hand lexicon knew.
+`ml/eval_chat_hindi.py` reproduces both views.
 
 **Q: Has anyone independently audited the app's security?**
 An automated independent static audit (MobSF v4.5.1, 2026-08-04) of both signed release
