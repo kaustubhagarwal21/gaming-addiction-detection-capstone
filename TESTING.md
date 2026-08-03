@@ -52,6 +52,9 @@ risk-flap bugs (`AlertTriage`).
 | `python ml/eval_chat_voice.py` | Honest chat metrics (balanced + realistic imbalanced, PR-AUC/Brier); skips voice if the deployed voice model is real-audio-trained |
 | `python ml/train_voice_real.py --jobs 8` | Trains the voice model on real speech (RAVDESS/CREMA-D/EMO-DB/URDU under `data/voice/`); `--smoke` self-tests without data |
 | `python ml/eval_chat_conda.py` | In-domain gaming-chat evaluation on the held-out CONDA validation split (threshold sweep, PR-AUC) → `chat_metrics_gaming`. Do NOT pass `--csv data/conda/CONDA_train.csv` — that would score the model on its own training data |
+| `python ml/fetch_hasoc_hindi.py` | Rebuilds the HASOC 2019 Hindi corpus files deterministically (80% → `data/chat_extra/`, 20% held out; registration-gated upstream, not redistributed in this repo) |
+| `python ml/eval_chat_hindi.py` | Held-out Devanagari/Hindi abuse evaluation (HASOC 2019 20% split, never trained on) → `chat_metrics_hindi` |
+| `python ml/monitor_drift_evidently.py` | Optional Evidently companion to the drift monitor: 20+ maintained drift tests incl. small-sample-appropriate ones; HTML report + JSON. Primary PSI/KS monitor stays authoritative for CI |
 | `python ml/tune_from_feedback.py` | Converts parent-feedback verdicts into conservative threshold recommendations (`threshold_tuning.json`) + labelled CSV export |
 | `python ml/analyze_reflections.py` | Correlates daily risk vs next-day mood/sleep/energy self-reports (Spearman) |
 | `python ml/ablation_studies.py` | One-component-at-a-time ablations for all three channels (bootstrap 95% CIs) → `docs/ablation_results.json`; `--only chat\|voice\|behaviour` re-runs a section |

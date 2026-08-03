@@ -97,3 +97,7 @@ docs/*.fdb_latexmk
 # Generated from LIVE pilot data — never commit (feedback CSV holds real family verdicts)
 data/feedback_labels.csv
 backend/models/threshold_tuning.json
+
+# HASOC 2019 Hindi (registration-gated upstream; rebuild via ml/fetch_hasoc_hindi.py)
+data/hasoc2019_hindi_heldout.csv
+data/hasoc_hindi_raw.tsv

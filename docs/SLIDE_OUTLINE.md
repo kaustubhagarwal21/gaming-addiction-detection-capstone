@@ -91,16 +91,17 @@ them makes SHAP circular. Ablation: 0.9191 vs 0.9160, CIs overlap — free hones
 ## Slide 6 — Chat Model
 **On slide:**
 - TF-IDF (word 1–2g + char_wb 3–5g) → LogReg → isotonic; noisy-OR keyword fusion
-- In-domain (CONDA game chat): **PR-AUC 0.831** [0.813, 0.846]
-- At alert threshold 0.95: precision **0.962**, recall 0.334
+- In-domain (CONDA game chat): **PR-AUC 0.833** [0.816, 0.849]; off-the-shelf toxic-BERT reads only 0.709 on the same split — domain data beats model capacity
+- At alert threshold 0.95: precision **0.954**, recall 0.423
+- **NEW: trained Devanagari/Hindi path** (HASOC 2019): held-out Hindi precision **0.948** / recall 0.439 — was ZERO before adoption
 - Hinglish + Devanagari lexicon (bsdk, चूतिया…) — load-bearing for India
 
 **Figure:** pr_chat.pdf (PR curve)
 
 **Notes:** The threshold story is the strongest 60 s of the talk: at the realistic
-~3.5% toxic base rate, threshold 0.5 gives precision 0.248 — a parent gets ~3
-false alarms per real one and stops reading alerts. At the deployed 0.95, precision is 0.962 at
-recall 0.334: we consciously trade recall to keep alerts credible (the session-level
+~3.5% toxic base rate, threshold 0.5 gives precision 0.231 — a parent gets ~3
+false alarms per real one and stops reading alerts. At the deployed 0.95, precision is 0.954 at
+recall 0.423: we consciously trade recall to keep alerts credible (the session-level
 streak alert recovers coverage; per-message recall 0.87 at its 0.6 bar).
 Threshold is env-tunable and a Beta-posterior tuner adjusts it from parent
 feedback. Why no BERT: 512 MB serving budget, real-time per-message scoring, and

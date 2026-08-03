@@ -85,7 +85,8 @@ def chat_sources():
                         'toxic': (gen['toxicity_score'] >= 0.5).astype(int)})
     conda = load_norm(os.path.join(DATA, 'conda', 'CONDA_train.csv'))
     dav   = load_norm(os.path.join(DATA, 'chat_extra', 'davidson_offensive.csv'))
-    return {'gen': gen, 'conda': conda, 'davidson': dav}
+    hasoc = load_norm(os.path.join(DATA, 'chat_extra', 'hasoc2019_hindi.csv'))
+    return {'gen': gen, 'conda': conda, 'davidson': dav, 'hasoc': hasoc}
 
 
 def make_vec(char_ngrams=True):
@@ -154,7 +155,7 @@ def ablate_chat():
     y = evald['toxic'].values
     texts = evald['text'].tolist()
 
-    full_clf, full_vec, full_cal = train_chat(src, ('gen', 'conda', 'davidson'))
+    full_clf, full_vec, full_cal = train_chat(src, ('gen', 'conda', 'davidson', 'hasoc'))
     configs, score_cache = [], {}
 
     def add(name, s):
@@ -166,11 +167,13 @@ def ablate_chat():
     add('full recipe (deployed)', chat_scores(texts, full_clf, full_vec, full_cal))
     add('- keyword fusion', chat_scores(texts, full_clf, full_vec, full_cal, kw_fusion=False))
     add('- calibration', chat_scores(texts, full_clf, full_vec, None))
-    c, v, k = train_chat(src, ('gen', 'conda', 'davidson'), char_ngrams=False)
+    c, v, k = train_chat(src, ('gen', 'conda', 'davidson', 'hasoc'), char_ngrams=False)
     add('- char_wb n-grams', chat_scores(texts, c, v, k))
-    c, v, k = train_chat(src, ('gen', 'conda'))
+    c, v, k = train_chat(src, ('gen', 'conda', 'hasoc'))
     add('- Davidson corpus', chat_scores(texts, c, v, k))
-    c, v, k = train_chat(src, ('gen', 'davidson'))
+    c, v, k = train_chat(src, ('gen', 'conda', 'davidson'))
+    add('- HASOC Hindi corpus', chat_scores(texts, c, v, k))
+    c, v, k = train_chat(src, ('gen', 'davidson', 'hasoc'))
     add('- CONDA corpus (domain data)', chat_scores(texts, c, v, k))
     c, v, k = train_chat(src, ('gen',), char_ngrams=False)
     add('original (general-only, word-only)', chat_scores(texts, c, v, k))

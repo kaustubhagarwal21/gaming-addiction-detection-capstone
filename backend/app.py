@@ -786,9 +786,9 @@ if not 0.0 < RISK_T1 < RISK_T2 < 1.0:
 # an accusation about a SPECIFIC line the parent may confront the child over, so it is
 # precision-first. Defaults are chosen from the MEASURED held-out curve of the served
 # pipeline on real gaming chat (CONDA_valid; model trained on the de-duplicated
-# general + CONDA train + Davidson assembly):
-#   0.95 → toxic precision 0.962, recall 0.334  (the alert)
-#   0.97 → toxic precision 0.991               (the 'high'-severity marker)
+# general + CONDA train + Davidson + HASOC-Hindi assembly):
+#   0.95 → toxic precision 0.954, recall 0.423  (the alert)
+#   0.97 → toxic precision 1.00, recall 0.027   (the 'high'-severity marker)
 # The pre-dedupe model's curve put the same ~0.95-precision operating point at
 # 0.90 — calibration shifts where probabilities land, so thresholds never survive
 # a model change unexamined; each revision re-derives them from its own curve.

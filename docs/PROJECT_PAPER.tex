@@ -87,10 +87,13 @@ deployability, and a privacy design that reduces raw media to compact features
 and deletes it. Within that class, every model-family choice is backed by a measured bake-off,
 feature and corpus choices by ablations with bootstrap confidence intervals, and
 the fusion priors by sensitivity analyses on live pilot decisions. The pipeline
-is grounded in \emph{nine real, open datasets}: the chat model reaches $0.96$
-precision at its alert threshold on held-out real gaming chat and detects
+is grounded in \emph{ten real, open datasets}: the chat model reaches $0.95$
+precision at its alert threshold on held-out real gaming chat, detects
 code-mixed Hinglish/Devanagari abuse whether typed or \emph{spoken} (transcribed
-on-device; uploaded audio is deleted after feature extraction); the voice model
+on-device; uploaded audio is deleted after feature extraction) --- with the
+Devanagari path now \emph{trained and held-out-validated} on the HASOC 2019
+Hindi corpus (precision $0.95$, recall $0.44$ at the alert threshold, from zero
+model coverage before adoption); the voice model
 is trained on $9{,}817$ real speech clips across $154$ ingested speakers in
 three languages and evaluated speaker-independently; play-time distributions and
 peer percentiles follow a real survey of $13{,}464$ gamers; and an
@@ -163,8 +166,10 @@ rather than to maximise a headline accuracy number.
   \item An \textbf{India-ready abuse channel} for code-mixed gaming chat: a curated
         Hinglish lexicon (romanised Hindi \emph{and} Devanagari script) fused with the
         calibrated English toxicity model via noisy-OR --- ablation-measured to lift
-        recall at the alert threshold from $0.287$ to $0.389$ (precision
-        $0.97 \rightarrow 0.96$, post-dedupe retrain) --- and an
+        recall at the alert threshold from $0.332$ to $0.385$ (precision
+        $0.97 \rightarrow 0.95$) --- a \emph{trained} Devanagari path (HASOC 2019
+        Hindi corpus: held-out alert precision $0.95$ where the pre-adoption model
+        caught nothing, \S6.2) --- and an
         \emph{on-device} Indian-English speech-to-text path (Vosk) that routes what the
         child \emph{says} through the same toxicity model, so spoken abuse is caught
         without raw audio ever being retained. English-centric keyword monitors cover
@@ -187,7 +192,7 @@ rather than to maximise a headline accuracy number.
         $\sim$9-point leakage inflation and \emph{reversed} a model-selection
         verdict), thresholds re-derived from held-out curves on every model change,
         and negative results reported alongside positive ones.
-  \item Grounding in nine real, open datasets (two behaviour-grounding surveys, three
+  \item Grounding in ten real, open datasets (two behaviour-grounding surveys, four
         chat corpora, four speech corpora) --- each screened against explicit
         criteria, each adoption justified by a measured effect, and each rejection
         documented with its reason (\S4.2).
@@ -488,15 +493,20 @@ supporting play time as a risk \emph{signal}, while the small magnitudes are exa
 why hours alone are not the model. We remain explicit about the boundary: grounding
 narrows the sim-to-real gap for the dominant features, but the \emph{labels} are
 still synthetic screening priors, and the telemetry-only features (late-night ratio,
-breaks, re-logins) have no public source. The chat model is trained on \emph{three
+breaks, re-logins) have no public source. The chat model is trained on \emph{four
 real corpora}: a general-toxicity corpus dominated by the Jigsaw/Conversation-AI
 Wikipedia talk-page comments~\cite{jigsaw2018} ($86\%$ of its $185{,}312$ rows; a
 copy of the Davidson tweets and a small YouTube comment set make up the rest ---
 the duplicate-text audit in \S\ref{sec:chatresults} accounts for the overlap), the
 CONDA train split~\cite{conda2021} (real Dota~2
-in-game utterances with toxicity labels), and the Davidson et al.\ offensive-language
+in-game utterances with toxicity labels), the Davidson et al.\ offensive-language
 dataset~\cite{davidson2017} ($24{,}783$ real tweets --- informal, slang-heavy language close to gaming
-chat's register); it is evaluated on CONDA's \emph{held-out} validation split it
+chat's register), and the HASOC 2019 Hindi corpus~\cite{hasoc2019} ($4{,}665$
+labeled Devanagari/Hindi social-media posts; an $80\%$ split is trained on, the
+remaining $20\%$ is held out for the Hindi evaluation of
+\S\ref{sec:chatresults} --- adopted 2026-08-04 after a measured trial showed the
+in-domain CONDA metrics hold while Devanagari alert capability goes from zero to
+precision $0.95$); the model is evaluated on CONDA's \emph{held-out} validation split it
 never saw (\S\ref{sec:chatresults}). The voice model is trained on \emph{four real
 speech corpora} --- RAVDESS~\cite{ravdess2018} + CREMA-D~\cite{cremad2014} (English),
 EMO-DB~\cite{emodb2005} (German) and URDU~\cite{urdu2018} ---
@@ -534,7 +544,8 @@ Gamers \& Anxiety (OSF, $n{=}13{,}464$) & adopted & real survey; grounds play-ti
 IGDS9-SF Latin America (OSF, $n{=}11{,}191$) & adopted & real IGD labels; severity base rate + chat-premise validation \\
 General toxicity corpus~\cite{jigsaw2018} & adopted & chat training base --- Jigsaw Wikipedia talk-page comments ($86\%$), plus a Davidson copy and a small YouTube set \\
 CONDA (real Dota~2 chat) & adopted & the in-domain anchor: its removal collapses PR-AUC $0.831 \rightarrow 0.512$ \\
-Davidson et al.\ tweets & adopted & real informal/slang register; $+0.029$ PR-AUC measured \\
+Davidson et al.\ tweets & adopted & real informal/slang register; measured PR-AUC gain (ablation table, \S6.4) \\
+HASOC 2019 Hindi~\cite{hasoc2019} & adopted & real Devanagari/Hindi abuse; measured trial: CONDA holds in-CI, Hindi alert capability $0 \rightarrow 0.95$ precision \\
 RAVDESS + CREMA-D & adopted & real labelled English speech, 115 speakers \\
 EMO-DB + URDU & adopted & speaker/language diversity; Urdu $\approx$ target users' Hindi \\
 \addlinespace
@@ -565,7 +576,7 @@ lineage above.
         CONDA gaming-chat train split, and the Davidson offensive-language tweets
         (balanced), with its \emph{own} isotonic calibration layer (fitted on a
         slice carved from the training data, so held-out evaluation stays untouched;
-        held-out Brier $0.061 \rightarrow 0.058$). The character channel was \emph{originally rejected} --- trained on
+        held-out Brier $0.066 \rightarrow 0.064$). The character channel was \emph{originally rejected} --- trained on
         the general corpus alone, raw char n-grams over-fired on clean gaming
         phrases --- but re-tested with gaming-domain training data and word-bounded
         analysis it wins decisively on held-out real gaming chat
@@ -703,7 +714,17 @@ LinearSVC + word $\cup$ char\_wb 3--5   & 0.771 & 0.916 \\
 \end{center}
 Here the evaluation is real and in-domain, so the $+0.08$ PR-AUC is meaningful and
 the winner was adopted (\S\ref{sec:chatresults} reports the deployed pipeline's final
-numbers, which also include the keyword fusion).
+numbers, which also include the keyword fusion). A \emph{deep} reference point was
+also measured: the off-the-shelf Jigsaw-trained toxic-BERT
+(\texttt{unitaryai/detoxify}, $\sim$110M parameters) reads PR-AUC $\mathbf{0.709}$
+on this same held-out CONDA split --- \textbf{12 points below the deployed
+classical pipeline} ($0.833$) --- and at a $\geq$$0.95$-precision operating point
+its recall is $0.12$ vs.\ the classical $0.42$. The comparison is deliberately
+asymmetric (general-purpose transformer vs.\ domain-trained classical model),
+because that asymmetry \emph{is} the design question this system faced: under a
+fixed free-tier serving budget, domain data beats model capacity by a wide,
+measured margin. Fine-tuning a transformer on the gaming corpus is the untested
+combination and remains future work.
 
 \textbf{Voice} --- feature-set and classifier selected on a validation slice carved
 from the training split (the test split scores only the winner), and the selection
@@ -1136,9 +1157,9 @@ adjacent bands: both Casual$\leftrightarrow$Addicted corners are zero.}
 \subsection{Chat toxicity model (gaming-domain trained; two evaluation views)}
 \label{sec:chatresults}
 Metrics are for the pipeline \emph{as served}: the isotonic-calibrated probability of
-the word~$\cup$~char\_wb model trained on three real corpora (general toxicity +
-CONDA train split + Davidson offensive-language tweets; held-out Brier
-$0.061 \rightarrow 0.058$), fused with the keyword lexicon. The held-out set is
+the word~$\cup$~char\_wb model trained on four real corpora (general toxicity +
+CONDA train split + Davidson offensive-language tweets + HASOC 2019 Hindi; held-out
+Brier $0.066 \rightarrow 0.064$), fused with the keyword lexicon. The held-out set is
 reconstructed from the \emph{same} corpus assembly the trainer uses (shared code
 path), so no training \emph{row} can re-enter it --- an earlier draft rebuilt this split
 from the general corpus alone, which admitted trained CONDA/Davidson rows and
@@ -1149,9 +1170,9 @@ audited below.)
 \toprule
 \textbf{Evaluation set} & \textbf{Precision (toxic)} & \textbf{Recall (toxic)} & \textbf{Note} \\
 \midrule
-Balanced held-out & 0.906 & 0.953 & optimistic view; PR-AUC 0.944 \\
-General realistic stream @0.50 & 0.248 & 0.953 & 3.5\% toxic base rate \\
-General realistic stream @0.95 (alert) & 0.426 & 0.280 & out-of-domain view \\
+Balanced held-out & 0.889 & 0.956 & optimistic view; PR-AUC 0.937 \\
+General realistic stream @0.50 & 0.231 & 0.956 & 3.5\% toxic base rate \\
+General realistic stream @0.95 (alert) & 0.426 & 0.436 & out-of-domain view \\
 \bottomrule
 \end{tabular}
 \end{center}
@@ -1178,7 +1199,10 @@ $0.926 \rightarrow 0.944$, Brier $0.070 \rightarrow 0.058$, while in-domain
 \emph{ranking} is statistically unchanged (PR-AUC $0.833$ vs.\ $0.834$, inside
 the bootstrap CI) --- and the alert threshold was re-derived from the new
 calibrated curve per the standing procedure (below), moving from $0.90$ to
-$0.95$. The tables in this section report the retrained model.
+$0.95$. The subsequently adopted HASOC Hindi corpus (\S4.2) re-measured these
+figures once more (its Devanagari rows make the balanced holdout slightly
+harder --- accuracy $0.918$, Brier $0.064$ --- the price of a whole new language
+in the corpus); the tables in this section report the final deployed model.
 
 \paragraph{In-domain evaluation on real gaming chat (held-out CONDA split).}
 The serving domain is gaming chat, so the decisive evaluation is on \textbf{CONDA's
@@ -1189,16 +1213,30 @@ validation split} --- $7{,}721$ real Dota~2 utterances the retrained model
 \toprule
 \textbf{Operating point} & \textbf{Precision (toxic)} & \textbf{Recall (toxic)} & \textbf{F1} \\
 \midrule
-@0.95 (deployed alert threshold) & \textbf{0.962} & 0.334 & 0.496 \\
-@0.90 (recall-preferring option, env-selectable) & 0.922 & 0.606 & 0.731 \\
-@0.85 (near best F1; selectable via env) & 0.841 & 0.709 & 0.769 \\
-@0.97 (high-severity marker) & 0.991 & 0.065 & 0.122 \\
+@0.95 (deployed alert threshold) & \textbf{0.954} & 0.423 & 0.586 \\
+@0.90 (recall-preferring option, env-selectable) & 0.924 & 0.577 & 0.711 \\
+@0.85 (near best F1; selectable via env) & 0.801 & 0.710 & 0.753 \\
+@0.97 (high-severity marker) & 1.000 & 0.027 & 0.053 \\
 \bottomrule
 \end{tabular}
 \end{center}
-The promised secondary views on this in-domain set: ROC-AUC $0.922$ and MCC $0.517$
-at the alert threshold ($0.698$ at the $0.90$ point; per-configuration values for
+The promised secondary views on this in-domain set: ROC-AUC $0.920$ and MCC $0.584$
+at the alert threshold ($0.680$ at the $0.90$ point; per-configuration values for
 every ablation row are in the released \texttt{ablation\_results.json} artifact).
+
+\paragraph{Held-out Hindi/Devanagari evaluation (new capability, measured).}
+Before the HASOC adoption the served pipeline caught \textbf{zero} Devanagari
+abuse at the alert threshold (precision/recall $0.000$/$0.000$ on the held-out
+Hindi set --- the Hinglish keyword lexicon covers romanised abuse, but no
+trained model component read Devanagari). On the $933$-row HASOC 2019 Hindi
+held-out split ($20\%$, stratified, never trained on; $52.9\%$ offensive base
+rate), the deployed model now reads \textbf{PR-AUC $0.875$, precision $0.948$ /
+recall $0.439$ at the alert threshold} --- the same precision-first profile as
+the English in-domain operating point, on a language the model previously could
+not score at all. The in-domain CONDA metrics held within the bootstrap CI
+through the adoption (PR-AUC $0.826$ vs.\ $0.833$) with alert-point recall
+\emph{up} nine points --- the measured trial that justified adoption
+(\texttt{ml/eval\_chat\_hindi.py} reproduces this evaluation).
 Fig.~\ref{fig:prchat} shows the full precision--recall curve against the original
 recipe: the deployed pipeline dominates at every operating point.
 Three successive, measured improvements produced it, each adopted
@@ -1320,23 +1358,29 @@ $95\%$ CIs (\S\ref{sec:evalmethod}).
 \toprule
 \textbf{Configuration} & \textbf{PR-AUC [95\% CI]} & \textbf{Precision@0.95} \\
 \midrule
-Full recipe (deployed)            & 0.831 [0.813, 0.846] & 0.956 \\
-$-$ keyword-lexicon fusion        & 0.820 [0.802, 0.836] & 0.972 \\
-$-$ calibration                   & 0.841 [0.823, 0.856] & 0.969 \\
-$-$ char\_wb n-grams              & 0.793 [0.774, 0.810] & 0.952 \\
-$-$ Davidson corpus               & 0.780 [0.761, 0.797] & 0.885 \\
-$-$ CONDA corpus (domain data)    & 0.512 [0.487, 0.535] & 0.982 \\
+Full recipe (deployed)            & 0.833 [0.816, 0.849] & 0.954 \\
+$-$ keyword-lexicon fusion        & 0.827 [0.809, 0.843] & 0.965 \\
+$-$ calibration                   & 0.844 [0.827, 0.859] & 0.964 \\
+$-$ char\_wb n-grams              & 0.799 [0.781, 0.817] & 0.957 \\
+$-$ Davidson corpus               & 0.796 [0.778, 0.814] & 0.944 \\
+$-$ HASOC Hindi corpus            & 0.831 [0.813, 0.846] & 0.956 \\
+$-$ CONDA corpus (domain data)    & 0.523 [0.498, 0.547] & 0.964 \\
 Original (general-only, word-only) & 0.516 [0.490, 0.539] & 0.889 \\
 \bottomrule
 \end{tabular}
 \end{center}
-Domain data dominates everything else combined ($+0.32$ PR-AUC) --- removing CONDA
+Domain data dominates everything else combined ($+0.31$ PR-AUC) --- removing CONDA
 collapses the model below even the original recipe's curve shape. Character n-grams
-($+0.038$) and Davidson ($+0.051$, and $+0.071$ precision at the alert point) are
-each significant. Two nuances: the keyword fusion buys only $+0.011$ PR-AUC
---- it is retained primarily for \emph{coverage} (Hinglish/Devanagari abuse the
+($+0.034$) and Davidson ($+0.037$) are
+each significant. The HASOC Hindi row is deliberately read differently: its CONDA
+delta is $\approx 0$ \emph{by design} --- a Devanagari corpus cannot move an
+English-chat metric --- and its measured contribution lives entirely in the
+held-out Hindi evaluation above ($0 \rightarrow 0.95$ alert precision), which is
+why corpus adoptions are judged on capability, not on a single aggregate score.
+Two nuances: the keyword fusion buys only $+0.006$ PR-AUC
+--- it is retained primarily for \emph{coverage} (romanised-Hinglish abuse the
 TF-IDF vocabulary cannot see) and interpretability, not ranking. And
-\textbf{calibration costs $0.010$ PR-AUC}: isotonic regression creates probability
+\textbf{calibration costs $0.011$ PR-AUC}: isotonic regression creates probability
 plateaus (ties) that coarsen ranking. We accept that deliberately --- on the
 calibrated scale the $0.95$ threshold \emph{empirically achieved} $96\%$ held-out
 in-domain precision (the served score is the calibrated probability fused with the
@@ -1413,8 +1457,8 @@ and the measured (not asserted) consequence. Figures are \emph{as measured at th
 revision}; where a later revision re-measured the same quantity, the final number in
 the Results sections supersedes it --- notably the chat calibration row's held-out
 Brier ($0.088 \rightarrow 0.075$ then) predates the eval-leakage correction of
-\S\ref{sec:chatresults}, whose final held-out Brier (post-dedupe retrain) is
-$0.061 \rightarrow 0.058$.
+\S\ref{sec:chatresults}, whose final held-out Brier (post-dedupe retrain with the
+HASOC Hindi corpus) is $0.066 \rightarrow 0.064$.
 
 \begin{xltabular}{\linewidth}{p{3.1cm}XX}
 \caption{ML pipeline revisions: motivation and measured effect of each change.}
@@ -1892,8 +1936,13 @@ privacy-sensitive component in the system: an Android keyboard technically
 sees all typing. Capture is code-gated to a consented, logged-in state during
 monitored sessions; password fields are excluded via input-type and
 accessibility flags; logged-out typing records nothing. These gates are
-unit-tested, but the IME has had no \emph{independent} security audit --- a
-stated precondition for deployment beyond the pilot.
+unit-tested, and an automated independent static audit (MobSF v4.5.1, August
+2026) of both signed release APKs found no exploitable high-severity issue ---
+the single flagged item is the standard development-loopback cleartext
+exception, now a hardening item; the full finding-by-finding triage ships in
+the repository (\texttt{docs/SECURITY\_AUDIT\_MOBSF.md}). A \emph{human}
+penetration test --- which alone can exercise the IME's runtime data flow ---
+remains a precondition for deployment beyond the pilot.
 
 \textbf{Bystander audio.} Voice capture runs only while a tracked game is in
 the foreground; transcription happens on-device; uploaded WAV segments are
@@ -2017,10 +2066,13 @@ value depends on accumulating real usage data the prototype does not yet have:
         consent tier) closes it. Instrument now, correct on evidence, retrain on real
         labels later.
   \item \textbf{Code-mixed text model and Hindi speech recognition.} The lexicon
-        covers romanised and Devanagari Hindi abuse and the recogniser is
-        Indian-English (\S4.3, \S5.2), but two gaps remain: a multilingual
-        \emph{text} model (blocked on labelled code-mixed gaming-chat data --- none
-        is public) and a Hindi/dual \emph{speech} recogniser so spoken Hindi reaches
+        covers romanised and Devanagari Hindi abuse, and the trained model now reads
+        Devanagari directly (HASOC 2019 adoption, \S4.2/\S\ref{sec:chatresults}).
+        Two gaps remain: the \emph{gaming register} of code-mixed text (HASOC is
+        social-media register; labelled code-mixed gaming chat remains non-public
+        --- the conversational HASOC tracks of 2021--22 are the nearest
+        registration-gated source) and a Hindi/dual \emph{speech} recogniser so
+        spoken Hindi reaches
         the word-level signals. The latter is a device-side swap (Vosk ships a small
         Hindi model and the lexicon is Devanagari-ready) but doubles on-device STT
         cost, so it needs on-device testing --- not a blind change.
@@ -2124,6 +2176,9 @@ speech detection and the problem of offensive language,'' in \emph{Proc.\ ICWSM}
 \bibitem{jigsaw2018} Jigsaw / Conversation AI, ``Toxic Comment Classification
 Challenge'' (Wikipedia talk-page comments with crowd-sourced toxicity annotations),
 Kaggle, 2018.
+\bibitem{hasoc2019} T. Mandl, S. Modha, P. Majumder, D. Patel, M. Dave, C. Mandlia,
+and A. Patel, ``Overview of the HASOC track at FIRE 2019: Hate speech and offensive
+content identification in Indo-European languages,'' in \emph{Proc.\ FIRE}, 2019.
 \bibitem{cremad2014} H. Cao, D. G. Cooper, M. K. Keutmann, R. C. Gur, A. Nenkova, and
 R. Verma, ``CREMA-D: Crowd-sourced emotional multimodal actors dataset,'' \emph{IEEE
 Trans.\ Affective Computing}, vol.~5, no.~4, 2014.
