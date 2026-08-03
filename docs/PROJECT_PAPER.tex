@@ -74,41 +74,34 @@ Vidisha Murali (PES1UG23CS681) \\[0.5em]
 \noindent
 Excessive mobile gaming is increasingly linked to disrupted sleep, mood and
 routine in adolescents, yet most existing tools track only raw screen time and
-miss the behavioural and emotional patterns that distinguish healthy play from
-problematic use. We present a deployed, multimodal screening platform that fuses
-three signals collected during real gameplay --- objective play behaviour, in-game
-chat toxicity, and voice emotion --- into a single risk band (Casual / At-Risk /
-Addicted; surfaced to families as Low / Some / High concern), with the behaviour
-and chat probabilities isotonic-calibrated. The system comprises two native Android applications (a Child
-monitoring app and a Parent dashboard) talking to a cloud Flask backend that serves
-a weighted ensemble of three classical machine-learning models. We deliberately
-favour calibrated, explainable classical models with SHAP attributions over
-heavyweight deep models, prioritising on-device privacy, deployability and honesty
-of evaluation --- and every model choice is backed by a measured bake-off, the
+miss the patterns that distinguish healthy play from problematic use. We present
+a deployed, multimodal screening platform that fuses three signals collected
+during real gameplay --- objective play behaviour, in-game chat toxicity, and
+voice emotion --- into a single risk band (Casual / At-Risk / Addicted; surfaced
+to families as Low / Some / High concern), with the behaviour and chat
+probabilities isotonic-calibrated. Two native Android applications (a Child
+monitoring app and a Parent dashboard) talk to a cloud Flask backend serving a
+weighted ensemble of three classical machine-learning models, chosen over deep
+alternatives for on-device privacy, deployability, SHAP explainability and
+honesty of evaluation. Every model choice is backed by a measured bake-off,
 feature and corpus choices by ablations with bootstrap confidence intervals, and
-the fusion priors by sensitivity analyses on live pilot decisions. The pipeline is
-grounded in \emph{nine real, open datasets}: the chat model is trained on real
-in-game and offensive-language corpora, reaches $0.95$ precision at its alert
-threshold on held-out real gaming chat, and is built for the Indian context ---
-code-mixed Hinglish/Devanagari abuse is detected whether typed or \emph{spoken}
-(transcribed on-device; short WAV segments are also sent over HTTPS for acoustic
-inference and deleted server-side after feature extraction); the voice model is trained on $9{,}817$ real
-speech clips across $154$ ingested speakers in three languages and evaluated
-speaker-independently; the behaviour generator's play-time distributions and the
-dashboard's peer percentiles follow a real survey of $13{,}464$ gamers; and an
-$11{,}191$-respondent IGDS9-SF dataset validates both the severity base rate and the
-chat channel's core premise. The platform is production-deployed (HTTPS, token
-authentication, parental consent, a durable managed database), ships a
-parent-feedback loop that converts real accurate/false-alarm verdicts into measured
-threshold recommendations (weak labels, usable for tuning today and as one input to
-future retraining) plus a drift monitor for the pilot phase --- and a consented live family pilot has since
-exercised every capture channel and alert type in production (55 auto-detected
-sessions and 1{,}660 served predictions in its first 12 days, including the full
-spoken-abuse chain firing unprompted) --- and provides a parent-to-child nudge channel so
-the parent can intervene --- not merely observe. Remaining limits are stated
-plainly --- behavioural \emph{labels} are synthetic screening priors pending pilot
-data --- and the output is framed explicitly as \emph{screening and awareness, not
-clinical diagnosis}.
+the fusion priors by sensitivity analyses on live pilot decisions. The pipeline
+is grounded in \emph{nine real, open datasets}: the chat model reaches $0.95$
+precision at its alert threshold on held-out real gaming chat and detects
+code-mixed Hinglish/Devanagari abuse whether typed or \emph{spoken} (transcribed
+on-device; uploaded audio is deleted after feature extraction); the voice model
+is trained on $9{,}817$ real speech clips across $154$ ingested speakers in
+three languages and evaluated speaker-independently; play-time distributions and
+peer percentiles follow a real survey of $13{,}464$ gamers; and an
+$11{,}191$-respondent IGDS9-SF dataset validates the severity base rate and the
+chat channel's core premise. The production deployment (HTTPS, token
+authentication, versioned parental consent) ships a parent-feedback loop that
+turns accurate/false-alarm verdicts into measured threshold recommendations, a
+drift monitor, and a parent-to-child nudge channel; a consented live family
+pilot has exercised every capture channel and alert type in production.
+Remaining limits are stated plainly --- behavioural \emph{labels} are synthetic
+screening priors pending pilot-scale data --- and the output is framed
+explicitly as \emph{screening and awareness, not clinical diagnosis}.
 \end{abstract}
 
 \tableofcontents
@@ -250,7 +243,7 @@ with the calibrated English model, and spoken abuse transcribed \emph{on-device}
 (Indian-English STT) into the same channel --- where keyword monitors are
 English-centric; (iv)~a production-engineered, privacy-conscious two-app + cloud system
 with tamper- and capture-permission health monitoring and two-way nudges (guidance, not
-just alerts); and (v)~an honest, realistic-stream evaluation with a live drift monitor,
+just alerts); and (v)~a realistic-stream evaluation with a live drift monitor,
 so the deployed models are \emph{watched}, not merely shipped. Two cross-cutting
 properties further separate the system from commercial tools: every risk band is
 accompanied by a per-prediction, SHAP-based explanation --- the parent sees \emph{why},
@@ -264,7 +257,7 @@ summarises the comparison. A fair-comparison caveat: the table compares
 their models nor their error rates, and no shared benchmark exists, so no head-to-head
 accuracy claim against them is possible --- and we make none. What we claim is the
 combination of signals and properties they structurally do not offer, with our own
-accuracy characterised honestly in \S6 on open, reproducible evaluations.
+accuracy characterised in \S6 on open, reproducible evaluations.
 
 \begin{table}[ht]
 \centering
@@ -290,7 +283,7 @@ Two-way guidance (nudges), not just alerts              & \capP & \capP & \capN 
 Tamper / capture-permission health awareness            & \capP & \capP & \capN & \capY \\
 Deployed models monitored for drift (PSI/KS)            & \capN & \capN & \capN & \capY \\
 Reproducible pipeline (open method, scripted metrics)   & \capN & \capN & \capP & \capY \\
-Honest realistic-stream evaluation                      & \capN & \capN & \capP & \capY \\
+Realistic-stream evaluation                             & \capN & \capN & \capP & \capY \\
 \bottomrule
 \end{tabularx}
 \end{table}
@@ -430,7 +423,7 @@ alert as accurate or a false alarm. It also offers a \textbf{``Send a nudge''} c
         --- \texttt{/api/user/export} returns everything held about a child
         (credentials excluded), and deletion erases exactly that.
 \end{itemize}
-We note honestly that, unlike a fully on-device design, chat text and short raw-audio
+We note that, unlike a fully on-device design, chat text and short raw-audio
 segments \emph{are} sent to the cloud for inference; the mitigations above (TLS, token auth,
 raw-audio deletion, consent, retention limits) define the actual privacy posture.
 
@@ -467,7 +460,7 @@ only, and the proxies serve where they belong: as human-readable, UI-level expla
 Retraining confirmed the information argument empirically --- held-out accuracy was
 statistically unchanged ($91.6\%$ on ten features vs.\ $91.9\%$ on twenty in the
 current retrain, measured under the ablation protocol of \S\ref{sec:ablations}) --- so the
-change costs nothing and buys honest attributions. The backend sizes its model input
+change costs nothing and buys non-circular attributions. The backend sizes its model input
 from the fitted scaler, so an older 20-feature model would still be served correctly
 during rollout.
 
@@ -654,7 +647,7 @@ the training scripts, so every reported number is reproducible from a fresh clon
 \label{sec:modelselection}
 Each channel's model family was chosen (or explicitly \emph{re-confirmed}) by a
 bake-off rather than by convention, with the comparison protocol matched to what the
-data can honestly support.
+data can support.
 
 \textbf{Behaviour} --- five families on the identical split (5-fold CV on train /
 one pass on test; survey-grounded generator, \S4.2):
@@ -782,8 +775,8 @@ we additionally report a \emph{realistic, naturally-imbalanced} held-out set, be
 balanced-split accuracy is misleading for a rare-positive problem. Beyond
 single-threshold precision/recall, we now also report \textbf{PR-AUC} (the whole
 precision--recall trade-off, which any one threshold row hides) and the \textbf{Brier
-score} for the calibrated channels --- behaviour and chat --- (how honest the served
-probabilities are; the voice channel reports accuracy only, as its four-class output
+score} for the calibrated channels --- behaviour and chat --- (how closely the served
+probabilities track observed outcomes; the voice channel reports accuracy only, as its four-class output
 feeds a rule-based fusion rather than a probability threshold), and probability
 calibration is measured by the Brier change. Operating thresholds are chosen from the
 \emph{measured realistic curve of the served (calibrated) model} rather than inherited
@@ -873,7 +866,7 @@ aggressiveness) rejects clips whose frames contain essentially no actual \emph{s
 during gameplay the microphone mostly hears the game itself, making this the dominant
 real-world contaminant of the voice channel. Rejection is the safe direction: a gated
 segment merely degrades to a low-confidence neutral rather than becoming a spurious
-``angry'' event. (We note honestly that \texttt{webrtcvad} is a speech-tuned model, not
+``angry'' event. (We note that \texttt{webrtcvad} is a speech-tuned model, not
 a universal noise detector --- adversarial synthetic noise can still pass; structured
 game audio is the practical target.) Both gates and the feature extraction live in one
 shared module used identically by serving and by the real-audio training pipeline.
@@ -972,7 +965,7 @@ parent PIN, verified server-side so the PIN is never exposed to the child, and a
 itself raises a parent alert; the family PIN can only be \emph{changed} with a
 parent-role token, and data deletion is likewise parent-only --- a child's own
 authenticated session cannot rewrite or erase its safeguards. Sign-out and sign-in are
-treated symmetrically and honestly: a logout immediately clears the monitoring-health
+treated symmetrically: a logout immediately clears the monitoring-health
 status (the dashboard must not keep claiming ``monitoring active'' off a heartbeat that
 still looks fresh) and suppresses the now-redundant ``gone silent'' watchdog alert,
 while signing back in raises a ``monitoring is active again'' alert and turns the
@@ -1089,7 +1082,7 @@ rather than settle in code.
 % =====================================================================
 \section{Results}
 % =====================================================================
-We report the honest, current metrics from the deployed models (one deliberate
+We report the current metrics from the deployed models (one deliberate
 exception: \S\ref{sec:mlrevisions}'s revision history preserves historical figures,
 each marked as measured at that revision). Headline accuracy is
 deliberately \emph{not} inflated; calibration and realistic-stream behaviour are
@@ -1133,7 +1126,7 @@ adjacent bands: both Casual$\leftrightarrow$Addicted corners are zero.}
 \label{fig:cmbehaviour}
 \end{figure}
 
-\subsection{Chat toxicity model (gaming-domain trained; honest, two views)}
+\subsection{Chat toxicity model (gaming-domain trained; two evaluation views)}
 \label{sec:chatresults}
 Metrics are for the pipeline \emph{as served}: the isotonic-calibrated probability of
 the word~$\cup$~char\_wb model trained on three real corpora (general toxicity +
@@ -1167,8 +1160,8 @@ overlapping subset scores \emph{worse} than the rest (accuracy $0.840$ vs.\
 $0.913$ overall), because a label conflict guarantees an error on one copy of the
 text --- outweighing any memorisation gain --- so the leak-free subset reads
 accuracy $0.922$, PR-AUC $0.935$, Brier $0.062$, all slightly \emph{better} than
-the reported figures. The reported (lower) numbers are retained as the honest
-published values; the assembly now de-duplicates for future retrains (majority
+the reported figures. The reported (lower) numbers are retained unchanged --- the
+conservative choice; the assembly now de-duplicates for future retrains (majority
 label per text, ties resolved toward toxic), recorded by a metadata flag so
 evaluation always reproduces the exact assembly the deployed model was trained on.
 
@@ -1226,7 +1219,7 @@ three messages in a session score above a lower bar ($0.6$, where per-message re
 is $0.84$ in-domain at precision $0.62$), so a genuinely toxic session almost always
 surfaces even when no single line crosses the per-message cutoff; requiring three
 independent flags keeps the aggregate alert's false-positive rate low.
-General-corpus behaviour remains reported above for honesty: out-of-domain precision
+General-corpus behaviour remains reported above for transparency: out-of-domain precision
 is poor, which is expected --- and irrelevant to serving, whose traffic is gaming
 chat.
 
@@ -1264,7 +1257,7 @@ had already flagged as internal validity only. The protocol matters as much as t
 number: under random clip splits this same configuration reads $0.657$, and the
 $\approx 9$-point gap \emph{is the quantified speaker leakage} --- the model partly
 recognising people rather than emotions (\S\ref{sec:evalmethod}). $0.574$ on unseen
-speakers across three languages is the honest generalisation number, and it is why
+speakers across three languages is the corrected generalisation number, and it is why
 voice keeps its low, corroborating-only ensemble weight ($0.30$, tied with chat and
 below behaviour's $0.40$). That weight is \emph{nominal}: availability reweighting
 raises voice's effective share when other channels are absent, and the pilot's
@@ -1317,7 +1310,7 @@ Original (general-only, word-only) & 0.557 [0.532, 0.581] & 0.880 \\
 Domain data dominates everything else combined ($+0.32$ PR-AUC) --- removing CONDA
 collapses the model below even the original recipe's curve shape. Character n-grams
 ($+0.023$) and Davidson ($+0.029$, and $+0.09$ precision at the alert point) are
-each significant. Two honest nuances: the keyword fusion buys only $+0.010$ PR-AUC
+each significant. Two nuances: the keyword fusion buys only $+0.010$ PR-AUC
 --- it is retained primarily for \emph{coverage} (Hinglish/Devanagari abuse the
 TF-IDF vocabulary cannot see) and interpretability, not ranking. And
 \textbf{calibration costs $0.012$ PR-AUC}: isotonic regression creates probability
@@ -1470,7 +1463,7 @@ RandomForest retained for SHAP/calibration, now by evidence; chat: held-out gami
 PR-AUC $0.739 \rightarrow 0.805$, alert precision $0.924$; voice: six families
 compared, \texttt{HistGradientBoosting} adopted on speaker-independent evaluation
 (RBF-SVM led on random splits but the edge was speaker leakage; see
-\S\ref{sec:modelselection}), honest speaker-independent accuracy $0.574$ \\
+\S\ref{sec:modelselection}), speaker-independent accuracy $0.574$ \\
 \addlinespace
 Behaviour play-time distributions + peer-percentile table grounded in a real survey
 of $13{,}464$ gamers (Sauter \& Draschkow 2017, CC-BY) &
@@ -1478,7 +1471,7 @@ The generator's play-time bands and the dashboard's peer percentiles were invent
 the peer table was measurably wrong (10\,h/wk shown as 45th pct; real: 20th) &
 Casual/at-risk/heavy weekly hours now follow empirical percentile segments of the
 aged-$\leq$24 cohort ($n{=}11{,}731$); accuracy moves $0.923 \rightarrow 0.916$
-because \emph{real} class overlap is larger --- the more honest number; direction
+because \emph{real} class overlap is larger --- the more realistic number; direction
 check: hours vs.\ anxiety $r{=}{+}0.065$, vs.\ life satisfaction $r{=}{-}0.119$ \\
 \addlinespace
 Corpus expansion: chat gains Davidson offensive-language tweets ($24{,}783$ real);
@@ -1627,7 +1620,7 @@ bands 51\% casual / 49\% at-risk \\
 Chat rows & 1{,}211 & 1{,}209 via on-device STT, 2 typed (keyboard IME was reset
 mid-pilot, see below); 2 crossed the 0.90 alert bar \\
 Voice events & 1{,}759 & durations 5--10\,s post-VAD; intensity spread 0.20--1.00;
-\textbf{0 rows retain audio}; label skew: 77\% frustrated (see below) \\
+\textbf{0 rows retain audio}; label skew: 77\% frustrated in this 12-day window (see below) \\
 Screen events & 1{,}675 & 652 on / 667 off / 356 unlock (balanced on/off = no
 receiver gaps); 208 late-night --- live sleep-signal data \\
 Alerts & 60 & all 8 types exercised (risk, toxicity, streak, offline, permission,
@@ -1678,7 +1671,7 @@ The pilot's findings, positive and negative alike:
         every served score and category. Rerun on the production pilot database
         (131 completed pilot sessions, demo/probe accounts excluded; replication
         max $|\Delta| = 6{\times}10^{-5}$), the
-        honest picture is \emph{less} flattering than the exploratory one --- which
+        corrected picture is \emph{less} flattering than the exploratory one --- which
         is exactly why the rerun mattered: weight perturbations of $\pm 0.15$ flip a
         median $0.8\%$ and worst-case $10.7\%$ of session bands (not $0.3\%$),
         removing the genre multiplier flips $34.4\%$, and $\pm 0.05$ threshold
@@ -1698,7 +1691,7 @@ The pilot's findings, positive and negative alike:
         flips $12.5\%$. Behaviour+voice reproduces the served decision exactly
         ($100\%$, mean $|\Delta\text{score}| < 10^{-3}$) because typed chat was
         structurally absent in this pilot's no-chat title --- the
-        availability-weighted design operating as intended. Two honest readings
+        availability-weighted design operating as intended. Two readings
         follow: the multimodal fusion demonstrably changes decisions on real data
         (it is not behaviour with decoration), and voice's substantial influence is
         exactly why its documented domain-shift bias (\S6.3) and lowest prior
@@ -1776,7 +1769,8 @@ fix plus a regression guard.
 days ($\sim$11.8 hours; median session $\approx$2 minutes), \textbf{3{,}448 served
 predictions}, 2{,}228 spoken-word transcripts, 132 alerts, and 3{,}564 voice events
 --- 1{,}426 of them now carrying shadow-logged probability vectors for the offline
-voice-mitigation analysis (\S6.3), with the frustrated-label share steady at 79\%.
+voice-mitigation analysis (\S6.3), with the frustrated-label share essentially
+unchanged ($77\%$ in the first 12 days $\rightarrow$ $79\%$ at day 23).
 Three further observations are worth recording. First, an \emph{escalation
 trajectory}: daily session counts on the active device rose from 1--2 in week one to
 16--19 at the week-three peak while sessions stayed short --- a checking-shaped usage
@@ -1796,7 +1790,7 @@ autocorrelation is $0.65$ with a mean day-over-day movement of only $0.035$ on t
 0--1 scale and a band change on 3 of 12 consecutive days --- temporally coherent
 rather than noisy --- while still travelling $0.03 \rightarrow 0.40$ across the
 weeks in which behaviour genuinely shifted: stable \emph{and} responsive, which is
-the profile a daily screening figure must have.) Second, an honest null: the child-side reflection
+the profile a daily screening figure must have.) Second, a null result: the child-side reflection
 check-ins went entirely unused (zero submissions), so the reflections-vs-risk
 external-validity instrument remains data-starved --- self-report streams cannot be
 assumed to collect themselves, and a validation cohort must budget for prompting
@@ -1816,10 +1810,10 @@ as specified.
 Detection & Any-game detection (UsageStats + category + parent overrides), session lifecycle with grace/ancillary handling \\
 Capture & Custom-keyboard (IME) + Accessibility typed-chat (canvas games included), on-device Vosk STT, voice features with silence floor, real behavioural metrics, offline chat retry queue \\
 ML & Calibrated RF behaviour (ten objective features, bake-off-confirmed, survey-grounded play time) + SHAP, \textbf{gaming-domain-trained} calibrated LogReg on word+char\_wb TF-IDF (3 real corpora incl.\ Davidson) with noisy-OR lexicon fusion (incl.\ Hinglish terms) + \textbf{session-level streak alert}, \textbf{real-audio HistGB voice on 36 acoustic features trained on 4 corpora / 154 speakers / 3 languages, speaker-independent evaluation} behind a VAD gate, availability-weighted fusion, valence--arousal voice/text fusion, genre weighting, late-voice re-score, env-tunable thresholds + feedback threshold tuner, in-domain evaluation on held-out CONDA \\
-Credibility & Probability calibration, anomaly detection (robust median/MAD baselines), observation mode, honest model card --- surfaced to the parent in plain language, incl.\ the in-domain chat-alert precision and the real-speech voice accuracy (``why trust this'') --- child-local timezone for hour-of-day signals, \textbf{score-distribution drift monitor} (PSI + KS vs.\ a reference window, incl.\ modality-presence rates that separate capture regressions from model drift) \\
+Credibility & Probability calibration, anomaly detection (robust median/MAD baselines), observation mode, limitations-forward model card --- surfaced to the parent in plain language, incl.\ the in-domain chat-alert precision and the real-speech voice accuracy (``why trust this'') --- child-local timezone for hour-of-day signals, \textbf{score-distribution drift monitor} (PSI + KS vs.\ a reference window, incl.\ modality-presence rates that separate capture regressions from model drift) \\
 Parent value & Per-day weighted risk + ``why'' (SHAP), live ``playing now'' + monitoring-health strip, 14-day trend, recently/most-played games, real-time alerts with friendly ages + feedback agreement rate, weekly report (true weekly numbers) + PDF, limits, send-nudge-to-child, parent-only child-profile editing (name/age/PIN reset; age is deliberately not child-editable --- it feeds the peer comparison and limit caps), switch child without re-login \\
 Child wellbeing & Mira check-in (typing indicator, double-send guard), gamified daily check-in + streak, reflections, breathing, break/limit nudges, today-vs-goal progress \\
-Reliability/anti-tamper & Heartbeat watchdog (uninstall/kill/offline alert, child-local quiet hours), optional Device Admin (uninstall block + instant disable alert), battery-optimisation exemption, double-start-safe services, consent-gated boot resume, parent-PIN lock on logout/settings (server-verified, constant-time), logout \emph{and} login alerts with honest monitoring status, idempotent session-end, self-scoring stale-session guard, per-child risk notifications, multi-guardian FCM push (lazy-init) \\
+Reliability/anti-tamper & Heartbeat watchdog (uninstall/kill/offline alert, child-local quiet hours), optional Device Admin (uninstall block + instant disable alert), battery-optimisation exemption, double-start-safe services, consent-gated boot resume, parent-PIN lock on logout/settings (server-verified, constant-time), logout \emph{and} login alerts with truthful monitoring status, idempotent session-end, self-scoring stale-session guard, per-child risk notifications, multi-guardian FCM push (lazy-init) \\
 Privacy/Security & Token auth + \emph{role} checks on every parent-only endpoint, deleted-account tokens locked out despite the stateless 30-day TTL (TTL-cached existence probe), peppered PIN hashes (validated, family-wide PIN change), HTTPS-only, encrypted token store, consent (versioned), raw-audio deletion, retention purge, parent-controlled data export mirroring the deletion scope (credentials excluded), 16\,MB body cap, opt-in Sentry crash monitoring (stack traces only, no PII), family code always recoverable in PIN-gated Settings \\
 Engineering & Dual-dialect DB with pooled validated Postgres connections + composite indexes on the hot query paths, per-client rate limiting, hot-path caching/throttling + audio-concurrency cap + bounded throttle caches, thread-safe device-side shared state (concurrent cache, crash-safe confirm-then-delete offline queue, WorkManager network-aware retry), signed APKs, layered tests (179 API + 87 Android JVM + 82 production-mode + 25 live-cloud) + concurrency smoke + CI (pytest on SQLite \emph{and} PostgreSQL, Android lint + unit tests per push, weekly drift monitor against the production DB), real-device validated, lint-clean, deployed + durable DB \\
 \bottomrule
@@ -1915,22 +1909,24 @@ anchor for all of these.
 % =====================================================================
 We built and deployed a multimodal gaming-addiction \emph{screening} platform that
 moves beyond raw screen-time to measured behaviour, chat toxicity and voice emotion,
-fused into a calibrated, explainable risk band and surfaced to parents as awareness
-rather than punishment. The engineering is real: native Android apps, a secured cloud
+fused into a single risk band --- calibrated where calibration data exists
+(behaviour, chat), explained through its behavioural factors --- and surfaced to
+parents as awareness rather than punishment. The engineering is real: native Android apps, a secured cloud
 backend, a durable database, signed releases, tamper-resistant background monitoring with
 real-time multi-guardian alerts, a layered passing test program (API suite,
 production-mode functional sweep, live-cloud probe), and end-to-end validation on real
 hardware against the live deployment. Our central
 methodological commitments --- train/serve feature alignment, probability
-calibration, SHAP explanations, availability-weighted fusion, and an honest account
-of synthetic-data limitations --- make the system's outputs trustworthy and
-defensible. Most importantly, the parent-feedback loop turns the platform from a
+calibration, SHAP explanations, availability-weighted fusion, and an explicit account
+of synthetic-data limitations (\S7) --- make the system's outputs auditable and its
+claims checkable. Most importantly, the parent-feedback loop turns the platform from a
 frozen model into one that can learn from real verdicts --- and with the chat and
 voice channels already trained on real data, the behaviour generator's play-time
 distributions grounded in real surveys (its \emph{labels} remain synthetic, pending
 the IGDS9-SF study), and the pilot instruments (threshold tuner, drift monitor, reflections
-correlation) built and tested, that loop is the last credible step from a working
-prototype to a validated product.
+correlation) built and tested, that loop is the necessary next step from a working
+prototype \emph{toward} a validated product --- with the remaining gates (real
+labels at scale, the IGDS9-SF anchor study, ethics review) stated in \S7 and \S9.
 
 % =====================================================================
 \section{Future Work}
@@ -1940,7 +1936,7 @@ labelled speech and the chat model on real gaming-domain data --- was \emph{exec
 during the project} and has been promoted out of Future Work into the results
 (\S\ref{sec:voiceresults}, \S\ref{sec:chatresults}, \S\ref{sec:ablations}); the same
 applies to feedback threshold tuning, drift monitoring, and the code-mixed lexicon
-mitigations. What remains falls into two honest categories: work whose \emph{value}
+mitigations. What remains falls into two categories: work whose \emph{value}
 is gated on real usage data, and directions that need partners or hardware.
 
 \textbf{Data-dependent improvements.}
@@ -1981,7 +1977,7 @@ value depends on accumulating real usage data the prototype does not yet have:
         cannot be back-tested --- so the server now shadow-logs the classifier's full
         probability distribution per event (serving unchanged), and an offline analysis
         (\texttt{ml/analyze\_voice\_shadow.py}) measures what each candidate \emph{would}
-        have served on live pilot audio. The honest limit stands: (i)--(iii) suppress
+        have served on live pilot audio. The limit stands: (i)--(iii) suppress
         \emph{confidently-wrong off-distribution} predictions but cannot raise the
         underlying $57.4\%$ speaker-independent skill --- that is bounded by training
         data, and only real child-condition labelled speech (an opt-in retained-clip
@@ -2008,7 +2004,7 @@ direction rather than as work we can execute alone:
         nine-item questionnaire with self-reported or app-measured behaviour, reporting the
         model's risk score against the instrument (Spearman correlation, and
         sensitivity/specificity at the clinical cut-off), alongside a counsellor or
-        psychologist for the clinical reading. This is the honest path from a screening
+        psychologist for the clinical reading. This is the credible path from a screening
         signal to a clinically-meaningful one --- a supervised study with ethics approval,
         not a coding task. (A step-by-step protocol, including public-dataset links and the
         survey design, is maintained in the project's \texttt{VALIDATION\_PLAN.md}.)
@@ -2025,7 +2021,7 @@ direction rather than as work we can execute alone:
 
 We deliberately \emph{do not} pursue on-device TFLite conversion, transformer/CNN
 swaps, or federated learning at this stage: on synthetic data they add complexity and
-deployment risk without proven benefit, and the honest, calibrated classical ensemble
+deployment risk without proven benefit, and the calibrated classical ensemble
 is both defensible and shippable today.
 
 \vspace{1.5em}
