@@ -1476,8 +1476,9 @@ synthetic figure (\S\ref{sec:voiceresults}); risk-vs-next-day-mood correlation
 computable from data already collected \\
 \addlinespace
 Chat model retrained on gaming-domain data; alert threshold re-chosen (then
-$0.95$/$0.97$, later recalibrated to the deployed $0.90$/$0.95$ alert/high-severity
-pair --- see the rows below); session-level streak alert &
+$0.95$/$0.97$, later recalibrated to $0.90$/$0.95$ on that model's scale; the
+post-dedupe retrain re-derived the pair again, to the current $0.95$/$0.97$ ---
+\S\ref{sec:chatresults}); session-level streak alert &
 General-corpus training was the measured root cause of weak in-domain performance;
 per-message precision-first alerting caps recall, but toxic players repeat &
 Held-out gaming PR-AUC $0.549 \rightarrow 0.739$; repeated moderately-flagged messages now

@@ -51,7 +51,7 @@ risk-flap bugs (`AlertTriage`).
 | `python ml/calibrate_behavior.py` | Fits the behaviour isotonic calibrator; reports the Brier improvement |
 | `python ml/eval_chat_voice.py` | Honest chat metrics (balanced + realistic imbalanced, PR-AUC/Brier); skips voice if the deployed voice model is real-audio-trained |
 | `python ml/train_voice_real.py --jobs 8` | Trains the voice model on real speech (RAVDESS/CREMA-D/EMO-DB/URDU under `data/voice/`); `--smoke` self-tests without data |
-| `python ml/eval_chat_conda.py --csv data/conda/CONDA_train.csv` | In-domain gaming-chat evaluation (threshold sweep, PR-AUC) → `chat_metrics_gaming` |
+| `python ml/eval_chat_conda.py` | In-domain gaming-chat evaluation on the held-out CONDA validation split (threshold sweep, PR-AUC) → `chat_metrics_gaming`. Do NOT pass `--csv data/conda/CONDA_train.csv` — that would score the model on its own training data |
 | `python ml/tune_from_feedback.py` | Converts parent-feedback verdicts into conservative threshold recommendations (`threshold_tuning.json`) + labelled CSV export |
 | `python ml/analyze_reflections.py` | Correlates daily risk vs next-day mood/sleep/energy self-reports (Spearman) |
 | `python ml/ablation_studies.py` | One-component-at-a-time ablations for all three channels (bootstrap 95% CIs) → `docs/ablation_results.json`; `--only chat\|voice\|behaviour` re-runs a section |
