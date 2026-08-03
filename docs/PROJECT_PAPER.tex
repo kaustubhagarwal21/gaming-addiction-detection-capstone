@@ -81,9 +81,10 @@ voice emotion --- into a single risk band (Casual / At-Risk / Addicted; surfaced
 to families as Low / Some / High concern), with the behaviour and chat
 probabilities isotonic-calibrated. Two native Android applications (a Child
 monitoring app and a Parent dashboard) talk to a cloud Flask backend serving a
-weighted ensemble of three classical machine-learning models, chosen over deep
-alternatives for on-device privacy, deployability, SHAP explainability and
-honesty of evaluation. Every model choice is backed by a measured bake-off,
+weighted ensemble of three classical machine-learning models, favoured \emph{a
+priori} over deep alternatives for SHAP explainability, free-tier cloud
+deployability, and a privacy design that reduces raw media to compact features
+and deletes it. Within that class, every model-family choice is backed by a measured bake-off,
 feature and corpus choices by ablations with bootstrap confidence intervals, and
 the fusion priors by sensitivity analyses on live pilot decisions. The pipeline
 is grounded in \emph{nine real, open datasets}: the chat model reaches $0.95$
@@ -1114,7 +1115,8 @@ only ever fall into an \emph{adjacent} band (never Casual$\leftrightarrow$Addict
 both off-diagonal corners of the confusion matrix are zero;
 Fig.~\ref{fig:cmbehaviour}). Probability calibration
 improves the multiclass Brier score from $0.1343$ (uncalibrated) to $0.1275$
-(isotonic), so reported confidences are trustworthy. The accuracy is on a synthetic
+(isotonic), so reported confidences are internally calibrated on the synthetic
+evaluation distribution (their real-world reliability awaits pilot-scale labels). The accuracy is on a synthetic
 held-out split; the value of the result is the calibrated, train/serve-aligned,
 survey-grounded pipeline, not the absolute number.
 
@@ -1164,6 +1166,10 @@ the reported figures. The reported (lower) numbers are retained unchanged --- th
 conservative choice; the assembly now de-duplicates for future retrains (majority
 label per text, ties resolved toward toxic), recorded by a metadata flag so
 evaluation always reproduces the exact assembly the deployed model was trained on.
+The deployed model itself is deliberately retained unchanged until the pilot
+concludes --- swapping models mid-pilot would confound the longitudinal score
+series of \S\ref{sec:pilot} --- so the first de-duplicated retrain is scheduled
+with the post-pilot cycle.
 
 \paragraph{In-domain evaluation on real gaming chat (held-out CONDA split).}
 The serving domain is gaming chat, so the decisive evaluation is on \textbf{CONDA's
@@ -1216,9 +1222,11 @@ Per-message alerting is deliberately precision-first, which caps per-message rec
 --- but toxic players repeat, and repetition is itself evidence. The backend
 therefore raises \emph{one aggregate ``repeated concerning language'' alert} when
 three messages in a session score above a lower bar ($0.6$, where per-message recall
-is $0.84$ in-domain at precision $0.62$), so a genuinely toxic session almost always
-surfaces even when no single line crosses the per-message cutoff; requiring three
-independent flags keeps the aggregate alert's false-positive rate low.
+is $0.84$ in-domain at precision $0.62$), so repeated toxicity in a session
+surfaces even when no single line crosses the per-message cutoff. The three
+flagged messages are correlated (same speaker, same session), so the bar is a
+repetition heuristic that suppresses one-off false positives, not an
+independence-based probability bound.
 General-corpus behaviour remains reported above for transparency: out-of-domain precision
 is poor, which is expected --- and irrelevant to serving, whose traffic is gaming
 chat.
