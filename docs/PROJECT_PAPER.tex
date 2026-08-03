@@ -82,8 +82,9 @@ monitoring app and a Parent dashboard) talking to a cloud Flask backend that ser
 a weighted ensemble of three classical machine-learning models. We deliberately
 favour calibrated, explainable classical models with SHAP attributions over
 heavyweight deep models, prioritising on-device privacy, deployability and honesty
-of evaluation --- and every model choice is backed by a measured bake-off, every
-design choice by an ablation with bootstrap confidence intervals. The pipeline is
+of evaluation --- and every model choice is backed by a measured bake-off, the
+feature and corpus choices by ablations with bootstrap confidence intervals, and
+the fusion priors by sensitivity analyses on live pilot decisions. The pipeline is
 grounded in \emph{nine real, open datasets}: the chat model is trained on real
 in-game and offensive-language corpora, reaches $0.95$ precision at its alert
 threshold on held-out real gaming chat, and is built for the Indian context ---
@@ -460,7 +461,8 @@ really late-night ratio $\times$ re-login ratio in disguise, presented as if it 
 independently measured signal. The model is therefore now trained on the objective ten
 only, and the proxies serve where they belong: as human-readable, UI-level explanations.
 Retraining confirmed the information argument empirically --- held-out accuracy was
-statistically unchanged ($92.3\%$ on ten features vs.\ $92.4\%$ on twenty) --- so the
+statistically unchanged ($91.6\%$ on ten features vs.\ $91.9\%$ on twenty in the
+current retrain, measured under the ablation protocol of \S\ref{sec:ablations}) --- so the
 change costs nothing and buys honest attributions. The backend sizes its model input
 from the fitted scaler, so an older 20-feature model would still be served correctly
 during rollout.
@@ -655,10 +657,11 @@ Logistic Regression (linear baseline) & $0.926 \pm 0.002$ & 0.926 \\
 \bottomrule
 \end{tabular}
 \end{center}
-Every family --- \emph{including the linear baseline} --- lands within $0.7$
-percentage points. The reading is important: on synthetic data whose labels come
+Every family --- \emph{including the linear baseline} --- lands within $0.6$
+percentage points on cross-validation ($1.2$\,pp on the single held-out split). The
+reading is important: on synthetic data whose labels come
 from the generator's own feature distributions, the \emph{data} is the ceiling, not
-the classifier, and chasing the $+0.7$\,pp would be tuning to the generator.
+the classifier, and chasing that gap would be tuning to the generator.
 RandomForest is therefore retained: it keeps exact SHAP \texttt{TreeExplainer}
 support (the parent-facing ``why'' depends on it), the existing calibration stack,
 and zero migration risk --- a decision now backed by measurement rather than habit.
@@ -765,7 +768,9 @@ we additionally report a \emph{realistic, naturally-imbalanced} held-out set, be
 balanced-split accuracy is misleading for a rare-positive problem. Beyond
 single-threshold precision/recall, we now also report \textbf{PR-AUC} (the whole
 precision--recall trade-off, which any one threshold row hides) and the \textbf{Brier
-score} for every channel (how honest the served probabilities are), and probability
+score} for the calibrated channels --- behaviour and chat --- (how honest the served
+probabilities are; the voice channel reports accuracy only, as its four-class output
+feeds a rule-based fusion rather than a probability threshold), and probability
 calibration is measured by the Brier change. Operating thresholds are chosen from the
 \emph{measured realistic curve of the served (calibrated) model} rather than inherited
 from the raw model --- calibration shifts where probabilities land, so a cutoff tuned
@@ -1147,6 +1152,9 @@ validation split} --- $7{,}721$ real Dota~2 utterances the retrained model
 \bottomrule
 \end{tabular}
 \end{center}
+The promised secondary views on this in-domain set: ROC-AUC $0.928$ and MCC $0.633$
+at the alert threshold (per-configuration values for every ablation row are in the
+released \texttt{ablation\_results.json} artifact).
 Fig.~\ref{fig:prchat} shows the full precision--recall curve against the original
 recipe: the deployed pipeline dominates at every operating point.
 Three successive, measured improvements produced it, each adopted
@@ -1413,7 +1421,7 @@ Model-family bake-offs for all three channels; chat gains char\_wb n-grams; voic
 gains MFCC-variance + spectral features and \texttt{HistGradientBoosting} &
 Model choices rested on convention; each deserved a measured comparison matched to
 what its data can support &
-Behaviour: five families within $0.7$\,pp (even the linear baseline) $\rightarrow$
+Behaviour: five families within $0.6$\,pp on CV (even the linear baseline) $\rightarrow$
 RandomForest retained for SHAP/calibration, now by evidence; chat: held-out gaming
 PR-AUC $0.739 \rightarrow 0.805$, alert precision $0.924$; voice: six families
 compared, \texttt{HistGradientBoosting} adopted on speaker-independent evaluation
@@ -1676,11 +1684,13 @@ The pilot's findings, positive and negative alike:
         audio, precisely the domain gap \S6.3 states. The channel's capture is sound;
         its labels await child-speech adaptation (future work), and its low ensemble
         weight already prices this in.
-  \item \textbf{Real parent feedback validated the alert threshold.} The Beta-posterior
-        tuner (\S5.6), run on the pilot's 17 verdicts, put the probability of an
-        excessive false-alarm rate at $0.001$ and recommended \emph{zero change} to the
-        deployed $0.90$ chat-alert threshold --- the first real-label corroboration of
-        an operating point previously chosen from held-out curves alone.
+  \item \textbf{Real parent feedback is consistent with the alert threshold.} The
+        Beta-posterior tuner (\S5.6), run on the pilot's 17 verdicts, put the
+        probability of an excessive false-alarm rate at $0.001$ and recommended
+        \emph{zero change} to the deployed $0.90$ chat-alert threshold. At $n{=}17$
+        (of which only a minority concern chat alerts specifically) this is
+        corroboration, not validation --- but it is the first \emph{real-label} check
+        of an operating point previously chosen from held-out curves alone.
   \item \textbf{The drift monitor's first scheduled runs each taught an operations
         lesson.} Run one flagged PSI up to $5.97$ --- correctly detecting not model
         drift but the \emph{population handover} from seeded demo data to real pilot
@@ -1788,8 +1798,9 @@ calibration, SHAP explanations, availability-weighted fusion, and an honest acco
 of synthetic-data limitations --- make the system's outputs trustworthy and
 defensible. Most importantly, the parent-feedback loop turns the platform from a
 frozen model into one that can learn from real verdicts --- and with the chat and
-voice channels already trained on real data, the behaviour labels grounded in real
-surveys, and the pilot instruments (threshold tuner, drift monitor, reflections
+voice channels already trained on real data, the behaviour generator's play-time
+distributions grounded in real surveys (its \emph{labels} remain synthetic, pending
+the IGDS9-SF study), and the pilot instruments (threshold tuner, drift monitor, reflections
 correlation) built and tested, that loop is the last credible step from a working
 prototype to a validated product.
 
