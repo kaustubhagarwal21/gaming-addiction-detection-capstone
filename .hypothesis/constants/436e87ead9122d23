@@ -1,4 +1,0 @@
-# file: C:\Users\KAUSTUBH\AppData\Local\Packages\PythonSoftwareFoundation.Python.3.11_qbz5n2kfra8p0\LocalCache\local-packages\Python311\site-packages\schemathesis\transport\wsgi.py
-# hypothesis_version: 6.147.0
-
-['Content-Type', 'app', 'application/json', 'application/x-yaml', 'application/xml', 'application/yaml', 'cookies', 'data', 'exception', 'headers', 'localhost', 'method', 'multipart/form-data', 'multipart/mixed', 'params', 'path', 'query_string', 'text/json', 'text/plain', 'text/vnd.yaml', 'text/x-yaml', 'text/xml', 'text/yaml', 'text/yml', 'werkzeug.Client']

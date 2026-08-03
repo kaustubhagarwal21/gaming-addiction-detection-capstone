@@ -1,4 +1,0 @@
-# file: C:\Users\KAUSTUBH\AppData\Local\Packages\PythonSoftwareFoundation.Python.3.11_qbz5n2kfra8p0\LocalCache\local-packages\Python311\site-packages\schemathesis\auths.py
-# hypothesis_version: 6.147.0
-
-[200, 300, 'Auth', 'AuthContext', 'AuthStorage', 'Authorization', 'Case', 'apply_to', 'auth_storage', 'get', 'skip_for']

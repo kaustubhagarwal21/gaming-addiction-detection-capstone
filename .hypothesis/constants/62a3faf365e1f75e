@@ -1,4 +1,0 @@
-# file: C:\Users\KAUSTUBH\AppData\Local\Packages\PythonSoftwareFoundation.Python.3.11_qbz5n2kfra8p0\LocalCache\local-packages\Python311\site-packages\schemathesis\config\_generation.py
-# hypothesis_version: 6.147.0
-
-['[generation]', '_is_default', 'all', 'allow-x00', 'an integer', 'codec', 'database', 'deterministic', 'dictionaries', 'dictionary', 'graphql-allow-null', 'max-examples', 'maximize', 'mode', 'no-shrink', 'probability', 'unique-inputs', 'utf-8']

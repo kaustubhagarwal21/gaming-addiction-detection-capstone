@@ -1,4 +1,0 @@
-# file: C:\Users\KAUSTUBH\AppData\Local\Packages\PythonSoftwareFoundation.Python.3.11_qbz5n2kfra8p0\LocalCache\local-packages\Python311\site-packages\schemathesis\engine\errors.py
-# hypothesis_version: 6.147.0
-
-[1000, '0x[0-9a-fA-F]+', '0xbaaaaaaaaaad', 'Authentication Error', 'Configuration Error', 'Connection aborted', 'DeadlineExceeded', 'ECONNRESET', 'EngineErrorInfo', 'Failed Health Check', 'Hook Error', 'Network Error', 'Runtime Error', 'Scalar ', 'Schema Error', 'UnexpectedError', 'Unhealthy API', '[Errno 104]', '__notes__', 'authentication_error', 'config_error', 'connection_other', 'connection_ssl', 'data_too_large', 'filter_case', 'filter_too_much', 'hook_execution_error', 'large_base_example', 'network_other', 'schema_generic', 'too_slow', 'unclassified', 'while generating']

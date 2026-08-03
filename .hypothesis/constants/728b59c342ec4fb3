@@ -1,4 +1,0 @@
-# file: C:\Users\KAUSTUBH\AppData\Local\Packages\PythonSoftwareFoundation.Python.3.11_qbz5n2kfra8p0\LocalCache\local-packages\Python311\site-packages\schemathesis\core\error_feedback\parsers\jackson.py
-# hypothesis_version: 6.147.0
-
-[-9223372036854775808, -2147483648, -32768, -128, 127, 32767, 2147483647, 9223372036854775807, ',', 'Enum class:', 'T\\d{2}:\\d{2}:\\d{2}$', 'byte', 'chain', 'could not be parsed', 'date-time', 'defaultMessage', 'detail', 'error', 'errors', 'fieldErrors', 'index', 'int', 'long', 'message', 'msg', 'name', 'out of range of', 'short', 'size', 'subErrors', 'type', 'value', 'values']

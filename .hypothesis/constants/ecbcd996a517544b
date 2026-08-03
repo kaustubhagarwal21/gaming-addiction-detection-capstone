@@ -1,4 +1,0 @@
-# file: C:\Users\KAUSTUBH\AppData\Local\Packages\PythonSoftwareFoundation.Python.3.11_qbz5n2kfra8p0\LocalCache\local-packages\Python311\site-packages\schemathesis\specs\openapi\stateful\dependencies\models.py
-# hypothesis_version: 6.147.0
-
-[0.6, 2048, '*/', '/', '/*', 'Guid', 'Guids', 'Id', 'Ids', 'Uuid', 'Uuids', '_', '_guid', '_guids', '_id', '_ids', '_uuid', '_uuids', 'a', 'array', 'body_field', 'fk_fields', 'guid', 'id', 'inputs', 'is_inferred', 'items', 'merge_body', 'method', 'name', 'nested_fk_fields', 'object', 'operationRef', 'operations', 'outputs', 'parameters', 'path', 'path_parameter', 'properties', 'requestBody', 'resource', 'resources', 'source', 'type', 'uuid', 'z', '{id}']

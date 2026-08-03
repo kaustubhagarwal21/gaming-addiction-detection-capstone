@@ -1,4 +1,0 @@
-# file: C:\Users\KAUSTUBH\AppData\Local\Packages\PythonSoftwareFoundation.Python.3.11_qbz5n2kfra8p0\LocalCache\local-packages\Python311\site-packages\schemathesis\cli\validation.py
-# hypothesis_version: 6.147.0
-
-['\x00', ' and ', ':', 'Header', 'The ', '`--auth`', '`--header`', 'authorization', 'auto', 'report_formats', 'report_har_path', 'report_vcr_path', 'request_cert']

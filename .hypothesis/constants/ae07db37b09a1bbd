@@ -1,4 +1,0 @@
-# file: C:\Users\KAUSTUBH\AppData\Local\Packages\PythonSoftwareFoundation.Python.3.11_qbz5n2kfra8p0\LocalCache\local-packages\Python311\site-packages\schemathesis\config\_output.py
-# hypothesis_version: 6.147.0
-
-[512, '[Filtered]', '_csrf', '_csrf_token', '_session', '_xsrf', 'aiohttp_session', 'api-key', 'api_key', 'apikey', 'auth', 'authorization', 'connect.sid', 'cookie', 'credential', 'credentials', 'csrf', 'csrf-token', 'csrf_token', 'csrftoken', 'enabled', 'ip_address', 'key', 'keys-to-sanitize', 'max-lines', 'max-payload-size', 'max-width', 'mysql_pwd', 'passwd', 'password', 'phpsessid', 'private-key', 'private_key', 'privatekey', 'remote-addr', 'remote_addr', 'replacement', 'sanitization', 'secret', 'sensitive-markers', 'session', 'sessionid', 'set-cookie', 'set_cookie', 'token', 'truncation', 'x-api-key', 'x-csrftoken', 'x-forwarded-for', 'x-real-ip', 'x_api_key', 'x_csrftoken', 'x_forwarded_for', 'x_real_ip', 'xsrf-token']

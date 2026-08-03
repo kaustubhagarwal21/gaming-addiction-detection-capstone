@@ -1,4 +1,0 @@
-# file: C:\Users\KAUSTUBH\AppData\Local\Packages\PythonSoftwareFoundation.Python.3.11_qbz5n2kfra8p0\LocalCache\local-packages\Python311\site-packages\schemathesis\core\error_feedback\parsers\go_validator.py
-# hypothesis_version: 6.147.0
-
-['.', ':', 'Field validation for', 'GoValidatorParser', 'array', 'date', 'date-time', 'datetime', 'email', 'error', 'errors', 'float32', 'float64', 'gt', 'gte', 'int', 'int16', 'int32', 'int64', 'int8', 'kind', 'len', 'lt', 'lte', 'map', 'max', 'min', 'namespace', 'oneof', 'param', 'required', 'slice', 'string', 'tag', 'uint', 'uint16', 'uint32', 'uint64', 'uint8', 'uri', 'url', 'uuid']

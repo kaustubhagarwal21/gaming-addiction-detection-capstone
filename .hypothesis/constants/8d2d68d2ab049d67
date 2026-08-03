@@ -1,4 +1,0 @@
-# file: C:\Users\KAUSTUBH\AppData\Local\Packages\PythonSoftwareFoundation.Python.3.11_qbz5n2kfra8p0\LocalCache\local-packages\Python311\site-packages\schemathesis\core\jsonschema\__init__.py
-# hypothesis_version: 6.147.0
-
-[1024, 150000000, '$ref', '/', 'ALL_KEYWORDS', 'BUNDLE_STORAGE_KEY', 'BundleCache', 'BundleError', 'Bundler', 'DRAFT_03_DIALECT', 'FANCY_REGEX_OPTIONS', 'date', 'date-time', 'duration', 'email', 'formats', 'get_type', 'hostname', 'idn-email', 'idn-hostname', 'ipv4', 'ipv6', 'iri', 'iri-reference', 'is_valid', 'json-pointer', 'make_validator', 'make_validator_for', 'pattern_options', 'regex', 'schema_with_bundle', 'time', 'unbundle', 'unbundle_path', 'uri', 'uri-reference', 'uri-template', 'uuid', 'validate_formats']

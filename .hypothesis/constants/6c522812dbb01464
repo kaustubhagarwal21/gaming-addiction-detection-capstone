@@ -1,4 +1,0 @@
-# file: C:\Users\KAUSTUBH\AppData\Local\Packages\PythonSoftwareFoundation.Python.3.11_qbz5n2kfra8p0\LocalCache\local-packages\Python311\site-packages\schemathesis\specs\openapi\negative\value_channel.py
-# hypothesis_version: 6.147.0
-
-[1024, '$ref', '*', '-', '/', '/items', '2024-01-01T12:99:00Z', '2024-13-01', '_', '__not_in_enum__', 'additionalProperties', 'date', 'date-time', 'email', 'enum', 'format', 'format:date', 'format:date-time', 'format:email', 'format:uuid', 'g', 'items', 'maxLength', 'maximum', 'minLength', 'minimum', 'multipleOf', 'pattern', 'properties', 'required', 'useratexample.com', 'uuid']

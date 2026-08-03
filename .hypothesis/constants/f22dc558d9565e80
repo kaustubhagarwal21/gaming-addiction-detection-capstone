@@ -1,4 +1,0 @@
-# file: C:\Users\KAUSTUBH\AppData\Local\Packages\PythonSoftwareFoundation.Python.3.11_qbz5n2kfra8p0\LocalCache\local-packages\Python311\site-packages\schemathesis\core\error_feedback\parsers\confluent.py
-# hypothesis_version: 6.147.0
-
-[400, 500, 40000, 50000, 'ConfluentParser', '^Empty batch\\.?$', '^[a-zA-Z0-9._-]+$', 'data', 'error_code', 'message', 'topic_name']

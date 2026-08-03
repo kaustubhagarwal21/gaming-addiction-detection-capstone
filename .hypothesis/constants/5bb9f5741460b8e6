@@ -1,4 +1,0 @@
-# file: C:\Users\KAUSTUBH\AppData\Local\Packages\PythonSoftwareFoundation.Python.3.11_qbz5n2kfra8p0\LocalCache\local-packages\Python311\site-packages\schemathesis\core\error_feedback\parsers\ajv.py
-# hypothesis_version: 6.147.0
-
-['/', 'AjvParser', 'FST_ERR_VALIDATION', 'allowedValues', 'body', 'code', 'dataPath', 'enum', 'errors', 'exclusiveMaximum', 'exclusiveMinimum', 'format', 'headers', 'instancePath', 'keyword', 'limit', 'location', 'maxItems', 'maxLength', 'maximum', 'message', 'minItems', 'minLength', 'minimum', 'missingProperty', 'params', 'path', 'pattern', 'query', 'required', 'rest', 'type']

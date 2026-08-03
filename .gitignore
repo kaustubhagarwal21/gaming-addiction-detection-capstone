@@ -101,3 +101,6 @@ backend/models/threshold_tuning.json
 # HASOC 2019 Hindi (registration-gated upstream; rebuild via ml/fetch_hasoc_hindi.py)
 data/hasoc2019_hindi_heldout.csv
 data/hasoc_hindi_raw.tsv
+
+# Hypothesis/Schemathesis property-test cache (regenerated per run)
+.hypothesis/

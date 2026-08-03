@@ -1,4 +1,0 @@
-# file: C:\Users\KAUSTUBH\AppData\Local\Packages\PythonSoftwareFoundation.Python.3.11_qbz5n2kfra8p0\LocalCache\local-packages\Python311\site-packages\schemathesis\cli\commands\replay\__init__.py
-# hypothesis_version: 6.147.0
-
-['*/cache/crashes', '--help', '--keep', '--schema-location', '--url', '-h', '.json', 'Replaying', 'base_url', 'case_id', 'crashes', 'help_option_names', 'path', 'replay', 'terminal_width']

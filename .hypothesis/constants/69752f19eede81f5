@@ -1,4 +1,0 @@
-# file: C:\Users\KAUSTUBH\AppData\Local\Packages\PythonSoftwareFoundation.Python.3.11_qbz5n2kfra8p0\LocalCache\local-packages\Python311\site-packages\schemathesis\config\_operations.py
-# hypothesis_version: 6.147.0
-
-['-regex', '[]', '_cache', '_filter_set', '_rate_limit', '_regex', 'auth', 'auto', 'checks', 'continue-on-failure', 'continue_on_failure', 'enabled', 'exclude-by', 'generation', 'headers', 'include-by', 'max-attempts', 'max-redirects', 'max_redirects', 'method', 'name', 'operation-id', 'operation_id', 'operations', 'parameters', 'path', 'phases', 'proxy', 'rate-limit', 'rate_limit', 'request-cert', 'request-cert-key', 'request-retries', 'request-timeout', 'request_cert', 'request_cert_key', 'request_retries', 'request_timeout', 'servers', 'tag', 'tls-verify', 'tls_verify', 'warnings']

@@ -1,4 +1,0 @@
-# file: C:\Users\KAUSTUBH\AppData\Local\Packages\PythonSoftwareFoundation.Python.3.11_qbz5n2kfra8p0\LocalCache\local-packages\Python311\site-packages\schemathesis\transport\requests.py
-# hypothesis_version: 6.147.0
-
-['*', '?', 'Authorization', 'Content-Type', 'additionalProperties', 'all', 'application/json', 'application/x-yaml', 'application/xml', 'application/yaml', 'array', 'ascii', 'auth', 'base64', 'base_url', 'binary', 'call', 'call_and_validate', 'cert', 'content-type', 'cookies', 'data', 'dict[str, Any]', 'encoding', 'files', 'form-data', 'format', 'headers', 'items', 'json', 'latin-1', 'max_redirects', 'method', 'mixed', 'multipart', 'multipart/form-data', 'multipart/mixed', 'object', 'params', 'properties', 'proxies', 'requests.Session', 'schema', 'text/json', 'text/plain', 'text/vnd.yaml', 'text/x-yaml', 'text/xml', 'text/yaml', 'text/yml', 'timeout', 'type', 'url', 'utf-8', 'utf8', 'verify']

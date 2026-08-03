@@ -1,4 +1,0 @@
-# file: C:\Users\KAUSTUBH\AppData\Local\Packages\PythonSoftwareFoundation.Python.3.11_qbz5n2kfra8p0\LocalCache\local-packages\Python311\site-packages\schemathesis\config\_error.py
-# hypothesis_version: 6.147.0
-
-[0.6, '$defs', ', ', 'AuthConfig', 'DictionaryDefinition', 'Must be at least', 'Must be at most', 'Must be greater than', 'OperationConfig', 'a boolean', 'a number', 'a string', 'additionalProperties', 'an array', 'an integer', 'an object', 'anyOf', 'api_key', 'array', 'auth', 'bearer', 'boolean', 'enum', 'exclusiveMinimum', 'from-file', 'integer', 'maximum', 'minProperties', 'minimum', 'null', 'number', 'object', 'oneOf', 'openapi', 'password', 'properties', 'request-retries', 'required', 'root', 'string', 'type', 'username', 'value', 'values', 'workers']

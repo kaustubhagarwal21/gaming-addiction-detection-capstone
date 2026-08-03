@@ -1,4 +1,0 @@
-# file: C:\Users\KAUSTUBH\AppData\Local\Packages\PythonSoftwareFoundation.Python.3.11_qbz5n2kfra8p0\LocalCache\local-packages\Python311\site-packages\schemathesis\specs\openapi\examples.py
-# hypothesis_version: 6.147.0
-
-['$ref', 'allOf', 'anyOf', 'body', 'cookies', 'example', 'examples', 'externalValue', 'headers', 'items', 'media_type', 'minItems', 'not', 'null', 'oneOf', 'path_parameters', 'properties', 'query', 'required', 'schema', 'type', 'value', 'x-example', 'x-examples']

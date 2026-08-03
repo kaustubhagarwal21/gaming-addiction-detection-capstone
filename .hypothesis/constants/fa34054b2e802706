@@ -1,4 +1,0 @@
-# file: C:\Users\KAUSTUBH\AppData\Local\Packages\PythonSoftwareFoundation.Python.3.11_qbz5n2kfra8p0\LocalCache\local-packages\Python311\site-packages\schemathesis\cli\commands\run\__init__.py
-# hypothesis_version: 6.147.0
-
-[',', '--no-shrink', '--phases', 'Filtering options', 'Global options', 'Options', 'Output options', 'coverage', 'examples', 'exclude_by', 'exclude_deprecated', 'exclude_method', 'exclude_method_regex', 'exclude_name', 'exclude_name_regex', 'exclude_operation_id', 'exclude_path', 'exclude_path_regex', 'exclude_tag', 'exclude_tag_regex', 'fuzzing', 'generation_no_shrink', 'include_by', 'include_method', 'include_method_regex', 'include_name', 'include_name_regex', 'include_operation_id', 'include_path', 'include_path_regex', 'include_tag', 'include_tag_regex', 'stateful']

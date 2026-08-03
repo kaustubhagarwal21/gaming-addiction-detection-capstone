@@ -1,4 +1,0 @@
-# file: C:\Users\KAUSTUBH\AppData\Local\Packages\PythonSoftwareFoundation.Python.3.11_qbz5n2kfra8p0\LocalCache\local-packages\Python311\site-packages\schemathesis\core\cache\models.py
-# hypothesis_version: 6.147.0
-
-['auth_required', 'base_url', 'body', 'cookies', 'created_at', 'error_feedback', 'format_version', 'headers', 'id', 'kind', 'last_replayed_run', 'method', 'method_not_allowed', 'next_run_id', 'observation_keys', 'operation', 'path_parameters', 'query', 'request', 'schema_location', 'schemathesis_version']

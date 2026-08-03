@@ -1,4 +1,0 @@
-# file: C:\Users\KAUSTUBH\AppData\Local\Packages\PythonSoftwareFoundation.Python.3.11_qbz5n2kfra8p0\LocalCache\local-packages\Python311\site-packages\schemathesis\specs\openapi\headers.py
-# hypothesis_version: 6.147.0
-
-[0.5, 0.75, 127, 10000, '"', '*', ',', ', ', '_http_date_header', '_if_match_header', '_range_header', 'bytes=', 'if-match', 'if-modified-since', 'if-none-match', 'if-unmodified-since', 'invalid=0-100', 'range']

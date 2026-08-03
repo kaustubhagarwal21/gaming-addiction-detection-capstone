@@ -1,4 +1,0 @@
-# file: C:\Users\KAUSTUBH\AppData\Local\Packages\PythonSoftwareFoundation.Python.3.11_qbz5n2kfra8p0\LocalCache\local-packages\Python311\site-packages\schemathesis\generation\stateful\state_machine.py
-# hypothesis_version: 6.147.0
-
-[0.15, '.TestCase', 'BaseSchema', '\\W|^(?=\\d)', '_', '__', 'after_validate', 'applied_parameters', 'case', 'case_id', 'defines no rules', 'definition', 'error', 'expression', 'history', 'id', 'is_inferred', 'is_required', 'parameter_name', 'parameters', 'parent_id', 'request_body', 'response', 'source', 'stateful_callback', 'stateful_schema', 'target', 'transition', 'value', 'verify']

@@ -1,4 +1,0 @@
-# file: C:\Users\KAUSTUBH\AppData\Local\Packages\PythonSoftwareFoundation.Python.3.11_qbz5n2kfra8p0\LocalCache\local-packages\Python311\site-packages\schemathesis\config\_diff_base.py
-# hypothesis_version: 6.147.0
-
-['DiffBase', 'T', '_', '__dataclass_fields__', '__name__', '_filter_set', '_rate_limit', '_seed', 'filter_set', 'rate_limit', 'seed']

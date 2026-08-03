@@ -1,4 +1,0 @@
-# file: C:\Users\KAUSTUBH\AppData\Local\Packages\PythonSoftwareFoundation.Python.3.11_qbz5n2kfra8p0\LocalCache\local-packages\Python311\site-packages\schemathesis\core\jsonschema\references.py
-# hypothesis_version: 6.147.0
-
-['$comment', '$defs', '$id', '$ref', '$schema', 'additionalItems', 'additionalProperties', 'allOf', 'anyOf', 'default', 'definitions', 'deprecated', 'description', 'example', 'examples', 'items', 'maxItems', 'minItems', 'oneOf', 'patternProperties', 'prefixItems', 'properties', 'readOnly', 'required', 'title', 'writeOnly']

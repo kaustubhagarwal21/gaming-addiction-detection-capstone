@@ -1,4 +1,0 @@
-# file: C:\Users\KAUSTUBH\AppData\Local\Packages\PythonSoftwareFoundation.Python.3.11_qbz5n2kfra8p0\LocalCache\local-packages\Python311\site-packages\schemathesis\reporting\crashes\__init__.py
-# hypothesis_version: 6.147.0
-
-['*.json', '[^A-Za-z0-9]+', '_', '_directory', '_written', 'base_url', 'body', 'case_body', 'case_headers', 'case_id', 'checks', 'code_sample', 'cookies', 'created_at', 'fingerprint', 'format_version', 'headers', 'link', 'manifest.json', 'media_type', 'message', 'meta', 'method', 'name', 'operation', 'operationId', 'parameters', 'parent_index', 'path', 'path_parameters', 'path_template', 'query', 'requestBody', 'response', 'schema_location', 'schemathesis_version', 'sequence', 'status', 'status_code', 'unknown', 'url', 'url_template']

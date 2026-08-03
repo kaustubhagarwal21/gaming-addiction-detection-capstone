@@ -1,4 +1,0 @@
-# file: C:\Users\KAUSTUBH\AppData\Local\Packages\PythonSoftwareFoundation.Python.3.11_qbz5n2kfra8p0\LocalCache\local-packages\Python311\site-packages\schemathesis\engine\events.py
-# hypothesis_version: 6.147.0
-
-['EngineEvent', 'delay', 'elapsed_time', 'exception', 'failures', 'id', 'info', 'is_final', 'label', 'operation', 'payload', 'phase', 'recorder', 'related_to_operation', 'retries_left', 'running_time', 'skip_reason', 'skip_warning', 'status', 'stop_reason', 'suite_id', 'timestamp', 'value', 'warnings', 'worker_id']

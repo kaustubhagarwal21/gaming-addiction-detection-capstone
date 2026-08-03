@@ -1,4 +1,0 @@
-# file: C:\Users\KAUSTUBH\AppData\Local\Packages\PythonSoftwareFoundation.Python.3.11_qbz5n2kfra8p0\LocalCache\local-packages\Python311\site-packages\schemathesis\cli\output.py
-# hypothesis_version: 6.147.0
-
-[240, ', ', '-', '=', 'API Operations:', 'Empty test suite', 'Errors:', 'FAILURES', 'Failures:', 'Loading', 'PYTEST_VERSION', 'PYTHONIOENCODING', 'Reproduce with', 'Schema Loading Error', 'Seed: ', 'Test Execution Error', 'Test cases:', '_', 'bold', 'bright_white', 'clock', 'color_system', 'cyan', 'dev', 'force_terminal', 'green', 'red', 'replace', 's', 'utf-8', 'v', 'white', 'width', 'yellow', '━', '⚡  ', '✅  ', '❌  ']

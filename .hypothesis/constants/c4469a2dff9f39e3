@@ -1,4 +1,0 @@
-# file: C:\Users\KAUSTUBH\AppData\Local\Packages\PythonSoftwareFoundation.Python.3.11_qbz5n2kfra8p0\LocalCache\local-packages\Python311\site-packages\schemathesis\core\error_feedback\store.py
-# hypothesis_version: 6.147.0
-
-[100, '_buckets', '_generation', '_lock', 'enum', 'format', 'max', 'min', 'must_not_be_blank', 'numeric_bound', 'pattern', 'size_bound', 'type_mismatch', 'unexpected_property']
