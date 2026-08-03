@@ -130,12 +130,17 @@ def main():
                          AND p.id=(SELECT MAX(p2.id) FROM predictions p2
                                   WHERE p2.session_id=p.session_id
                                     AND p2.behavior_present IS NOT NULL)'''
+    # user_id NOT IN (1, 3): the seeded demo family shares the production database
+    # with real pilot children, and E2E/functional probes exercise those accounts —
+    # the same contamination class the reflections analysis had to exclude. A pilot
+    # sensitivity claim must be computed on pilot traffic only.
     cur.execute(f'''SELECT p.behavior_score AS b, p.chat_score AS c, p.voice_score AS v,
                            p.behavior_present AS bp, p.chat_present AS cp,
                            p.voice_present AS vp, p.final_risk_score AS fin,
                            p.risk_category AS category, s.game_name AS game
                     FROM predictions p JOIN sessions s ON s.session_id = p.session_id
                     WHERE p.timestamp >= {ph} AND p.behavior_present IS NOT NULL
+                    AND s.user_id NOT IN (1, 3)
                     {unit_filter}''',
                 (args.since,))
     rows = []
