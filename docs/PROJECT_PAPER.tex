@@ -502,7 +502,7 @@ source could. First, the real severity base rate --- $6.4\%$ of active gamers sc
 at or above the IGDS9-SF disordered-range cutoff ($\geq$36) --- the population
 reality behind the system's precision-first alerting and observation mode. Second,
 empirical validation of the chat channel's premise: players reporting toxic-speech
-involvement score significantly higher on IGD severity (\S4.4). It lacks a playtime
+involvement score significantly higher on IGD severity (\S4.5). It lacks a playtime
 variable, so it cannot ground the hours bands (the Gamers~\&~Anxiety survey does
 that); the two datasets cover complementary halves of the sim-to-real gap. The
 parent-feedback loop remains the designed path to labels from the system's own
@@ -1624,12 +1624,13 @@ The pilot's findings, positive and negative alike:
         prediction from each completed session, preserves the observation-mode
         ceiling, covers all 37 grid points, and refuses output unless it reproduces
         every served score and category. Rerun on the production pilot database
-        (134 completed sessions; replication max $|\Delta| = 6{\times}10^{-5}$), the
+        (131 completed pilot sessions, demo/probe accounts excluded; replication
+        max $|\Delta| = 6{\times}10^{-5}$), the
         honest picture is \emph{less} flattering than the exploratory one --- which
         is exactly why the rerun mattered: weight perturbations of $\pm 0.15$ flip a
-        median $1.5\%$ and worst-case $10.4\%$ of session bands (not $0.3\%$),
-        removing the genre multiplier flips $33.6\%$, and $\pm 0.05$ threshold
-        shifts flip up to $26.1\%$. The stakes ranking stands --- thresholds and the
+        median $0.8\%$ and worst-case $10.7\%$ of session bands (not $0.3\%$),
+        removing the genre multiplier flips $34.4\%$, and $\pm 0.05$ threshold
+        shifts flip up to $26.7\%$. The stakes ranking stands --- thresholds and the
         genre effect are the high-stakes priors, the weights moderate --- and is
         precisely why the IGDS9-SF anchoring study targets the thresholds first. A
         prevalence-anchoring method for the top-band threshold is implemented and
@@ -1638,12 +1639,12 @@ The pilot's findings, positive and negative alike:
         traffic.} The same replication-gated analysis re-fuses each session using
         only a subset of its captured channels (weights renormalised, genre and
         observation-cap policy unchanged --- exactly what serving would have
-        produced had the other channels never been captured). On the pilot's 134
+        produced had the other channels never been captured). On the pilot's 131
         sessions: behaviour alone agrees with the full decision in only $67.7\%$ of
         sessions --- i.e.\ \emph{removing voice changes the parent-visible band
         roughly a third of the time} --- while dropping behaviour (chat+voice only)
-        flips $13.7\%$. Behaviour+voice reproduces the served decision exactly
-        ($100\%$, mean $|\Delta\text{score}| = 0.002$) because typed chat was
+        flips $12.5\%$. Behaviour+voice reproduces the served decision exactly
+        ($100\%$, mean $|\Delta\text{score}| < 10^{-3}$) because typed chat was
         structurally absent in this pilot's no-chat title --- the
         availability-weighted design operating as intended. Two honest readings
         follow: the multimodal fusion demonstrably changes decisions on real data
@@ -1654,8 +1655,8 @@ The pilot's findings, positive and negative alike:
         The same replication-gated harness also tested the fusion \emph{rule}
         itself: a weighted sum assumes channel evidence combines additively, so we
         re-banded every session under the two standard alternatives. Noisy-OR
-        (union of independent evidence) would have flipped $46.3\%$ of session
-        bands and max-pooling $33.6\%$ --- and in \emph{every single case the flip
+        (union of independent evidence) would have flipped $45.0\%$ of session
+        bands and max-pooling $32.1\%$ --- and in \emph{every single case the flip
         is upward}. Both alternatives let the loudest channel decide, which in
         this pilot means letting the frustrated-biased voice model unilaterally
         escalate a third to half of all sessions. The weighted mean is therefore
