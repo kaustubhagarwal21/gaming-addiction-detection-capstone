@@ -61,7 +61,8 @@ Kanak Goyal (PES1UG23CS279) \and
 Vidisha Murali (PES1UG23CS681) \\[0.5em]
 \textit{Under the guidance of Prof. Suresh Jamadagni} \\
 \textit{Department of Computer Science and Engineering, PES University} \\
-\textit{Capstone Project PW26\_SJ\_05 (UE23CS320B), January--May 2026}
+\textit{Capstone Project PW26\_SJ\_05 (UE23CS320B), January--May 2026} \\
+\textit{(live family pilot and evaluation continued through August 2026)}
 }
 \date{}
 
@@ -76,8 +77,9 @@ routine in adolescents, yet most existing tools track only raw screen time and
 miss the behavioural and emotional patterns that distinguish healthy play from
 problematic use. We present a deployed, multimodal screening platform that fuses
 three signals collected during real gameplay --- objective play behaviour, in-game
-chat toxicity, and voice emotion --- into a single calibrated risk band (Casual /
-At-Risk / Addicted). The system comprises two native Android applications (a Child
+chat toxicity, and voice emotion --- into a single risk band (Casual / At-Risk /
+Addicted; surfaced to families as Low / Some / High concern), with the behaviour
+and chat probabilities isotonic-calibrated. The system comprises two native Android applications (a Child
 monitoring app and a Parent dashboard) talking to a cloud Flask backend that serves
 a weighted ensemble of three classical machine-learning models. We deliberately
 favour calibrated, explainable classical models with SHAP attributions over
@@ -91,14 +93,15 @@ threshold on held-out real gaming chat, and is built for the Indian context ---
 code-mixed Hinglish/Devanagari abuse is detected whether typed or \emph{spoken}
 (transcribed on-device; short WAV segments are also sent over HTTPS for acoustic
 inference and deleted server-side after feature extraction); the voice model is trained on $9{,}817$ real
-speech clips across $154$ speakers in three languages and evaluated
+speech clips across $154$ ingested speakers in three languages and evaluated
 speaker-independently; the behaviour generator's play-time distributions and the
 dashboard's peer percentiles follow a real survey of $13{,}464$ gamers; and an
 $11{,}191$-respondent IGDS9-SF dataset validates both the severity base rate and the
 chat channel's core premise. The platform is production-deployed (HTTPS, token
 authentication, parental consent, a durable managed database), ships a
-parent-feedback loop that converts real verdicts into training labels plus a
-drift monitor for the pilot phase --- and a consented live family pilot has since
+parent-feedback loop that converts real accurate/false-alarm verdicts into measured
+threshold recommendations (weak labels, usable for tuning today and as one input to
+future retraining) plus a drift monitor for the pilot phase --- and a consented live family pilot has since
 exercised every capture channel and alert type in production (55 auto-detected
 sessions and 1{,}660 served predictions in its first 12 days, including the full
 spoken-abuse chain firing unprompted) --- and provides a parent-to-child nudge channel so
@@ -240,7 +243,8 @@ shipped as a live, privacy-engineered system. Our contribution is the \emph{comb
 actually deployed}: (i)~a custom-keyboard (IME) path that captures the child's typed
 in-game chat even in canvas games such as Roblox that the accessibility API cannot read,
 without screen OCR; (ii)~an availability-weighted fusion of behaviour, chat and voice
-into a single \emph{calibrated, SHAP-explainable} risk band; (iii)~abuse detection built
+into a single risk band, with isotonic-calibrated behaviour/chat probabilities and
+SHAP-explained behavioural factors; (iii)~abuse detection built
 for the \emph{Indian} gaming context --- code-mixed Hinglish and Devanagari text fused
 with the calibrated English model, and spoken abuse transcribed \emph{on-device}
 (Indian-English STT) into the same channel --- where keyword monitors are
@@ -294,7 +298,7 @@ Honest realistic-stream evaluation                      & \capN & \capN & \capP 
 % =====================================================================
 \section{System Architecture with Explanation}
 % =====================================================================
-The platform follows a three-tier architecture (Figure-equivalent shown below):
+The platform follows a three-tier architecture (Fig.~\ref{fig:arch}):
 a \textbf{data-collection tier} (Child app), a \textbf{serving tier} (Flask backend +
 ML ensemble), and a \textbf{presentation tier} (Parent app).
 
@@ -335,7 +339,7 @@ ML ensemble), and a \textbf{presentation tier} (Parent app).
   {\textbf{VOICE} (30\%)\\ HistGB, 4-class\\ + valence--arousal fusion};
 % ---- fusion + output + store ----
 \node[fuse, below=1.1cm of chat] (fuse)
-  {availability-weighted ensemble $\to$ risk $0..1$ $\to$ \textbf{Low / Some / High concern}};
+  {availability-weighted ensemble $\to$ risk $0$--$1$ $\to$ \textbf{Low / Some / High concern}};
 \node[db, right=1.0cm of fuse] (db) {Managed Postgres (Neon) / SQLite};
 % ---- edges ----
 \draw[flow] (child.south) |- ([yshift=-6mm]child.south) -| (backend.north west)
@@ -627,8 +631,10 @@ reads $0.657$ under random splits and $0.574$ speaker-independent, a $\approx 9$
 inflation that also \emph{flipped the model-selection verdict}
 (\S\ref{sec:modelselection}).
 
-\textbf{Uncertainty and ablations.} Headline metrics carry bootstrap $95\%$
-confidence intervals (1{,}000 test-set resamples), so ``improvements'' inside the
+\textbf{Uncertainty and ablations.} Bake-off and ablation metrics carry bootstrap $95\%$
+confidence intervals (1{,}000 test-set resamples; single-model headline tables report
+point estimates, with the matching CI-bearing ablation row as the uncertainty
+reference), so ``improvements'' inside the
 interval are named as noise. Design choices are audited by one-component-at-a-time
 ablations against fixed test sets (\S\ref{sec:ablations}). Every table and figure is
 regenerated by a named script (\texttt{ml/ablation\_studies.py},
@@ -904,7 +910,7 @@ that a static threshold on a single session might miss, and complements the glob
 risk bands with a personalised ``different from this child's normal'' signal.
 
 \subsection{Parent feedback loop}
-Each alert in the Parent app carries an ``\emph{Was this assessment accurate?}''
+Each alert in the Parent app carries a ``\emph{Was this assessment accurate?}''
 control. A verdict is stored via \texttt{POST /api/feedback} together with a snapshot
 of the model's category and score at that moment, giving a growing set of real labels
 for future retraining; an aggregate \emph{agreement rate} is exposed as a real-world
@@ -1073,7 +1079,9 @@ rather than settle in code.
 % =====================================================================
 \section{Results}
 % =====================================================================
-We report the honest, current metrics from the deployed models. Headline accuracy is
+We report the honest, current metrics from the deployed models (one deliberate
+exception: \S\ref{sec:mlrevisions}'s revision history preserves historical figures,
+each marked as measured at that revision). Headline accuracy is
 deliberately \emph{not} inflated; calibration and realistic-stream behaviour are
 reported alongside.
 
@@ -1231,7 +1239,11 @@ $\approx 9$-point gap \emph{is the quantified speaker leakage} --- the model par
 recognising people rather than emotions (\S\ref{sec:evalmethod}). $0.574$ on unseen
 speakers across three languages is the honest generalisation number, and it is why
 voice keeps its low, corroborating-only ensemble weight ($0.30$, tied with chat and
-below behaviour's $0.40$). The earlier measured
+below behaviour's $0.40$). That weight is \emph{nominal}: availability reweighting
+raises voice's effective share when other channels are absent, and the pilot's
+channel-contribution analysis (\S\ref{sec:pilot}) measures the real influence ---
+removing voice would change roughly a third of served bands --- which is why the
+channel's domain-shift mitigations are monitored, not assumed away. The earlier measured
 gains survive the protocol correction in kind (variance features and corpus
 diversity still help; the ablation table in \S\ref{sec:ablations} quantifies each
 under the corrected protocol); the confusion structure
@@ -1282,8 +1294,11 @@ each significant. Two honest nuances: the keyword fusion buys only $+0.010$ PR-A
 --- it is retained primarily for \emph{coverage} (Hinglish/Devanagari abuse the
 TF-IDF vocabulary cannot see) and interpretability, not ranking. And
 \textbf{calibration costs $0.012$ PR-AUC}: isotonic regression creates probability
-plateaus (ties) that coarsen ranking. We accept that deliberately --- calibration is
-what makes the $0.90$ threshold \emph{mean} ``$95\%$ precision'', and threshold
+plateaus (ties) that coarsen ranking. We accept that deliberately --- on the
+calibrated scale the $0.90$ threshold \emph{empirically achieved} $95\%$ held-out
+in-domain precision (the served score is the calibrated probability fused with the
+lexicon by noisy-OR, so the guarantee is the measured operating point, not
+calibration theory), and threshold
 semantics matter more to this product than the last centile of ranking resolution.
 
 \textbf{Voice} (speaker-independent; fixed test set of $1{,}880$ original clips from
@@ -1329,13 +1344,13 @@ reports quadratic-weighted kappa (QWK --- errors penalised by squared band
 distance) and the count of \emph{non-adjacent} errors (two-band jumps,
 Casual$\leftrightarrow$Addicted), which plain accuracy and F1 price no differently
 from a one-band miss. The first row is the \emph{thesis baseline}: the project's
-core claim is that multimodal behaviour patterns beat screen-time counting, so the
+core claim is that rich behavioural patterns beat screen-time counting, so the
 table must contain screen-time counting. Deliberately given its best shot --- both
 hours features, the same model family, protocol and CIs as every other row --- a
 well-fit hours-only model reaches $0.702$, \textbf{21.4 points below the deployed
 feature set} with cleanly disjoint intervals; and the ordinal view sharpens the
 verdict --- the hours-only model commits \textbf{seven} Casual$\leftrightarrow$Addicted
-two-band errors on the 5{,}000-row test set, a failure mode \emph{every} multimodal
+two-band errors on the 5{,}750-row test set, a failure mode \emph{every} richer
 feature set avoids entirely. The central claim is measured, not asserted. The derived
 proxies add nothing beyond the objective ten (overlapping CIs --- confirming
 \S\ref{sec:features} empirically). More interesting: the five \emph{pattern}
@@ -1358,6 +1373,8 @@ Brier ($0.088 \rightarrow 0.075$ then) predates the eval-leakage correction of
 \S\ref{sec:chatresults}, whose final held-out Brier is $0.074 \rightarrow 0.070$.
 
 \begin{xltabular}{\linewidth}{p{3.1cm}XX}
+\caption{ML pipeline revisions: motivation and measured effect of each change.}
+\label{tab:revisions}\\
 \toprule
 \textbf{Change} & \textbf{Why} & \textbf{Measured effect} \\
 \midrule
@@ -1826,7 +1843,8 @@ value depends on accumulating real usage data the prototype does not yet have:
         accuracy into validated performance. The pilot's sensitivity analysis
         (\S\ref{sec:pilot}) already \emph{prioritises} this agenda: genre weighting and band
         thresholds measurably drive outcomes and go first; the ensemble weights
-        measurably do not ($\leq 0.3\%$ band impact) and can wait. Needs a pilot at
+        matter less (median $0.8\%$ of session bands across the weight simplex,
+        though worst-case corners reach $10.7\%$) and can wait behind them. Needs a pilot at
         scale, plus the IGDS9-SF ground-truth instrument (per-child parent-report
         scores linked to telemetry; a locally floated adult survey supplies the
         population prevalence anchor meanwhile).
