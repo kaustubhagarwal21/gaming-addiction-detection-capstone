@@ -116,7 +116,7 @@ the data ablation (slide 9) shows domain data mattered far more than architectur
 - Path 2: 36 acoustic features → HistGB emotion (real corpora: RAVDESS, CREMA-D, EMO-DB, URDU)
 - Speaker-independent accuracy **0.574** (chance = 0.25)
 - Random splits said 0.657 → **9 pts was speaker leakage** — we report the honest number
-- Headroom measured: frozen w2v2 embeddings + same classifier → **<VOICE_EMB_ACC>** (see notes) — quantifies the ceiling a deployable distillation (Wav2Small, 72K) could reach
+- Headroom measured: frozen w2v2 embeddings + same classifier → **0.776** (vs 0.553 on the same split) — quantifies the ceiling a deployable distillation (Wav2Small, 72K) could reach
 
 **Figure:** cm_voice.pdf (confusion matrix)
 

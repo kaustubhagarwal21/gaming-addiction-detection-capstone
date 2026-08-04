@@ -1418,7 +1418,28 @@ natural speech, the test set is acted corpora) and its lesson is narrower than
 the chat channel's: an off-the-shelf dimensional model is \emph{not} a free
 upgrade --- threshold calibration or fine-tuning would be required --- but its
 natural-speech training remains the right starting point for the live domain gap
-(Future Work names the deployable path). That weight is \emph{nominal}: availability reweighting
+(Future Work names the deployable path).
+
+\paragraph{Representation headroom (measured).} The $0.574$ is bounded by the
+$36$ hand-crafted acoustic features, not by the classifier or the protocol. To
+quantify that ceiling, frozen wav2vec2 embeddings ($1024$-d, from the same
+audEERING model) were extracted for all $9{,}780$ clips and fed to the
+\emph{identical} classifier family under the \emph{identical}
+speaker-independent split (\texttt{ml/eval\_voice\_headroom.py}). The 36-feature
+baseline reproduces at $0.553$ accuracy / $0.547$ macro-F1 (original clips, no
+augmentation, so slightly below the augmented deployed number); the embedding
+representation lifts it to $\mathbf{0.776}$ accuracy / $0.772$ macro-F1 ---
+$+22$ points from representation alone, on unseen speakers. An honest negative
+accompanies it: training on the corpora's \emph{fine} emotion labels and
+grouping to the four served classes by summed probability \emph{underperformed}
+the direct 4-class embedding model ($0.694$), because the fine classes are too
+sparse per speaker under grouped splits. The reading for deployment: the
+$512$\,MB serving budget is why embeddings are not served today, and it is
+exactly why Future Work names the $72$K-parameter Wav2Small distillation --- this
+experiment measures the prize ($\sim$$+20$ points) that distillation is chasing,
+turning ``a bigger model would help'' from assertion into measurement.
+
+That weight is \emph{nominal}: availability reweighting
 raises voice's effective share when other channels are absent, and the pilot's
 channel-contribution analysis (\S\ref{sec:pilot}) measures the real influence ---
 removing voice would change roughly a third of served bands --- which is why the

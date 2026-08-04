@@ -136,6 +136,21 @@ and the paper documents that the split choice *reversed the model-selection verd
 (SVM won leaky splits; HistGB wins honest ones). An examiner should prefer an honest
 0.574 to an inflated 0.657.
 
+**Q: What have you done to improve the voice model, and how much would it help?**
+Measured, not guessed. The 0.574 is bounded by the 36 hand-crafted acoustic
+features — not the classifier or the protocol. We proved this: extracted frozen
+wav2vec2 embeddings (1024-d) for all 9,780 clips and fed them to the *same*
+classifier on the *same* speaker-independent split. Result — 0.553 (36-feat
+baseline) → **0.776** with embeddings, **+22 points from representation alone**,
+on unseen speakers (`ml/eval_voice_headroom.py`). One honest negative: training on
+fine emotion labels then grouping to our 4 classes *underperformed* (0.694) —
+fine classes too sparse per speaker under grouped splits, so we report it as a
+tried-and-rejected variant. Why not just deploy embeddings? The 512 MB serving
+budget — which is exactly why Future Work names Wav2Small (a 72K-param
+distillation of this model). This experiment measures the ~20-point prize that
+distillation is chasing, turning "a bigger model would help" from assertion into
+measurement.
+
 **Q: The training corpora are acted adult emotions (RAVDESS, CREMA-D, EMO-DB, URDU). Children playing games don't sound like that.**
 Correct, and it's the stated validation gap (`voice_metrics.note`). Acted corpora are
 the best *available* labelled emotional speech; child gaming speech is the target of

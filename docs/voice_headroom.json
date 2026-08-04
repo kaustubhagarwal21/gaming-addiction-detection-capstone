@@ -1,0 +1,15 @@
+{
+  "A_36feat_4class": {
+    "acc": 0.5527,
+    "macro_f1": 0.5465
+  },
+  "B_emb_4class": {
+    "acc": 0.7761,
+    "macro_f1": 0.7724
+  },
+  "C_emb_fine_grouped": {
+    "acc": 0.6936,
+    "macro_f1": 0.6775
+  },
+  "protocol": "GroupShuffleSplit 20% test seed 42 on speaker ids; original clips only (no augmentation for ANY config); undersample-balanced train; HistGB default, seed 42. Deployed reference on ITS split (with augmentation): 0.574."
+}
