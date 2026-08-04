@@ -31,18 +31,18 @@ SESSION_PLAN = [
     (14, 150, 'BGMI',        'at_risk',  0.42, 22, ['stupid', 'this game sucks'],                               'frustrated'),
     (12, 135, 'COD Mobile',  'at_risk',  0.45, 20, ['trash', 'idiot teammates'],                                'frustrated'),
     (10, 180, 'BGMI',        'at_risk',  0.52, 23, ['hate this', 'so dumb'],                                    'angry'),
-    (8,  160, 'COD Mobile',  'at_risk',  0.55, 22, ['so stupid', 'noob'],                                       'angry'),
+    (8,  160, 'COD Mobile',  'at_risk',  0.55, 22, ['so stupid', 'noob', 'accha khela bhai gg'],                'angry'),
     (6,  240, 'BGMI',        'addicted', 0.72, 23, ['trash game', 'die noob', 'stupid'],                        'angry'),
     (4,  220, 'COD Mobile',  'addicted', 0.78, 1,  ['kys loser', 'wtf man', 'stupid game'],                     'angry'),
     (2,  270, 'BGMI',        'addicted', 0.81, 0,  ['rage quit', 'hate this game'],                             'angry'),
-    (1,  300, 'COD Mobile',  'addicted', 0.85, 23, ['trash team', 'loser', 'idiot', 'die'],                     'angry'),
+    (1,  300, 'COD Mobile',  'addicted', 0.85, 23, ['trash team', 'loser', 'तू चूतिया है noob', 'bhosdike uninstall kar'], 'angry'),
     (0,  95,  'BGMI',        'at_risk',  0.55, 15, ['gg', 'one more game', 'so close'],                         'frustrated'),  # earlier today
 ]
 
 PRIYA_PLAN = [
     # (days_ago, dur_min, game,         risk_cat,  risk_score, hour, chats,                        emotion)
     (25, 60,  'Candy Crush',  'casual',  0.10, 15, [],                                           'neutral'),
-    (22, 45,  'Minecraft',    'casual',  0.14, 16, ['lets build', 'nice'],                       'excited'),
+    (22, 45,  'Minecraft',    'casual',  0.14, 16, ['lets build', 'मज़ा आ गया'],            'excited'),
     (19, 55,  'Roblox',       'casual',  0.17, 17, ['fun game', 'cool'],                         'excited'),
     (16, 90,  'Roblox',       'casual',  0.22, 21, ['one more round', 'so fun'],                 'excited'),
     (13, 120, 'Roblox',       'at_risk', 0.38, 22, ['nooo', 'not fair', 'ugh'],                  'frustrated'),
@@ -142,10 +142,15 @@ def seed_child(c, conn, user_id, name, plan):
                    1, chat_present, voice_present))
 
         for msg in chats:
-            # 0.93 clears the live alert threshold (CHAT_ALERT_T=0.90) so the demo's
-            # toxic lines actually render as 'toxic' in Chat Analysis — the old 0.75
-            # was crafted for a previous threshold and would now show as 'borderline'.
-            tox = 0.93 if any(w in msg for w in ['kys','die','trash','loser','idiot','stupid']) else 0.4
+            # 0.96 clears the live alert threshold (CHAT_ALERT_T=0.95, re-derived after
+            # the dual-script retrain) so the demo's toxic lines actually render as
+            # 'toxic' in Chat Analysis. This constant has gone stale TWICE across
+            # threshold moves (0.75 -> 0.93 -> 0.96): if the threshold changes again,
+            # change this with it. Hindi terms included so the dual-script capability
+            # is visible in the demo.
+            toxic_terms = ['kys','die','trash','loser','idiot','stupid',
+                           'chutiya','bhosdike','kutte','चूतिया','भोसड़ीके']
+            tox = 0.96 if any(w in msg for w in toxic_terms) else 0.4
             c.execute('''INSERT INTO chat_messages (session_id, message, source, confidence, timestamp)
                          VALUES (?,?,?,?,?)''', (sid, msg, 'keyboard', tox, start_dt.isoformat()))
 
