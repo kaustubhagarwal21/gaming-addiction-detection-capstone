@@ -648,6 +648,11 @@ single summary using all four confusion cells) are reported as secondary views.
 Probability \emph{quality} is measured separately from ranking, by the Brier score
 before/after calibration --- a model can rank well and still lie about its
 confidence, and parent-facing thresholds need probabilities that mean something.
+Because Brier folds calibration together with refinement (the Murphy
+decomposition), calibration is \emph{also} verified directly: top-label expected
+calibration error (ECE, 10 equal-width bins) with reliability diagrams
+(Fig.~\ref{fig:reliability}), computed on the same held-out splits the deployed
+calibrators were fitted against (\texttt{ml/eval\_calibration.py}).
 
 \textbf{Split hygiene.} Test splits are held out from ALL fitting, including
 vectorizers and calibrators; model selection happens on a validation slice carved
@@ -1167,9 +1172,28 @@ both off-diagonal corners of the confusion matrix are zero;
 Fig.~\ref{fig:cmbehaviour}). Probability calibration
 improves the multiclass Brier score from $0.1343$ (uncalibrated) to $0.1275$
 (isotonic), so reported confidences are internally calibrated on the synthetic
-evaluation distribution (their real-world reliability awaits pilot-scale labels). The accuracy is on a synthetic
+evaluation distribution (their real-world reliability awaits pilot-scale labels).
+The \emph{direct} calibration view is sharper than the Brier delta suggests:
+top-label ECE falls from $0.062$ to $\mathbf{0.015}$, and the worst confidence
+bin --- where the raw forest's stated confidence missed observed accuracy by
+$50$ percentage points --- collapses to a $5$-point maximum gap
+(Fig.~\ref{fig:reliability}). The accuracy is on a synthetic
 held-out split; the value of the result is the calibrated, train/serve-aligned,
 survey-grounded pipeline, not the absolute number.
+
+\begin{figure}[t]
+\centering
+\includegraphics[width=\linewidth]{figures/reliability.pdf}
+\caption{Reliability diagrams (top-label, 10 equal-width bins) for the two
+calibrated channels, on the same held-out splits their isotonic layers were
+fitted against. The diagonal is perfect calibration; ECE is the bin-weighted
+mean gap between stated confidence and observed accuracy. Calibration cuts
+behaviour ECE $0.062 \rightarrow 0.015$ (worst bin $0.50 \rightarrow 0.05$) and
+chat ECE $0.031 \rightarrow 0.012$ --- the direct evidence behind every
+``calibrated probability'' claim in this paper, which Brier alone (a mixture of
+calibration and refinement) cannot provide.}
+\label{fig:reliability}
+\end{figure}
 
 \begin{figure}[t]
 \centering
@@ -1184,7 +1208,9 @@ adjacent bands: both Casual$\leftrightarrow$Addicted corners are zero.}
 Metrics are for the pipeline \emph{as served}: the isotonic-calibrated probability of
 the word~$\cup$~char\_wb model trained on five real corpora (general toxicity +
 CONDA train split + Davidson offensive-language tweets + HASOC 2019 Hindi in both
-scripts + the clean-Hindi Wikipedia counterweight; held-out Brier $0.066 \rightarrow 0.063$), fused with the keyword lexicon. The held-out set is
+scripts + the clean-Hindi Wikipedia counterweight; held-out Brier $0.066 \rightarrow 0.063$,
+top-label ECE $0.031 \rightarrow 0.012$ --- Fig.~\ref{fig:reliability}), fused
+with the keyword lexicon. The held-out set is
 reconstructed from the \emph{same} corpus assembly the trainer uses (shared code
 path), so no training \emph{row} can re-enter it --- an earlier draft rebuilt this split
 from the general corpus alone, which admitted trained CONDA/Davidson rows and
@@ -1698,7 +1724,7 @@ assumptions --- drive the next revision.
         key, signing keystore or server secret is tracked in this \emph{public}
         repository or ever was. Statement coverage of the suite is $75\%$ overall
         ($80\%$ excluding developer-only utility scripts). Both apps pass
-        Android Lint with zero errors, and 100 JVM unit tests (run in CI) pin offline
+        Android Lint with zero errors, and 110 JVM unit tests (run in CI) pin offline
         session/capture-health transitions, profile and risk-presentation rules, the
         offline chat queue's delivery semantics, the WAV container encoding, IME
         keystroke-to-sentence reconstruction, and parent-alert triage.
@@ -1993,7 +2019,7 @@ Parent value & Per-day weighted risk + ``why'' (SHAP), live ``playing now'' + mo
 Child wellbeing & Mira check-in (typing indicator, double-send guard), gamified daily check-in + streak, reflections, breathing, break/limit nudges, today-vs-goal progress \\
 Reliability/anti-tamper & Heartbeat watchdog (uninstall/kill/offline alert, child-local quiet hours), optional Device Admin (uninstall block + instant disable alert), battery-optimisation exemption, double-start-safe services, consent-gated boot resume, parent-PIN lock on logout/settings (server-verified, constant-time), logout \emph{and} login alerts with truthful monitoring status, idempotent session-end, self-scoring stale-session guard, per-child risk notifications, multi-guardian FCM push (lazy-init) \\
 Privacy/Security & Token auth + \emph{role} checks on every parent-only endpoint, deleted-account tokens locked out despite the stateless 30-day TTL (TTL-cached existence probe), peppered PIN hashes (validated, family-wide PIN change), HTTPS-only, encrypted token store, consent (versioned), raw-audio deletion, retention purge, parent-controlled data export mirroring the deletion scope (credentials excluded), 16\,MB body cap, opt-in Sentry crash monitoring (stack traces only, no PII), family code always recoverable in PIN-gated Settings \\
-Engineering & Dual-dialect DB with pooled validated Postgres connections + composite indexes on the hot query paths, per-client rate limiting, hot-path caching/throttling + audio-concurrency cap + bounded throttle caches, thread-safe device-side shared state (concurrent cache, crash-safe confirm-then-delete offline queue, WorkManager network-aware retry), signed APKs, layered tests (180 API + 100 Android JVM + 82 production-mode + 25 live-cloud) + concurrency smoke + CI (pytest on SQLite \emph{and} PostgreSQL, Android lint + unit tests per push, weekly drift monitor against the production DB), real-device validated, lint-clean, deployed + durable DB \\
+Engineering & Dual-dialect DB with pooled validated Postgres connections + composite indexes on the hot query paths, per-client rate limiting, hot-path caching/throttling + audio-concurrency cap + bounded throttle caches, thread-safe device-side shared state (concurrent cache, crash-safe confirm-then-delete offline queue, WorkManager network-aware retry), signed APKs, layered tests (180 API + 110 Android JVM + 82 production-mode + 25 live-cloud) + concurrency smoke + CI (pytest on SQLite \emph{and} PostgreSQL, Android lint + unit tests per push, weekly drift monitor against the production DB), real-device validated, lint-clean, deployed + durable DB \\
 \bottomrule
 \end{tabularx}
 \end{center}
@@ -2137,7 +2163,15 @@ value depends on accumulating real usage data the prototype does not yet have:
         though worst-case corners reach $10.7\%$) and can wait behind them. Needs a pilot at
         scale, plus the IGDS9-SF ground-truth instrument (per-child parent-report
         scores linked to telemetry; a locally floated adult survey supplies the
-        population prevalence anchor meanwhile).
+        population prevalence anchor meanwhile). Two open research datasets are
+        the named interim resources for de-synthesising the behaviour
+        \emph{features} before child data exists at scale: StudentLife (Dartmouth;
+        ten weeks of real phone-usage telemetry from 48 students, incl.\ lock/unlock
+        and app-usage traces) and LifeSnaps (71 participants, four months,
+        multimodal) --- both are adult/student cohorts, so they can ground
+        feature \emph{distributions} and session-pattern realism but not the
+        child-population labels, the same distribution-vs-label boundary drawn
+        in \S4.2.
   \item \textbf{Per-user personalisation of the risk score.} The robust anomaly
         detector already flags deviation from a child's \emph{own} baseline
         (median/MAD $z$-scores over their history); the remaining step is letting

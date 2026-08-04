@@ -36,7 +36,7 @@ Notes
 ```
 .\gradlew.bat testDebugUnitTest
 ```
-100 tests across the two apps (69 Child, 31 Parent) pin the pure decision logic:
+110 tests across the two apps (79 Child, 31 Parent) pin the pure decision logic:
 offline-session backfill and persisted capture-health rules
 (OfflineSessionLogic/CaptureHealthLogic), profile-edit validation
 (`ProfileValidation`), auth revision/origin handling, server URL validation,
@@ -46,7 +46,10 @@ delivered-or-deliberately-dropped semantics (`ChatQueueLogic`), the WAV containe
 header the voice channel depends on (`WavUtil`), IME keystroke-to-sentence
 reconstruction incl. the word-vs-key regression and Devanagari matra handling
 (`KeystrokeBuffer`), the dual-language STT segment picker incl. the genuinely-mixed
-window, junk-hypothesis and same-utterance cases (`TranscriptPicker`), and the
+window, junk-hypothesis and same-utterance cases (`TranscriptPicker`), the full
+layout-transition table of the Wellbeing Keyboard incl. the stuck-keyboard
+guarantee (`KeyboardLayoutMachine`: QWERTY reachable from every page in one
+press), and the
 parent-alert triage rules incl. regressions for the sibling high-water-mark and
 risk-flap bugs (`AlertTriage`).
 
@@ -62,6 +65,7 @@ risk-flap bugs (`AlertTriage`).
 | `python ml/fetch_hindi_clean.py` | Rebuilds the clean-Hindi counterweight (8,000 Hindi Wikipedia sentences, both scripts) that drains the measured Devanagari toxicity prior |
 | `python ml/fetch_hasoc_hindi.py` | Rebuilds the HASOC 2019 Hindi corpus files deterministically (80% → `data/chat_extra/`, 20% held out; registration-gated upstream, not redistributed in this repo) |
 | `python ml/eval_chat_hindi.py` | Held-out Devanagari/Hindi abuse evaluation (HASOC 2019 20% split, never trained on) → `chat_metrics_hindi` |
+| `python ml/eval_calibration.py` | Direct calibration evidence: top-label ECE + reliability diagrams for both calibrated channels, on the calibrators' own held-out splits → `calibration_eval` + `docs/figures/reliability.pdf` |
 | `python ml/monitor_drift_evidently.py` | Optional Evidently companion to the drift monitor: 20+ maintained drift tests incl. small-sample-appropriate ones; HTML report + JSON. Primary PSI/KS monitor stays authoritative for CI |
 | `python ml/smoke_spoken_hindi.py` | Offline spoken-Hindi chain smoke test (gTTS → Vosk Hindi STT → served pipeline); de-risks the future Hindi-recogniser swap. Needs `pip install vosk gtts`, ffmpeg, and the vosk-model-small-hi-0.22 download (see docstring) |
 | `python ml/tune_from_feedback.py` | Converts parent-feedback verdicts into conservative threshold recommendations (`threshold_tuning.json`) + labelled CSV export |

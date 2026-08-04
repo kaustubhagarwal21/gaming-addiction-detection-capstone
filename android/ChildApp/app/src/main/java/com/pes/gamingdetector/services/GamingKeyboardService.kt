@@ -10,6 +10,7 @@ import com.pes.gamingdetector.api.ApiClient
 import com.pes.gamingdetector.util.CaptureTargetLogic
 import com.pes.gamingdetector.util.ChatQueueLogic
 import com.pes.gamingdetector.util.ChatUploadQueue
+import com.pes.gamingdetector.util.KeyboardLayoutMachine
 import com.pes.gamingdetector.util.PrefsManager
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -43,8 +44,25 @@ class GamingKeyboardService : InputMethodService(), KeyboardView.OnKeyboardActio
     private val prefs by lazy { PrefsManager(this) }
 
     private var caps = false
+    private var layout = KeyboardLayoutMachine.reset()
     private val buffer = StringBuilder()
     private val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
+
+    /** The Keyboard object for a machine state — the ONLY place the mapping lives. */
+    private fun keyboardFor(l: KeyboardLayoutMachine.Layout): Keyboard = when (l) {
+        KeyboardLayoutMachine.Layout.QWERTY -> qwerty
+        KeyboardLayoutMachine.Layout.SYMBOLS -> symbols
+        KeyboardLayoutMachine.Layout.DEVA_CONSONANTS -> devanagari
+        KeyboardLayoutMachine.Layout.DEVA_VOWELS -> devanagariVowels
+    }
+
+    /** Apply a switching key through the JVM-tested state machine. */
+    private fun switchLayout(keyCode: Int) {
+        layout = KeyboardLayoutMachine.next(layout, keyCode)
+        keyboardView.keyboard = keyboardFor(layout)
+        if (layout == KeyboardLayoutMachine.Layout.QWERTY) qwerty.isShifted = caps
+        keyboardView.invalidateAllKeys()
+    }
 
     override fun onCreateInputView(): View {
         qwerty = Keyboard(this, R.xml.qwerty)
@@ -67,7 +85,8 @@ class GamingKeyboardService : InputMethodService(), KeyboardView.OnKeyboardActio
         buffer.setLength(0)
         caps = false
         if (::keyboardView.isInitialized) {
-            keyboardView.keyboard = qwerty
+            layout = KeyboardLayoutMachine.reset()
+            keyboardView.keyboard = keyboardFor(layout)
             qwerty.isShifted = false
             keyboardView.invalidateAllKeys()
         }
@@ -85,26 +104,12 @@ class GamingKeyboardService : InputMethodService(), KeyboardView.OnKeyboardActio
                 qwerty.isShifted = caps
                 keyboardView.invalidateAllKeys()
             }
-            Keyboard.KEYCODE_MODE_CHANGE -> {
-                keyboardView.keyboard = if (keyboardView.keyboard === qwerty) symbols else qwerty
-                keyboardView.invalidateAllKeys()
-            }
-            KEY_LANG_TOGGLE -> {                   // हिं on qwerty; अआ on devanagari
-                keyboardView.keyboard = when (keyboardView.keyboard) {
-                    devanagari -> devanagariVowels
-                    else -> devanagari
-                }
-                keyboardView.invalidateAllKeys()
-            }
-            KEY_TO_CONSONANTS -> {                 // कख on the vowels page
-                keyboardView.keyboard = devanagari
-                keyboardView.invalidateAllKeys()
-            }
+            Keyboard.KEYCODE_MODE_CHANGE,          // ?123 / back to letters
+            KEY_LANG_TOGGLE,                       // हिं on qwerty; अआ on devanagari
+            KEY_TO_CONSONANTS,                     // कख on the vowels page
             KEY_TO_QWERTY -> {                     // ABC on both devanagari pages
-                keyboardView.keyboard = qwerty
-                qwerty.isShifted = caps
-                keyboardView.invalidateAllKeys()
-            }
+                switchLayout(primaryCode)          // transitions live in the
+            }                                      // JVM-tested KeyboardLayoutMachine
             10 -> {                                 // enter / send
                 val action = currentInputEditorInfo?.imeOptions?.and(EditorInfo.IME_MASK_ACTION)
                     ?: EditorInfo.IME_ACTION_UNSPECIFIED
@@ -198,9 +203,10 @@ class GamingKeyboardService : InputMethodService(), KeyboardView.OnKeyboardActio
 
     private companion object {
         // Custom layout-switch key codes (negative = never committed as text).
-        const val KEY_TO_QWERTY = -100
-        const val KEY_LANG_TOGGLE = -101
-        const val KEY_TO_CONSONANTS = -102
+        // Single-sourced from the state machine so XML, service and tests agree.
+        const val KEY_TO_QWERTY = KeyboardLayoutMachine.KEY_TO_QWERTY
+        const val KEY_LANG_TOGGLE = KeyboardLayoutMachine.KEY_LANG_TOGGLE
+        const val KEY_TO_CONSONANTS = KeyboardLayoutMachine.KEY_TO_CONSONANTS
     }
 
     // ── unused OnKeyboardActionListener callbacks ─────────────────────────

@@ -283,5 +283,252 @@
     },
     "alert_threshold": 0.95,
     "scoring": "as served: clean_text -> TF-IDF -> LogReg + isotonic, noisy-OR keyword fusion; romanized view = held-out rows romanised at eval time (fetch_hasoc_hindi.romanize)"
+  },
+  "calibration_eval": {
+    "behaviour": {
+      "uncalibrated": {
+        "ece": 0.0617,
+        "mce": 0.497,
+        "bins": [
+          {
+            "bin": [
+              0.4,
+              0.5
+            ],
+            "n": 2,
+            "confidence": 0.497,
+            "accuracy": 0.0,
+            "gap": 0.497
+          },
+          {
+            "bin": [
+              0.5,
+              0.6
+            ],
+            "n": 166,
+            "confidence": 0.553,
+            "accuracy": 0.5361,
+            "gap": 0.0168
+          },
+          {
+            "bin": [
+              0.6,
+              0.7
+            ],
+            "n": 203,
+            "confidence": 0.6526,
+            "accuracy": 0.6798,
+            "gap": 0.0272
+          },
+          {
+            "bin": [
+              0.7,
+              0.8
+            ],
+            "n": 323,
+            "confidence": 0.7578,
+            "accuracy": 0.8638,
+            "gap": 0.106
+          },
+          {
+            "bin": [
+              0.8,
+              0.9
+            ],
+            "n": 985,
+            "confidence": 0.8605,
+            "accuracy": 0.9523,
+            "gap": 0.0918
+          },
+          {
+            "bin": [
+              0.9,
+              1.0
+            ],
+            "n": 1196,
+            "confidence": 0.9511,
+            "accuracy": 0.9875,
+            "gap": 0.0364
+          }
+        ]
+      },
+      "calibrated": {
+        "ece": 0.0153,
+        "mce": 0.0542,
+        "bins": [
+          {
+            "bin": [
+              0.5,
+              0.6
+            ],
+            "n": 154,
+            "confidence": 0.5443,
+            "accuracy": 0.526,
+            "gap": 0.0183
+          },
+          {
+            "bin": [
+              0.6,
+              0.7
+            ],
+            "n": 127,
+            "confidence": 0.6369,
+            "accuracy": 0.5827,
+            "gap": 0.0542
+          },
+          {
+            "bin": [
+              0.7,
+              0.8
+            ],
+            "n": 184,
+            "confidence": 0.7728,
+            "accuracy": 0.7609,
+            "gap": 0.012
+          },
+          {
+            "bin": [
+              0.8,
+              0.9
+            ],
+            "n": 248,
+            "confidence": 0.8776,
+            "accuracy": 0.8952,
+            "gap": 0.0176
+          },
+          {
+            "bin": [
+              0.9,
+              1.0
+            ],
+            "n": 2162,
+            "confidence": 0.9842,
+            "accuracy": 0.9713,
+            "gap": 0.0129
+          }
+        ]
+      },
+      "ece_improvement": 0.0464,
+      "n_eval": 2875,
+      "n_bins": 10
+    },
+    "chat": {
+      "uncalibrated": {
+        "ece": 0.0313,
+        "mce": 0.101,
+        "bins": [
+          {
+            "bin": [
+              0.5,
+              0.6
+            ],
+            "n": 704,
+            "confidence": 0.5513,
+            "accuracy": 0.5554,
+            "gap": 0.0041
+          },
+          {
+            "bin": [
+              0.6,
+              0.7
+            ],
+            "n": 823,
+            "confidence": 0.6499,
+            "accuracy": 0.7509,
+            "gap": 0.101
+          },
+          {
+            "bin": [
+              0.7,
+              0.8
+            ],
+            "n": 1239,
+            "confidence": 0.7539,
+            "accuracy": 0.8499,
+            "gap": 0.096
+          },
+          {
+            "bin": [
+              0.8,
+              0.9
+            ],
+            "n": 2150,
+            "confidence": 0.8573,
+            "accuracy": 0.9242,
+            "gap": 0.0669
+          },
+          {
+            "bin": [
+              0.9,
+              1.0
+            ],
+            "n": 8124,
+            "confidence": 0.9674,
+            "accuracy": 0.9748,
+            "gap": 0.0074
+          }
+        ]
+      },
+      "calibrated": {
+        "ece": 0.0118,
+        "mce": 0.0944,
+        "bins": [
+          {
+            "bin": [
+              0.5,
+              0.6
+            ],
+            "n": 666,
+            "confidence": 0.5318,
+            "accuracy": 0.6261,
+            "gap": 0.0944
+          },
+          {
+            "bin": [
+              0.6,
+              0.7
+            ],
+            "n": 419,
+            "confidence": 0.6522,
+            "accuracy": 0.7136,
+            "gap": 0.0614
+          },
+          {
+            "bin": [
+              0.7,
+              0.8
+            ],
+            "n": 486,
+            "confidence": 0.7515,
+            "accuracy": 0.8107,
+            "gap": 0.0592
+          },
+          {
+            "bin": [
+              0.8,
+              0.9
+            ],
+            "n": 992,
+            "confidence": 0.8476,
+            "accuracy": 0.8538,
+            "gap": 0.0062
+          },
+          {
+            "bin": [
+              0.9,
+              1.0
+            ],
+            "n": 10477,
+            "confidence": 0.9648,
+            "accuracy": 0.9619,
+            "gap": 0.0029
+          }
+        ]
+      },
+      "ece_improvement": 0.0195,
+      "n_eval": 13040,
+      "n_bins": 10
+    },
+    "note": "Top-label ECE/MCE on the same held-out splits the deployed calibrators were fitted against. ECE measures calibration directly; the Brier figures elsewhere mix calibration with refinement."
   }
 }
