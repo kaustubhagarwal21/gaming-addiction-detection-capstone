@@ -1,13 +1,21 @@
 # Model Validation Plan — from synthetic to real-data credibility
 
-> **STATUS (2026-07-05): the public-dataset tier of this plan has been EXECUTED** — and
-> went further than planned (retraining, not just evaluation). What remains open is the
-> human-study tier (IGDS9-SF survey), whose full recipe below is still current.
+> **STATUS (2026-07-05, refreshed 2026-08-04): the public-dataset tier has been
+> EXECUTED** — and kept growing after this block was first written. What remains open is
+> the human-study tier (IGDS9-SF survey), whose full recipe below is still current.
 >
-> Executed and now documented in the paper (§4.2, §6, ablations) — do not redo:
-> - **Chat**: trained on general corpus + **CONDA** train split + **Davidson** offensive-
->   language tweets; evaluated on CONDA's held-out validation split. PR-AUC 0.834; alert
->   precision 0.950 at the re-derived threshold **0.90**. Scripts: `ml/eval_chat_conda.py`
+> **2026-08-04 addendum** (all documented in the paper; numbers below superseded):
+> the chat corpus is now **five** corpora (…+ dual-script **HASOC 2019 Hindi** + a
+> clean-Hindi Wikipedia counterweight), de-duplicated; served in-domain PR-AUC **0.821**
+> with alert precision **0.956 at the re-derived threshold 0.95** and ≥0.95 precision on
+> Devanagari and romanised Hinglish held-out sets; the live family pilot ran 6–28 July
+> and concluded; calibration now has direct ECE evidence; a StudentLife late-night
+> reality check grounded one hand-set prior. None of that changes the survey recipe.
+>
+> Executed as of 2026-07-05 and documented in the paper (§4.2, §6, ablations) — do not redo:
+> - **Chat** (as of 2026-07-05; see addendum): trained on general corpus + **CONDA** train
+>   split + **Davidson** offensive-language tweets; evaluated on CONDA's held-out
+>   validation split. Scripts: `ml/eval_chat_conda.py`
 >   (eval + retrain), `ml/ablation_studies.py`.
 > - **Voice**: trained on **RAVDESS + CREMA-D + EMO-DB + URDU** (9,817 clips, 154 speakers,
 >   3 languages) through the serving extractor; **speaker-independent** held-out accuracy
