@@ -2165,13 +2165,26 @@ value depends on accumulating real usage data the prototype does not yet have:
         scores linked to telemetry; a locally floated adult survey supplies the
         population prevalence anchor meanwhile). Two open research datasets are
         the named interim resources for de-synthesising the behaviour
-        \emph{features} before child data exists at scale: StudentLife (Dartmouth;
-        ten weeks of real phone-usage telemetry from 48 students, incl.\ lock/unlock
-        and app-usage traces) and LifeSnaps (71 participants, four months,
-        multimodal) --- both are adult/student cohorts, so they can ground
-        feature \emph{distributions} and session-pattern realism but not the
-        child-population labels, the same distribution-vs-label boundary drawn
-        in \S4.2.
+        \emph{features} before child data exists at scale --- and one check has
+        already been \emph{run} from open telemetry. The StudentLife
+        mirror~\cite{studentlife2014} (48 students, ten weeks; Zenodo, CC-BY)
+        carries only \emph{coarse} lock events in its open RData form
+        ($\geq$$1$\,h --- verified before use), so the session-level priors
+        (sessions/day, durations, breaks, rapid re-logins) remain uncheckable
+        from open data; the \emph{late-night} prior, however, is checkable
+        (\texttt{ml/analyze\_studentlife.py}, the backend's exact
+        22:00--06:00 window): ordinary students' all-phone late-night activity
+        share reads median $0.32$ (IQR $0.29$--$0.35$, p90 $0.36$). Against the
+        generator's priors (casual $0.08$ / at-risk $0.30$ / heavy $0.60$), the
+        heavy band marks genuinely extreme nocturnality --- above the 90th
+        percentile of normal student phone life --- while the at-risk level is
+        unremarkable for young people generally, and the casual prior embeds the
+        assumption that supervised child gaming is far less nocturnal than
+        general youth phone use; a child cohort must test that.
+        LifeSnaps~\cite{lifesnaps2022} (71 participants, four months; Zenodo,
+        CC-BY) was screened and set aside: wearable telemetry only, no
+        phone-screen data. Both are adult/student cohorts --- distribution
+        grounding, never child-population labels, the boundary drawn in \S4.2.
   \item \textbf{Per-user personalisation of the risk score.} The robust anomaly
         detector already flags deviation from a child's \emph{own} baseline
         (median/MAD $z$-scores over their history); the remaining step is letting
@@ -2389,6 +2402,15 @@ OpenAPI/GraphQL APIs,'' open-source software,
 \texttt{github.com/schemathesis/schemathesis}.
 \bibitem{bandit} PyCQA, ``Bandit: a security linter for Python,'' open-source
 software, \texttt{github.com/PyCQA/bandit}.
+\bibitem{studentlife2014} R. Wang, F. Chen, Z. Chen, T. Li, G. Harari, S. Tignor,
+X. Zhou, D. Ben-Zeev, and A. T. Campbell, ``StudentLife: Assessing mental health,
+academic performance and behavioral trends of college students using smartphones,''
+in \emph{Proc.\ ACM UbiComp}, 2014.
+\bibitem{lifesnaps2022} S. Yfantidou, C. Karagianni, S. Efstathiou, A. Vakali,
+J. Palotti, D. P. Giakatos, T. Marchioro, A. Kazlouski, E. Ferrari, and
+\v{S}. Girdzijauskas, ``LifeSnaps, a 4-month multi-modal dataset capturing
+unobtrusive snapshots of our lives in the wild,'' \emph{Scientific Data}, vol.~9,
+2022.
 \bibitem{detectsecrets} Yelp, ``detect-secrets: enterprise-friendly detection and
 prevention of secrets in code,'' open-source software,
 \texttt{github.com/Yelp/detect-secrets}.

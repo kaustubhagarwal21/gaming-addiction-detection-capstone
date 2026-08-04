@@ -1,0 +1,18 @@
+{
+  "source": "StudentLife (Wang et al. 2014), Zenodo 3529253 RData mirror, CC-BY-4.0",
+  "scope_note": "Mirror carries only >=1h lock events (verified min 1.00h); session-level priors are NOT checkable from it. This is the late-night ACTIVITY share of all phone use by college students (22:00-06:00 America/New_York, the backend window).",
+  "n_students": 49,
+  "late_night_active_share": {
+    "median": 0.322,
+    "iqr": [
+      0.291,
+      0.346
+    ],
+    "p90": 0.358
+  },
+  "generator_late_night_priors": {
+    "casual": 0.08,
+    "at_risk": 0.3,
+    "heavy": 0.6
+  }
+}

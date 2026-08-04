@@ -105,3 +105,6 @@ data/hasoc_hindi_raw.tsv
 # Hypothesis/Schemathesis property-test caches (regenerated per run, never commit)
 .hypothesis/
 .schemathesis/
+
+# StudentLife mirror cache (230 MB, rebuilt by ml/analyze_studentlife.py)
+data/studentlife/
