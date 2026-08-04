@@ -110,7 +110,7 @@ for an emulator, or your LAN IP for a real device).
 cd backend
 pytest tests/ -v           # 180 tests, isolated DB — no real data needed
 ```
-CI runs this suite on both SQLite and Postgres 16, plus Android Lint and 87 JVM
+CI runs this suite on both SQLite and Postgres 16, plus Android Lint and 110 JVM
 unit tests for the two apps, on every push (`.github/workflows/ci.yml`); a weekly
 workflow (`drift.yml`) monitors production score drift.
 ML training/eval scripts (retrain, real-audio voice, in-domain chat eval, feedback
