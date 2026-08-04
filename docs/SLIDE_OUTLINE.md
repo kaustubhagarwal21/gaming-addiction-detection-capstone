@@ -116,6 +116,7 @@ the data ablation (slide 9) shows domain data mattered far more than architectur
 - Path 2: 36 acoustic features → HistGB emotion (real corpora: RAVDESS, CREMA-D, EMO-DB, URDU)
 - Speaker-independent accuracy **0.574** (chance = 0.25)
 - Random splits said 0.657 → **9 pts was speaker leakage** — we report the honest number
+- Headroom measured: frozen w2v2 embeddings + same classifier → **<VOICE_EMB_ACC>** (see notes) — quantifies the ceiling a deployable distillation (Wav2Small, 72K) could reach
 
 **Figure:** cm_voice.pdf (confusion matrix)
 
@@ -140,7 +141,29 @@ Known gap, stated on slide 13: acted adult emotion ≠ child gaming speech.
 **Notes:** Max-not-mean: one credible threat matters more than a hundred clean
 messages diluting it. Sitting above best-F1 is a *choice*, not an accident — the
 asymmetric cost is parents ignoring alerts. Show you know both operating points:
-0.85 → P 0.888/R 0.660; 0.90 → P 0.950/R 0.491. (DEFENSE_NOTES §5)
+0.85 → P 0.800/R 0.703; 0.90 → P 0.888/R 0.623. (DEFENSE_NOTES §5)
+
+---
+
+## Slide 8b — Built for India (the differentiator)
+**On slide:**
+- Indian kids' game chat is **code-mixed**: English + romanised Hindi + Devanagari
+- Typed abuse in **all three registers** detected at **≥0.95 precision** (held-out)
+- Native **Devanagari keyboard** so Hindi is captured even in canvas games (Roblox)
+- Honest capture matrix shown to parents — including the blind spots
+
+**Figure:** *(optional)* screenshot of the ParentApp "hi" language badge + a flagged
+Devanagari line, from the seeded demo (`तू चूतिया है` at 0.96).
+
+**Notes:** This is what makes it *ours*, not a re-skin of a US parental-control
+app. English-only toxicity models miss most Indian gaming abuse. We measured the
+gap and closed it: a script-prior bug (a Devanagari corpus with a 53% offensive
+rate taught the model that *Devanagari itself* looked toxic) surfaced from our own
+smoke test, and a clean-Hindi Wikipedia counterweight fixed it — clean Hindi now
+scores low, abuse scores high, in both scripts. The keyboard matters because a
+third-party Hindi keyboard inside a canvas game is invisible to capture; ours
+isn't. And we tell parents exactly what we can and can't see — a monitoring app
+that hides its blind spots is worse than none. (DEFENSE_NOTES: Hindi Q&A)
 
 ---
 
@@ -150,14 +173,18 @@ asymmetric cost is parents ignoring alerts. Show you know both operating points:
 - Ablations: one component removed per row, bootstrap 95% CIs (1,000 resamples)
 - MCC + PR-AUC alongside F1 (base rates are extreme)
 - Biggest finding: remove CONDA domain data → PR-AUC 0.825 → **0.511**
+- Direct calibration proof: ECE 0.062 → **0.015** (behaviour), 0.031 → 0.012 (chat) — not just Brier
 
-**Table:** 3-row mini-ablation (full 0.834 / − char_wb 0.811 / − CONDA 0.513) —
-full tables in `docs/ablation_results.json` and the paper.
+**Table:** 3-row mini-ablation (full 0.825 / − char_wb 0.794 / − CONDA 0.511) —
+full 8-row table in `docs/ablation_results.json` and the paper; reliability.pdf
+for the ECE claim.
 
 **Notes:** This slide is what separates the project from "we trained a model."
 Every design choice has a measured counterfactual. The headline lesson: data >
-architecture — losing domain data costs 32 PR-AUC points, more than every
-architecture choice combined. Also mention the reported *negative* result: voice
+architecture — losing domain data costs 31 PR-AUC points, more than every
+architecture choice combined — and three transformer benchmarks (Detoxify on
+chat, w2v2 on voice, MuRIL on Hindi) confirm it: capacity helps in-distribution,
+domain and register fit decide. Also mention the reported *negative* result: voice
 augmentation was measured and found neutral — we say so instead of hiding it.
 (DEFENSE_NOTES §6)
 
@@ -165,9 +192,10 @@ augmentation was measured and found neutral — we say so instead of hiding it.
 
 ## Slide 10 — Dataset Audit
 **On slide:**
-- Adopted: Gamers & Anxiety (13,464) · IGDS9-SF LatAm (11,191) · CONDA · Davidson · RAVDESS + CREMA-D + EMO-DB + URDU (9,817 original clips; 12,864 augmented feature rows)
+- Adopted (eleven): Gamers & Anxiety (13,464) · IGDS9-SF LatAm (11,191) · CONDA · Davidson · **HASOC 2019 Hindi** · **clean-Hindi Wikipedia** · RAVDESS + CREMA-D + EMO-DB + URDU (9,817 clips)
 - Rejected **with evidence**: Kaggle "Predict Online Gaming Behavior" (synthetic, engagement ≠ addiction), "Mobile App Usage" (3/10 features, credential-walled)
-- Full audit table in paper §4.2
+- **Reality-checked** one hand-set prior against real phone telemetry (StudentLife, CC-BY): heavy-band late-night sits above the 90th percentile of normal student use
+- Full audit table in paper §4.2, every adoption by measured trial
 
 **Notes:** We downloaded and inspected the rejected sets rather than dismissing
 them from their descriptions — provenance analysis showed one is synthetically
