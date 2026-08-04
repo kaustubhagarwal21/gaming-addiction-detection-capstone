@@ -1313,7 +1313,8 @@ $0.834$; the post-pilot de-duplicated retrain and the two Hindi adoptions
 (audit and Hindi paragraphs above) hold at $\mathbf{0.821}$ served,
 statistically unchanged through all three (every value in this chain lies inside
 the others' bootstrap intervals; the $0.825$ in the ablation table of
-\Sef{sec:ablations} is the same recipe re-trained under that section's own
+\S
+ef{sec:ablations} is the same recipe re-trained under that section's own
 split and seed). Each revision \emph{re-derived the
 alert threshold from its own held-out curve} --- calibration shifts where
 probabilities land, so a threshold never survives a model change unexamined. On
@@ -1689,11 +1690,11 @@ assumptions --- drive the next revision.
         scripted scan to have been the only such endpoint
         (\texttt{docs/API\_FUZZ\_REPORT.md}). The same pass retired six dependency
         CVEs (\texttt{pip-audit}), added Python static security analysis to match the
-        apps' MobSF scan (\texttt{bandit}: 44 medium findings, \emph{43 verified false
+        apps' MobSF scan (\texttt{bandit}~\cite{bandit}: 44 medium findings, \emph{43 verified false
         positives} --- a script proved every flagged SQL string interpolates only a
         dialect placeholder or a hardcoded identifier, never user input --- and one
         real \texttt{eval} in test code, replaced with \texttt{ast.literal\_eval}), and
-        confirmed by a committed-secret scan (\texttt{detect-secrets}) that no service-account
+        confirmed by a committed-secret scan (\texttt{detect-secrets}~\cite{detectsecrets}) that no service-account
         key, signing keystore or server secret is tracked in this \emph{public}
         repository or ever was. Statement coverage of the suite is $75\%$ overall
         ($80\%$ excluding developer-only utility scripts). Both apps pass
