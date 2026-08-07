@@ -274,7 +274,11 @@ def main():
                  f'(headers must contain the docs/SURVEY_IGDS9SF.md key phrases)')
     cols = {
         'adult':   find_col(headers, '18'),
-        'gamer':   find_col(headers, 'do you play video games'),
+        # MUST be specific: 'do you play video games' also appears inside the
+        # hours-per-week question, and matching that would bind the yes/no
+        # eligibility gate to a banded answer ("2-5") and silently drop EVERY
+        # row. Verified by the dry-run harness (ml/tests/test_survey_parsing.py).
+        'gamer':   find_col(headers, 'currently play video games'),
         'hours_w': find_col(headers, 'hours per week'),
         'daily':   find_col(headers, 'typical day'),
         'days':    find_col(headers, 'days per week'),

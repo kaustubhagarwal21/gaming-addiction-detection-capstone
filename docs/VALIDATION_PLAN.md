@@ -43,7 +43,8 @@ hours spread over a week.
 
 | Day | Action (time) |
 |---|---|
-| **Day 0** | Build the Google Form by pasting `SURVEY_IGDS9SF.md` verbatim — consent header, Q1–Q11 (incl. the six gaming-pattern questions + attention check), IGDS9-SF grid. Link it to a Sheet. (~45 min) |
+| **Day 0** | Build the Google Form by pasting `SURVEY_IGDS9SF.md` verbatim — consent header, Q1–Q11 (incl. Q2b eligibility, the six gaming-pattern questions + attention check), IGDS9-SF grid. Link it to a Sheet. (~45 min) |
+| **Day 0** | **Before sharing the link**, submit 2–3 test responses yourself, export the CSV, and run `python ml/eval_behavior_survey.py <that.csv>`. It must report `N raw -> N usable`. If it reports `0 usable`, a question was reworded and the keyword matcher lost it — fix the wording *now*, because you cannot re-collect responses later. (`python -m pytest ml/tests/test_survey_parsing.py -q` guards the documented wordings.) (~10 min) |
 | **Day 0** | One-line email to the project guide: "anonymous 18+ survey on gaming habits for the capstone, no personal data — flagging for your records." (~5 min) |
 | **Day 0–1** | Blast the link: class/section groups, hostel groups, college gaming groups (BGMI/Valorant squads are the highest-yield audience), club Discords, plus 5 friends asked to forward to *their* groups. Personal follow-ups roughly double completion. (~30 min) |
 | **Day 3–4** | One reminder ping in the same groups. Target **75–100 raw responses** so that after dropping non-gamers and attention-check failures you keep ≥50. (~10 min) |

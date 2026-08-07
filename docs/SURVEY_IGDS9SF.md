@@ -35,6 +35,14 @@ grounding the system currently borrows from the IGDS9-SF Latin-America dataset
 **Q2. Your age group** (Multiple choice)
 - 18–20  ·  21–24  ·  25–29  ·  30–39  ·  40+
 
+**Q2b. Do you currently play video games?**  (Multiple choice — if "No", end the form)
+- Yes  ·  No
+
+> Keep this wording exactly. The analysis script uses `currently play video games`
+> as the eligibility gate; a looser phrase collides with Q3 below (which also
+> contains "do you play video games") and would drop every response. The dry-run
+> test `ml/tests/test_survey_parsing.py` guards this.
+
 **Q3. On average, how many hours per week do you play video games (phone/PC/console)?**
 (Multiple choice)
 - Less than 2  ·  2–5  ·  6–10  ·  11–20  ·  21–35  ·  More than 35
