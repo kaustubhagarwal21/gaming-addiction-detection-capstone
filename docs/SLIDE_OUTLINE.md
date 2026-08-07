@@ -1,4 +1,4 @@
-# Defense Slide Outline — PW26_SJ_05
+# Defense Slide Outline — PW26_SAS-03
 
 Paste-ready content for the PES capstone template. Each slide: the **on-slide
 bullets** (keep them this short — the notes carry the words), any **figure/table**
@@ -15,7 +15,7 @@ export to PNG for PowerPoint via any PDF viewer, or re-run `ml/make_figures.py`)
 **On slide:**
 - AI-Driven Gaming Addiction Screening for Children
 - Multi-modal: behaviour + chat + voice
-- PW26_SJ_05 · <team member names + SRNs> · Guide: Prof. Shridevi Sawant
+- PW26_SAS-03 · <team member names + SRNs> · Guide: Prof. Shridevi Sawant
 
 **Notes:** One sentence: "We built and deployed a complete parent-facing screening
 system — two Android apps and a cloud ML backend — and evaluated it the way ML

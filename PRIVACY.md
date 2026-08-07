@@ -1,4 +1,4 @@
-# Privacy Policy — Gaming Wellbeing Monitor (PW26_SJ_05)
+# Privacy Policy — Gaming Wellbeing Monitor (PW26_SAS-03)
 
 _Last updated: 2026-07-30 · Consent version: 2026-07-30_
 
@@ -117,5 +117,5 @@ consent is requested again.
 
 ## Contact
 
-PES University Capstone PW26_SJ_05 — Kaustubh Agarwal, Kanak Goyal,
+PES University Capstone PW26_SAS-03 — Kaustubh Agarwal, Kanak Goyal,
 Khushee P Kiran, Vidisha Murali.

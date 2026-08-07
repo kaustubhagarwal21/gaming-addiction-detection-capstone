@@ -1,6 +1,6 @@
 # Defense Notes — Anticipated Examiner Questions
 
-Pre-assembled answers for the capstone defense (PW26_SJ_05). Every number below is
+Pre-assembled answers for the capstone defense (PW26_SAS-03). Every number below is
 reproducible from a script in this repo; the source is cited next to each claim.
 The strategy throughout: **answer honestly, cite the measurement, name the limitation
 before the examiner does.**

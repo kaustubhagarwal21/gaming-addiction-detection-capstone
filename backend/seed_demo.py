@@ -1,5 +1,5 @@
 """
-Demo seed data — PES Capstone PW26_SJ_05
+Demo seed data — PES Capstone PW26_SAS-03
 
 Run locally (SQLite):        python seed_demo.py        (from the backend/ folder)
 Seed the Render Postgres:    in the service's Shell tab, run:  python seed_demo.py

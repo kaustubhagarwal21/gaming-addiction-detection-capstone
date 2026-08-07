@@ -1,4 +1,4 @@
-# Deployment — Gaming Addiction Detection (PW26_SJ_05)
+# Deployment — Gaming Addiction Detection (PW26_SAS-03)
 
 The backend runs on **SQLite locally** and **Postgres in production**, selected
 automatically by the `DATABASE_URL` env var. The same code path serves both; see
@@ -79,7 +79,7 @@ cd android/ParentApp && ./gradlew :app:assembleRelease
 ```
 
 Output: `app/build/outputs/apk/release/app-release.apk` (signed with the
-`PES Capstone PW26_SJ_05` key; APK Signature Scheme v2). Install with
+`PES Capstone PW26_SAS-03` key; APK Signature Scheme v2). Install with
 `adb install -r app-release.apk`. The release build uses the strict HTTPS-only
 network-security config, so it talks only to the cloud backend over TLS.
 

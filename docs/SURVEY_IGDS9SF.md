@@ -21,7 +21,7 @@ grounding the system currently borrows from the IGDS9-SF Latin-America dataset
 ## Form header (paste as the description)
 
 > This is an anonymous academic survey on gaming habits for a PES University capstone
-> project (PW26_SJ_05). It takes ~3 minutes. You must be **18 or older**. There are no
+> project (PW26_SAS-03). It takes ~3 minutes. You must be **18 or older**. There are no
 > right or wrong answers, and no personal or identifying information is collected. By
 > continuing you consent to your anonymous responses being used for research.
 

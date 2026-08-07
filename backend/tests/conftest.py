@@ -1,4 +1,4 @@
-"""Pytest fixtures — PES Capstone PW26_SJ_05.
+"""Pytest fixtures — PES Capstone PW26_SAS-03.
 
 Runs the suite against an ISOLATED throwaway SQLite DB (never the real
 gaming_addiction.db) seeded with deterministic data, so tests don't depend on

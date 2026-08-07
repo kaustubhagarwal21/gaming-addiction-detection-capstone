@@ -1,4 +1,4 @@
-"""Backend smoke + integration tests — PES Capstone PW26_SJ_05.
+"""Backend smoke + integration tests — PES Capstone PW26_SAS-03.
 
 Run from the backend dir:
     cd backend && pytest tests/ -v

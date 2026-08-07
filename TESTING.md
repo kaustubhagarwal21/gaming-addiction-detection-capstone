@@ -1,4 +1,4 @@
-# Testing Guide — Gaming Addiction Detection (PW26_SJ_05)
+# Testing Guide — Gaming Addiction Detection (PW26_SAS-03)
 
 How to verify the whole system, in three layers: automated backend tests, a live
 cloud check, and an on-device manual checklist. Run the automated layers any time
