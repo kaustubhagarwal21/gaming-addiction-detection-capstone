@@ -69,6 +69,7 @@ risk-flap bugs (`AlertTriage`).
 | `python ml/eval_voice_headroom.py` | Voice representation-headroom experiment: 36-feat vs frozen w2v2 embeddings vs fine-label-grouped, identical speaker-independent split (needs the extracted embedding chunks) → `docs/voice_headroom.json` |
 | `python ml/analyze_studentlife.py` | Late-night-prior reality check against real phone telemetry (StudentLife mirror, CC-BY; downloads ~230 MB once). Coarse ≥1 h lock events only — session-level priors are NOT checkable from the open mirror, stated in-script → `docs/studentlife_check.json` |
 | `python ml/monitor_drift_evidently.py` | Optional Evidently companion to the drift monitor: 20+ maintained drift tests incl. small-sample-appropriate ones; HTML report + JSON. Primary PSI/KS monitor stays authoritative for CI |
+| `python ml/smoke_stt_shootout.py` | Three-way STT engine comparison (vosk-en / vosk-hi / whisper-tiny) on code-mixed speech — the measured basis for the dual-Vosk decision → `docs/stt_shootout.json` |
 | `python ml/smoke_spoken_hindi.py` | Offline spoken-Hindi chain smoke test (gTTS → Vosk Hindi STT → served pipeline); de-risks the future Hindi-recogniser swap. Needs `pip install vosk gtts`, ffmpeg, and the vosk-model-small-hi-0.22 download (see docstring) |
 | `python ml/tune_from_feedback.py` | Converts parent-feedback verdicts into conservative threshold recommendations (`threshold_tuning.json`) + labelled CSV export |
 | `python ml/analyze_reflections.py` | Correlates daily risk vs next-day mood/sleep/energy self-reports (Spearman) |

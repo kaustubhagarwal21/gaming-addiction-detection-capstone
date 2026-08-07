@@ -2280,11 +2280,21 @@ value depends on accumulating real usage data the prototype does not yet have:
         alternative was measured and rejected first (English abuse through the
         Hindi model collapses to unscorable junk --- ``kill yourself\dots''
         scored $0.08$ --- and vice versa), and submitting both hypotheses would
-        double-count toward the streak alert. The mode ships behind a
+        double-count toward the streak alert. A single \emph{multilingual} model
+        was benchmarked too (\texttt{whisper-tiny}, the only Whisper size within
+        a phone budget; \texttt{ml/smoke\_stt\_shootout.py}): it code-switches
+        natively, but at this size it transcribed the abuse vocabulary worse
+        than the Hindi Vosk model, ran $0.4$--$1.5$\,s per short clip on a
+        \emph{desktop} CPU, and carries Whisper's documented tendency to
+        hallucinate fluent text on non-speech audio --- for an alerting product,
+        inventing words a child never said. Dual-Vosk keeps the safe failure
+        mode: on noise it outputs silence. The mode ships behind a
         parent-gated toggle, default \emph{off}: until the on-device validation
         checklist runs on real hardware (STT quality on real speech, CPU and
-        battery with two models resident), the deployed default behaviour is
-        byte-identical to v2.3.11.
+        battery with two models resident --- \texttt{TESTING.md} scripts the
+        quantified drill, battery attribution / RAM / per-session data with the
+        toggle off vs.\ on, whose deltas gate the beta's promotion), the
+        deployed default behaviour is byte-identical to v2.3.11.
 \end{itemize}
 
 \textbf{Longer-term research directions.}

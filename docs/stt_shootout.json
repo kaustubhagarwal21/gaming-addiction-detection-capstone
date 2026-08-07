@@ -1,0 +1,121 @@
+[
+  {
+    "phrase": "अबे चूतिया tune पूरा game बर्बाद कर दिया",
+    "expected": "abusive",
+    "vosk_en": {
+      "text": "june poorer game but bard career",
+      "score": 0.17
+    },
+    "vosk_hi": {
+      "text": "अभी चूतिया पूरा गेम बर्बाद कर दिया",
+      "score": 0.729
+    },
+    "whisper_tiny": {
+      "text": "Abhe chuteya chune pura game varbad kar dia.",
+      "score": 0.614,
+      "ms": 1461
+    }
+  },
+  {
+    "phrase": "kill him yaar वो रंडी की तरह भाग रहा है",
+    "expected": "abusive",
+    "vosk_en": {
+      "text": "kill him randy keeper i have a high",
+      "score": 0.882
+    },
+    "vosk_hi": {
+      "text": "रहीम यार वो रंडी की तरह भाग रहा है",
+      "score": 0.942
+    },
+    "whisper_tiny": {
+      "text": "Kilimyaar wo randi ki tarihab bahagraha hai.",
+      "score": 0.905,
+      "ms": 1280
+    }
+  },
+  {
+    "phrase": "madarchod noob team में मत आना",
+    "expected": "abusive",
+    "vosk_en": {
+      "text": "mother new team much",
+      "score": 0.614
+    },
+    "vosk_hi": {
+      "text": "मादरचोद टीम में मत आना",
+      "score": 0.905
+    },
+    "whisper_tiny": {
+      "text": "Mother Chaud Nubhti me matana",
+      "score": 0.662,
+      "ms": 435
+    }
+  },
+  {
+    "phrase": "तू harami है bro uninstall कर दे",
+    "expected": "abusive",
+    "vosk_en": {
+      "text": "to her army hey bro uninstall cut day",
+      "score": 0.124
+    },
+    "vosk_hi": {
+      "text": "हरामी है ब्रो अनइंस्टॉल कर दे",
+      "score": 0.956
+    },
+    "whisper_tiny": {
+      "text": "tu harami hai bro un install kar de.",
+      "score": 0.931,
+      "ms": 436
+    }
+  },
+  {
+    "phrase": "yaar ये level बहुत hard है",
+    "expected": "clean",
+    "vosk_en": {
+      "text": "yeah yeah level both day",
+      "score": 0.253
+    },
+    "vosk_hi": {
+      "text": "यार ये लेवल बहुत हार्ड है",
+      "score": 0.778
+    },
+    "whisper_tiny": {
+      "text": "Yaris level is very hard.",
+      "score": 0.542,
+      "ms": 451
+    }
+  },
+  {
+    "phrase": "good game भाई कल फिर खेलते हैं",
+    "expected": "clean",
+    "vosk_en": {
+      "text": "good game high culture kale day",
+      "score": 0.403
+    },
+    "vosk_hi": {
+      "text": "गुड गेम भाई कल फिर खेलते हैं",
+      "score": 0.882
+    },
+    "whisper_tiny": {
+      "text": "Good game high call fair play.",
+      "score": 0.542,
+      "ms": 1005
+    }
+  },
+  {
+    "phrase": "मेरा internet slow चल रहा है",
+    "expected": "clean",
+    "vosk_en": {
+      "text": "mirror internet slow children die",
+      "score": 0.542
+    },
+    "vosk_hi": {
+      "text": "मेरा इंटरनेट स्लो चल रहा है",
+      "score": 0.882
+    },
+    "whisper_tiny": {
+      "text": "Myra internet slow chal rahahi.",
+      "score": 0.403,
+      "ms": 541
+    }
+  }
+]
