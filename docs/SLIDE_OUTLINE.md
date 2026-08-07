@@ -15,7 +15,7 @@ export to PNG for PowerPoint via any PDF viewer, or re-run `ml/make_figures.py`)
 **On slide:**
 - AI-Driven Gaming Addiction Screening for Children
 - Multi-modal: behaviour + chat + voice
-- PW26_SJ_05 · <team member names + SRNs> · Guide: <guide name>
+- PW26_SJ_05 · <team member names + SRNs> · Guide: Prof. Shridevi Sawant
 
 **Notes:** One sentence: "We built and deployed a complete parent-facing screening
 system — two Android apps and a cloud ML backend — and evaluated it the way ML
