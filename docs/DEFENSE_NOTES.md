@@ -306,6 +306,18 @@ Second-order finding: the lexicon's alert-recall contribution shrank from +5pp
 to <1pp — the trained model now knows what the hand lexicon knew.
 `ml/eval_chat_hindi.py` reproduces both views.
 
+**Q: Did you measure battery drain / on-device latency?**
+Split answer, no bluffing. SERVER latency: yes — concurrency smoke p50 66 ms /
+p95 684 ms at 24 threads, zero server errors; server memory was hardened after a
+real 512 MB OOM under live voice load. DEVICE functional latencies: yes, observed
+on real hardware and pinned in the manual checklist (session auto-start ~10 s,
+auto-end ~25 s, nudge ~12 s, tamper detection ~10-15 min). QUANTIFIED battery/
+CPU/RAM/data on-device: no — the honest evidence is 23 days of continuous pilot
+operation on one phone without the family abandoning it (viability, not
+measurement). TESTING.md now contains a scripted adb device-metrics drill
+(batterystats/meminfo/netstats deltas, toggle-OFF vs toggle-ON) with an explicit
+acceptance gate; the dual-STT beta stays a pre-release until those numbers exist.
+
 **Q: Has anyone independently audited the app's security?**
 An automated independent static audit (MobSF v4.5.1, 2026-08-04) of both signed release
 APKs: no exploitable high-severity issue; the single flagged item is the standard

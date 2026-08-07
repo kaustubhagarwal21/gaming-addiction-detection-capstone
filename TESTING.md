@@ -139,6 +139,48 @@ signed release APKs from `android/*/app/build/outputs/apk/release/app-release.ap
       sentence near the phone → each yields ONE 🎙️ line in the correct language
       (never two lines for one utterance); watch CPU/battery — two Vosk models
       are resident. Toggle OFF → behaviour identical to v2.3.11.
+
+### Device-metrics drill (quantified — run once per beta validation, ~20 min)
+
+Server-side latency/memory are measured (concurrency smoke; OOM-hardening), but
+**battery, app CPU/RAM and data usage have never been quantified on-device** —
+the 23-day pilot is viability evidence only. This drill closes that, with plain
+`adb` (USB debugging on; `adb devices` shows the phone):
+
+```bash
+# 0. Baseline reset (phone unplugged after this, screen use minimal)
+adb shell dumpsys batterystats --reset
+adb shell dumpsys netstats --reset   # ignore error if unsupported
+
+# 1. Play a monitored game 15 min with voice toggle OFF, then:
+adb shell dumpsys batterystats --charged com.pes.gamingdetector | head -60   # % drain attribution
+adb shell dumpsys meminfo com.pes.gamingdetector | head -25                  # PSS RAM
+adb shell top -n 1 -b | grep gamingdetector                                  # CPU snapshot
+
+# 2. Reset again, repeat the same 15 min with the Hindi voice toggle ON.
+#    The DELTA between runs is the dual-STT cost — the number the beta is gated on.
+
+# 3. Data usage for the session (both runs):
+adb shell dumpsys netstats detail | grep -A4 gamingdetector | head -20
+
+# 4. Cold start (both apps):
+adb shell am start -W com.pes.gamingdetector/.MainActivity | grep TotalTime
+adb shell am start -W com.pes.parentmonitor/.SplashActivity | grep TotalTime
+```
+
+Record results here (fill on first run):
+
+| Metric | Toggle OFF | Toggle ON (dual STT) |
+|---|---|---|
+| Battery attribution, 15-min session | ___ % | ___ % |
+| ChildApp PSS RAM | ___ MB | ___ MB |
+| CPU snapshot during session | ___ % | ___ % |
+| Data sent per 15-min session | ___ MB | ___ MB |
+| ChildApp cold start | ___ ms | (same) |
+
+Acceptance gate for promoting v2.4.0 out of pre-release: toggle-ON battery
+attribution < 2× toggle-OFF, RAM under ~400 MB on a 4 GB device, and no thermal
+throttling notification during the session.
 - [ ] **Voice capture**: speak near the phone during the session → voice events +
       🎙️ STT lines appear (verified working on real hardware already).
 - [ ] **Auto session end**: leave the game (Home / screen off) → ~25 s later the
