@@ -23,6 +23,13 @@ cloud check, and an on-device manual checklist. Run the automated layers any tim
 | `python -m pytest tests/ -q --cov=. --cov-report=term-missing` | Statement coverage of the 180-test suite | **75%** overall, 80% of served code |
 
 Notes
+- **Research-integrity guards** (run from the repo root): `python -m pytest ml/tests/ -q`
+  → 7 tests. `test_survey_parsing.py` pins the Google-Form wording ↔ column-matcher
+  contract (it caught a defect pre-launch that would have dropped 120/120 responses).
+  `test_paper_survey_numbers.py` asserts the survey figures quoted in the paper,
+  defense notes and validation plan match the committed aggregate JSON, and that the
+  two analysis scripts agree on the one statistic they both compute — the class of
+  error that puts a stale number in front of an examiner.
 - The first `cloud_e2e` call may take ~30–60 s if the free instance was asleep.
 - `cloud_e2e` exercises the seeded demo family (`FAM789` / `0000`); reseed via
   `seed_demo.py` if logins fail (see DEMO_RUNBOOK §2).
@@ -76,6 +83,8 @@ risk-flap bugs (`AlertTriage`).
 | `python ml/ablation_studies.py` | One-component-at-a-time ablations for all three channels (bootstrap 95% CIs) → `docs/ablation_results.json`; `--only chat\|voice\|behaviour` re-runs a section |
 | `python ml/make_figures.py` | Regenerates the paper's figures (PR curve, confusion matrices) into `docs/figures/` |
 | `python ml/analyze_igds.py` | IGDS9-SF open dataset (n=11,191): severity base rate + toxicity-involvement vs IGD severity (chat-channel premise validation) |
+| `python ml/eval_behavior_survey.py data/survey/responses.csv` | **The external construct-validity endpoint.** Our own IGDS9-SF survey (n=87) → severity totals, local prevalence with Beta CI, hours-vs-severity baseline, behaviour-model score ↔ IGDS9-SF Spearman ρ with bootstrap CI, and a data-driven RISK_T1/T2 suggestion → `docs/survey_validation.json`. Caseness metrics stay withheld below 10 disordered-range respondents *by design*. `--selftest` runs it on a synthetic 150-row export |
+| `python ml/eval_survey_extras.py data/survey/responses.csv` | Everything paper §6.6 reports beyond the headline: incremental validity over the screen-time baseline (paired bootstrap on Δρ + partial ρ), per-feature and volume-vs-pattern composites, chat-channel premise, genre Kruskal-Wallis + resampled power curve, straight-line robustness, derived-proxy honesty check → `docs/survey_extras.json` |
 | `python ml/analyze_fusion_sensitivity.py` | Stress-tests the fusion priors on stored pilot predictions (weight simplex sweep, genre-effect sweep, threshold sweep) after proving exact replication of served scores; writes `docs/fusion_sensitivity.json` |
 | `python ml/calibrate_thresholds_prevalence.py` | Prevalence-anchored RISK_T2 calibration (IGDS9-SF disordered-range rate), population-gated below 10 children |
 | `python ml/analyze_voice_shadow.py` | Offline evaluation of the voice domain-shift mitigations (abstain-margin sweep, BBSE prior correction) on shadow-logged probability vectors from live pilot audio |

@@ -1,8 +1,51 @@
 # Model Validation Plan — from synthetic to real-data credibility
 
+> ## ✅ STUDY COMPLETE (2026-08-09) — the human-study tier has been EXECUTED
+>
+> The IGDS9-SF survey this document specifies was built, floated, closed and analysed.
+> **Collection is closed; the recipe below is retained as method documentation, not as
+> a to-do list.** Results are reported in paper §6.6 and `docs/DEFENSE_NOTES.md` §10.
+>
+> **Final sample:** 112 raw → **87 usable** (77.7%), 86 scoreable. Dropped: 17
+> eligibility (under-18 / non-gamer), 8 attention-check, 0 incomplete IGDS.
+> 76.7% aged 18–24. IGDS9-SF totals: mean 17.6 (SD 6.1), median 17, range 9–37.
+>
+> | Endpoint | Result | Verdict |
+> |---|---|---|
+> | **Construct validity** (served risk vs IGDS9-SF) | **ρ = 0.352** [0.158, 0.521], n=86 | ✅ significant |
+> | Screen-time baseline (hours/week vs IGDS9-SF) | ρ = 0.155 [−0.057, 0.376] | — CI spans zero |
+> | **Model beats baseline** (paired bootstrap) | **Δρ = +0.195** [+0.026, +0.372], P=98.6% | ✅ significant |
+> | **Incremental validity** (partial, hours removed) | **ρ = 0.349** [0.149, 0.521] | ✅ not a screen-time proxy |
+> | Pattern composite vs volume composite | 0.358 [0.160, 0.529] vs 0.202 [−0.011, 0.395] | ✅ core premise confirmed |
+> | Chat-channel premise (toxic chat vs IGDS9-SF) | ρ = 0.315 [0.114, 0.498] | ✅ replicates LatAm r=+0.156 |
+> | Robustness (drop 8 straight-liners) | ρ = 0.290 [0.080, 0.475], n=78 | ✅ survives |
+> | Genre multiplier (Kruskal-Wallis, 7 genres) | H=5.42, **p = 0.491** | ❌ null — underpowered (36%), needs n≈258 |
+> | Derived psychometric proxies vs namesake items | only craving +0.325; 3 of 5 ≈ zero | ❌ names overclaim |
+> | Prevalence ≥36 / ≥32 | 1.1% / 2.3% | ⚠️ no severity tail |
+> | Caseness metrics (sens/spec at ≥36) | **not computed** — 1 positive | ⚠️ needs ~157 usable at 6.4% base rate |
+> | Threshold refit (κ vs IGDS bands) | T1=0.51, T2=0.95, κ=0.197 | ⚠️ **measured, deliberately not applied** |
+>
+> **Why collection stopped at 112 raw.** The headline was significant and stable across
+> ten snapshots (n=33→87; lower CI bound rose 0.047→0.158). The only endpoint that
+> would have justified more was the genre test — and it grew *less* significant with
+> more data (p 0.159 at n=80 → 0.491 at n=86), indicating a smaller true effect than
+> the power analysis assumed rather than a near miss. Further collection bought ~0.05
+> of CI width on already-significant results.
+>
+> **What is still open** (now the *only* open validation tier): a per-child cohort
+> pairing guardian-reported IGDS9-SF scores with *measured* telemetry — the sole route
+> to caseness metrics, to the adolescent target population, and to a longitudinal
+> reading. That needs ethics approval and is scoped in paper §9.
+>
+> **Reproduce:** `python ml/eval_behavior_survey.py data/survey/responses.csv` and
+> `python ml/eval_survey_extras.py data/survey/responses.csv`. Aggregates are committed
+> at `docs/survey_validation.json` and `docs/survey_extras.json`. Row-level responses
+> are **not** committed: consent covered research use, not public redistribution.
+
 > **STATUS (2026-07-05, refreshed 2026-08-04): the public-dataset tier has been
-> EXECUTED** — and kept growing after this block was first written. What remains open is
-> the human-study tier (IGDS9-SF survey), whose full recipe below is still current.
+> EXECUTED** — and kept growing after this block was first written. The human-study
+> tier is now closed too (see the block above); the recipe below documents how it was
+> run.
 >
 > **2026-08-04 addendum** (all documented in the paper; numbers below superseded):
 > the chat corpus is now **five** corpora (…+ dual-script **HASOC 2019 Hindi** + a
@@ -224,11 +267,24 @@ synthetic data — this is the actual ~9.5 move.
   `ml/tune_from_feedback.py` and `ml/monitor_drift.py` (the pilot instruments).
 - `ml/eval_behavior_survey.py` (delivered): IGDS scoring → prevalence CI → behaviour-model
   correlation → threshold suggestion in one pass over the exported form CSV.
-- Cross-reference: paper **Future Work** (data-dependent tier + clinical validation).
+- `ml/eval_survey_extras.py` (delivered): incremental validity over the screen-time
+  baseline, per-feature and composite signal, chat-channel premise, genre test +
+  power curve, straight-line robustness, derived-proxy honesty check.
+- Cross-reference: paper **§6.6** (results) and **§9** (what remains).
 
 ## Suggested sequencing (updated)
 1. ~~Public-dataset tier~~ — **done** (see status block above).
-2. **Start the ethics check + build the Google Form now** — the data-collection window
-   is the long pole, so kick it off immediately.
-3. **Survey analysis** once ~50–100 responses are in; add the construct-validity numbers
-   (and, ideally, a behaviour model retrained on real labels) to the paper/model card.
+2. ~~Ethics check + build the Google Form~~ — **done**; guide notified in writing
+   2026-08-07, form floated the same day.
+3. ~~Survey analysis~~ — **done** at n=87; construct-validity numbers are in the paper
+   (§6.6), the defense notes (§10) and the committed aggregate JSONs.
+4. **Next (blocked on ethics approval): the per-child cohort.** Guardian-reported
+   IGDS9-SF scores linked to measured telemetry. This is the only remaining tier, and
+   the only route to (a) caseness metrics at the ≥36 cut-off, (b) the adolescent target
+   population rather than adult self-report, and (c) a longitudinal reading of whether
+   the score predicts trajectory. Target ≥157 usable at the literature's 6.4% base rate
+   to clear the ten-positive floor; re-run the genre test at n≈258 for 90% power while
+   collecting.
+5. **Optional, cheap:** a behaviour model retrained on real labels becomes possible the
+   moment (4) yields data — until then the deployed model stays synthetic-trained by
+   deliberate choice, not oversight.

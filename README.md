@@ -148,5 +148,5 @@ They talk to the live cloud backend — no GitHub or build tools needed.
 - [DEMO_RUNBOOK.md](DEMO_RUNBOOK.md) — demo walkthrough
 - [TESTING.md](TESTING.md) — automated test layers + on-device manual checklist
 - [docs/PROJECT_PAPER.tex](docs/PROJECT_PAPER.tex) — the full project paper: architecture, models, honest metrics, limitations
-- [docs/VALIDATION_PLAN.md](docs/VALIDATION_PLAN.md) — real-data validation playbook (public datasets + IGDS9-SF survey) to move the models from synthetic to validated
+- [docs/VALIDATION_PLAN.md](docs/VALIDATION_PLAN.md) — real-data validation record: the public-dataset tier and the IGDS9-SF construct-validity survey are **executed and closed** (n=87; risk score ↔ IGDS9-SF ρ = 0.352, beating the self-reported screen-time baseline); the remaining per-child cohort is scoped there
 - [PRIVACY.md](PRIVACY.md) — privacy & data handling

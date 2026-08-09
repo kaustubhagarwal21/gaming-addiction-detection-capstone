@@ -150,14 +150,25 @@ as a tamper event, not just a passive badge.
   valence from on-device Vosk transcription).
 - **Ensemble weighting (40/30/30):** a clinically-motivated *prior* — behavior dominant
   per DSM-5 IGD / ICD-11 Gaming Disorder; weights re-normalize by data availability.
-  The chat channel's premise is empirically supported (toxic-speech involvement ↔
-  higher IGDS9-SF severity, r=+0.156, n=11,191); weight *fitting* awaits real labels
+  The chat channel's premise is empirically supported twice over (toxic-speech
+  involvement ↔ higher IGDS9-SF severity: r=+0.156 in the LatAm dataset, n=11,191;
+  ρ=+0.315 replicated in our own survey, n=86); weight *fitting* awaits real labels
   via the feedback loop.
-- **Known limitations (state these proactively):** the behaviour model's *labels* are
-  synthetic screening priors (its play-time distributions are survey-grounded); the
-  voice corpora are acted adult speech, a proxy for child gaming speech; the ensemble
-  weights are priors, not fitted. The feedback loop + drift monitor + validation plan
-  are exactly the instruments that address these with pilot data.
+- **External validation (lead with this if asked "does it work?"):** an anonymous adult
+  IGDS9-SF survey (n=87) scored through the deployed pipeline — the served risk score
+  tracks the clinical instrument at **ρ = 0.352** [0.158, 0.521] and **beats the
+  self-reported screen-time baseline** it replaces (hours: ρ = 0.155, CI spanning zero;
+  paired Δρ = +0.195 [+0.026, +0.372]). The signal sits in the *pattern* features, not
+  the volume ones — the design premise, externally confirmed. Paper §6.6.
+- **Known limitations (state these proactively):** the behaviour model's *training
+  labels* are still synthetic screening priors, so the 91.6% accuracy is a
+  synthetic-distribution number and the survey does not upgrade it — what the survey
+  validates is that the score *means* something, not how accurate it is at a clinical
+  cut-off (uncomputable here: one disordered-range respondent in 87). The voice corpora
+  are acted adult speech, a proxy for child gaming speech; the ensemble weights are
+  priors, not fitted; and the genre multiplier failed to reach significance in that
+  same survey (p=0.491) and is retained-but-flagged. The feedback loop + drift monitor
+  + validation plan are exactly the instruments that address these with pilot data.
 - **Privacy:** raw audio is processed and discarded after feature extraction (the
   spoken words are transcribed to text and kept, the audio is not); capture is scoped
   to active gaming sessions of any app the device classifies as a game.

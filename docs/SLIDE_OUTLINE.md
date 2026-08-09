@@ -2,9 +2,10 @@
 
 Paste-ready content for the PES capstone template. Each slide: the **on-slide
 bullets** (keep them this short — the notes carry the words), any **figure/table**
-to place, and **speaker notes** (~60 s each; 14 slides ≈ 15 min). Every number is
-from `backend/models/model_metadata.json` or `docs/ablation_results.json`; the
-matching Q&A prep is `docs/DEFENSE_NOTES.md` (section refs given per slide).
+to place, and **speaker notes** (~60 s each; 15 slides ≈ 16 min). Every number is
+from `backend/models/model_metadata.json`, `docs/ablation_results.json`, or
+`docs/survey_extras.json`; the matching Q&A prep is `docs/DEFENSE_NOTES.md`
+(section refs given per slide).
 
 Figures live in `docs/figures/` (pr_chat.pdf, cm_behaviour.pdf, cm_voice.pdf —
 export to PNG for PowerPoint via any PDF viewer, or re-run `ml/make_figures.py`).
@@ -190,6 +191,37 @@ augmentation was measured and found neutral — we say so instead of hiding it.
 
 ---
 
+## Slide 9b — External Validation: does the score actually mean anything?
+**On slide:**
+- Anonymous adult IGDS9-SF survey — **112 raw → 87 usable**, scored through the *deployed* pipeline
+- **ρ = 0.352** [0.158, 0.521] vs the clinical instrument — CI excludes zero
+- **Beats the screen-time baseline it replaces**: hours ρ = 0.155 (CI spans zero); paired **Δρ = +0.195** [+0.026, +0.372]
+- Not a screen-time proxy: partial ρ = **0.349** with hours removed
+- Signal is in **pattern** features (0.358) not **volume** (0.202, CI includes zero)
+- Two results *against* us: genre multiplier **p = 0.491**; 3 of 5 proxy names track nothing
+
+**Table:** the 4-row summary (construct validity / hours baseline / paired delta /
+partial) — pull from `docs/survey_extras.json`. If you have room for a second visual,
+the per-feature ρ table from paper §6.6 Table 4 is the strongest single image here:
+all five pattern features above all five volume features, no interleaving.
+
+**Notes:** This is the slide the whole project builds toward, so protect its time.
+Every other number in the deck is measured *inside* our own training distribution;
+this one is measured outside it, against an instrument we didn't design, on people
+who never touched the app. Lead with the comparison, not the magnitude — 0.35 sounds
+modest until you say the baseline every commercial parental-control tool ships reaches
+0.155 with a confidence interval spanning zero, and that our lead over it is itself
+significant. Then pre-empt the two questions that always follow. *Why no
+sensitivity/specificity?* One respondent scored in the disordered range; the script
+refuses to print caseness metrics below ten positives, and that guard was written
+before we saw the data. *Why did you keep the genre multiplier if it failed?* Because
+the null is underpowered (36%), not decisive, and removing it flips 34% of served
+bands — so it stays flagged and env-tunable rather than defended. Close on the two
+negative results: volunteer them. A validation study that only confirms isn't one.
+(DEFENSE_NOTES §10)
+
+---
+
 ## Slide 10 — Dataset Audit
 **On slide:**
 - Adopted (eleven): Gamers & Anxiety (13,464) · IGDS9-SF LatAm (11,191) · CONDA · Davidson · **HASOC 2019 Hindi** · **clean-Hindi Wikipedia** · RAVDESS + CREMA-D + EMO-DB + URDU (9,817 clips)
@@ -232,35 +264,45 @@ audio deletion, speech-gated capture. (DEFENSE_NOTES §9)
 
 ---
 
-## Slide 13 — Limitations & Validation Path
+## Slide 13 — Limitations & What's Still Open
 **On slide:**
-- Weakest part, stated plainly: **validation**
-- Behaviour labels synthetic (grounded); voice trained on acted adult emotion
-- Where we could, we *quantified* the gap: leakage 9 pts; missing domain data 32 PR-AUC pts
-- `docs/VALIDATION_PLAN.md`: scripted path — pilot → real labels → re-train → re-evaluate
+- Training labels still **synthetic** — the 91.6% is a synthetic-distribution number, and the survey does **not** upgrade it
+- Validated: the score's **meaning** (§9b). Not validated: its **accuracy at the clinical cut-off**
+- Blocker is named and quantified: 1 disordered-range respondent in 87 → need **~157 usable** at the 6.4% base rate
+- Adults, self-reported, cross-sectional — the deployment target is adolescents, measured, over time
+- Voice trained on acted adult emotion; gap quantified (leakage 9 pts; missing domain data 32 PR-AUC pts)
+- One remaining tier: **per-child cohort** (guardian IGDS9-SF + telemetry) — needs ethics approval
 
-**Notes:** Say it before they do: "the contribution is not a solved clinical
-instrument — it is a fully built, honestly measured screening pipeline where every
-claim traces to a runnable script." If the pilot has started by defense day, put
-its first real numbers HERE. (DEFENSE_NOTES §10)
+**Notes:** The framing shifted this year and the slide should show it: the weakest
+part *used* to be that nothing was externally validated; now it's that validation is
+**partial in a specific, nameable way**. Draw the line explicitly — construct validity
+is measured, caseness accuracy is not, and we will not blur them. That distinction is
+the thing a sharp examiner is probing for, so say it first. Then: "the contribution is
+not a solved clinical instrument — it is a fully built, honestly measured screening
+pipeline where every claim traces to a runnable script, including the two claims our
+own validation study refused to support." (DEFENSE_NOTES §10, §11)
 
 ---
 
 ## Slide 14 — Conclusion + Demo
 **On slide:**
 - Deployed end-to-end system · 3 real-data-grounded models · every choice ablated
+- **Externally validated**: ρ = 0.352 vs IGDS9-SF, beating the screen-time baseline
 - Reproducible: every number on these slides = one script in the repo
-- Future: consented family pilot → child-speech adaptation → per-family thresholds
+- Future: per-child cohort (ethics-gated) → child-speech adaptation → per-family thresholds
 - **Live demo** (backup video ready)
 
-**Notes:** Close on the differentiator: reproducibility and honesty as features.
-Then demo per `DEMO_RUNBOOK.md`; if Wi-Fi/devices misbehave, switch to the video
-without apologising. Future work is deliberately data-first, not model-first —
-"the gap is data, not architecture."
+**Notes:** Close on the differentiator: reproducibility and honesty as features —
+now with the strongest possible evidence for it, a validation study we ran on
+ourselves that returned two results we did not want. Then demo per
+`DEMO_RUNBOOK.md`; if Wi-Fi/devices misbehave, switch to the video without
+apologising. Future work is deliberately data-first, not model-first — "the gap is
+data, not architecture."
 
 ---
 
 ## Timing & Q&A prep
-- 14 slides ≈ 15 min (slides 5–9 are the core — protect their time).
-- If forced to cut: merge 3+4, and 11+12.
+- 15 slides ≈ 16 min (slides 5–9b are the core — protect their time; **9b is the
+  single highest-value slide in the deck**, it is the only externally-anchored evidence).
+- If forced to cut: merge 3+4, and 11+12. Do **not** cut 9b.
 - Q&A: `docs/DEFENSE_NOTES.md` — read it the night before; it maps 1:1 to these slides.

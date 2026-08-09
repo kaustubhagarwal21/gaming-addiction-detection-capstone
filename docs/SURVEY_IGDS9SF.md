@@ -1,5 +1,24 @@
 # Adult Gaming Survey (IGDS9-SF) — ready to paste into a Google Form
 
+> ## 🔒 CLOSED 2026-08-09 — do not re-open or re-word
+>
+> Ran 2026-08-07 → 2026-08-09. **112 raw responses → 87 usable.** Headline:
+> construct validity ρ = **0.352** [0.158, 0.521] (n=86), beating the self-reported
+> screen-time baseline (Δρ = +0.195 [+0.026, +0.372]). Full results in paper §6.6,
+> the completion block in `VALIDATION_PLAN.md`, and defense answers in
+> `DEFENSE_NOTES.md` §10.
+>
+> **This file is now the instrument of record.** The wordings below are the exact ones
+> that were fielded, and `ml/eval_behavior_survey.py` keyword-matches against them
+> (guarded by `ml/tests/test_survey_parsing.py`). Changing any wording here would
+> silently break the parser and desynchronise the documented instrument from the data
+> actually collected. Re-word only when fielding a *new* survey, and update the parser
+> and its test in the same commit.
+>
+> Row-level responses are deliberately not committed — the consent text below covered
+> use of anonymous responses *for research*, not public redistribution. Aggregates ship
+> as `docs/survey_validation.json` and `docs/survey_extras.json`.
+
 Purpose: collect a **local (Indian) severity base rate** and an hours-vs-severity
 relationship from adult gamers, to anchor the risk-band calibration
 (`ml/calibrate_thresholds_prevalence.py --prevalence …`) and to locally replicate the
@@ -10,11 +29,24 @@ grounding the system currently borrows from the IGDS9-SF Latin-America dataset
 - **Adults only (18+), reporting on their own gaming.** Surveying minors needs guardian
   consent and likely ethics clearance — keep this clean by restricting to adults. Still
   mention it to your guide; PES may want a nod even for an anonymous survey.
+  *(Done: the guide was notified in writing before distribution, with an explicit
+  request for direction if the department required further approval. That is faculty
+  notification, not an ethics-committee determination, and the paper says so.)*
 - **Anonymous.** No names, no email collection (turn OFF "Collect email addresses" in
   Google Forms settings), no identifying data.
 - This survey does **not** validate the fusion weights — that needs IGDS9-SF scores
-  linked to a monitored child's telemetry (the in-app instrument, future work). It only
-  supplies the population **prevalence** anchor and the hours–severity check.
+  linked to a monitored child's telemetry (the in-app instrument, future work).
+- **What it turned out to deliver** (more than originally scoped): the prevalence
+  anchor and hours–severity check as planned, *plus* the behaviour model's
+  construct-validity endpoint, the incremental-validity test against screen time, the
+  pattern-vs-volume feature comparison, a local replication of the chat-channel
+  premise, and two negative results (genre multiplier, derived-proxy naming). The
+  seven gaming-pattern questions are what made that possible — they map onto the
+  model's ten objective features, so each respondent could be *scored* by the
+  deployed pipeline and not merely counted.
+- **What it could not deliver:** sensitivity/specificity at the ≥36 cut-off. The
+  sample held one disordered-range respondent; a convenience sample of university
+  students does not contain the severity tail. That needs a help-seeking population.
 
 ---
 

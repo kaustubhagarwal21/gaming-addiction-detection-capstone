@@ -8,6 +8,8 @@ before the examiner does.**
 Primary evidence files:
 - `backend/models/model_metadata.json` — all serving-model metrics (written by `ml/retrain_models.py`)
 - `docs/ablation_results.json` — ablation tables with bootstrap 95% CIs (written by `ml/ablation_studies.py`)
+- `docs/survey_validation.json`, `docs/survey_extras.json` — the external IGDS9-SF
+  construct-validity study (written by `ml/eval_behavior_survey.py`, `ml/eval_survey_extras.py`)
 - `docs/PROJECT_PAPER.tex` §4 — dataset audit, evaluation methodology, model selection
 
 ---
@@ -46,9 +48,13 @@ audited six candidates and document why each was rejected (paper §4.2);
 Latin-America dataset (n=11,191 real MOBA players, `ml/analyze_igds.py`) fixes the
 severity base rate, and the Gamers & Anxiety survey (n=13,464, `ml/analyze_survey.py`)
 grounds the behaviour–severity relationships;
-(3) `docs/VALIDATION_PLAN.md` is the runnable path from synthetic to validated once
-real pilot data exists. Synthetic-but-grounded, with the validation path scripted, is
-the honest ceiling for a college project without IRB-approved child data.
+(3) we then ran the external check rather than only planning it — an adult IGDS9-SF
+survey (n=87) shows the *served score* tracking the clinical instrument at ρ = 0.352
+and beating the self-reported screen-time baseline (§10). That does **not** upgrade the
+91.6%, and we don't claim it does: the accuracy figure is still a synthetic-distribution
+number. What it upgrades is the claim that the score *means* something. The honest split
+is: separability = synthetic, construct validity = measured, caseness accuracy = still
+open. `docs/VALIDATION_PLAN.md` remains the runnable path for the last one.
 
 **Q: Why only 10 features when you compute 20?**
 The other 10 are deterministic functions of the first 10 (psychometric proxies derived
@@ -187,13 +193,16 @@ with real parent responses.
 ## 6. Evaluation methodology
 
 **Q: What makes your evaluation trustworthy?**
-Four properties: (1) every serving model is evaluated on held-out data it never
+Five properties: (1) every serving model is evaluated on held-out data it never
 trained on, with seeds recorded; (2) voice uses speaker-independent splits; chat's
 headline number is *in-domain* (CONDA) not general-corpus; (3) all ablations carry
 bootstrap 95% CIs over 1,000 resamples, so "better" claims are only made when
 intervals separate; (4) we report MCC alongside F1 at the alert threshold because F1
-ignores true negatives at extreme base rates. The protocol line at the bottom of
-`docs/ablation_results.json` states the exact procedure.
+ignores true negatives at extreme base rates; (5) the pipeline's *output* is anchored
+outside its own training distribution entirely — against the IGDS9-SF clinical
+instrument in real respondents (§10), a test the models could and partly did fail.
+The protocol line at the bottom of `docs/ablation_results.json` states the exact
+procedure.
 
 **Q: Did you tune on the test set?**
 No. Thresholds were selected on the sweep and justified by the false-alarm argument,
@@ -272,23 +281,135 @@ an export must never become a credential-exfiltration path. Parent-only, rate-li
 
 ---
 
-## 10. The closing question
+## 10. External validation — the IGDS9-SF survey
+
+Paper §6.6. Reproduce with `python ml/eval_behavior_survey.py data/survey/responses.csv`
+and `python ml/eval_survey_extras.py data/survey/responses.csv`; aggregate outputs are
+committed as `docs/survey_validation.json` and `docs/survey_extras.json`.
+
+**Q: You say the score means something. What's the evidence?**
+An anonymous adult survey (n=112 raw, 87 usable, 86 scoreable) pairing the nine
+IGDS9-SF items with seven gaming-pattern questions. Those seven are mapped to the
+model's 10 objective features and pushed through the **deployed serving path** — same
+`derive_psychometrics`, same fitted scaler, same calibrated forest, same risk formula
+— so what we correlate is the score a parent would actually have seen. Result:
+**Spearman ρ = 0.352, 95% CI [0.158, 0.521]**. The interval excludes zero.
+
+**Q: 0.35 is a weak correlation. Why should that impress us?**
+Two reasons, and we don't oversell it. First, the comparison that matters is not
+against 1.0 — it's against the baseline this product exists to replace. Self-reported
+hours/week reaches only ρ = 0.155 on the same respondents, CI spanning zero. A paired
+bootstrap on the difference gives **Δρ = +0.195, CI [+0.026, +0.372]**, model ahead in
+98.6% of resamples. Second, we tested whether the score is just screen time wearing a
+hat: partialling hours out barely moves it (**ρ = 0.349, CI [0.149, 0.521]**). So it
+carries severity information volume does not. That's the project's whole design
+premise, and it's now measured rather than argued.
+
+**Q: Which features actually carried it?**
+All five *pattern* features out-rank all five *volume* features — no interleaving.
+Composites: pattern ρ = 0.358 [0.160, 0.529], volume ρ = 0.202 [−0.011, 0.395] (CI
+includes zero). Two volume features are inert: `daily_play_time_hours` (+0.066) and
+`avg_session_duration_min` (−0.002). This is the first *external* evidence for the
+feature engineering; the ablations couldn't produce it because synthetic labels were
+generated from the same priors the features encode.
+
+**Q: Why no sensitivity/specificity at the clinical cut-off?**
+Because the sample contains **one** respondent in the disordered range (≥36). Caseness
+metrics on one positive are noise, and the script refuses to print them below ten
+positives *by design* — that guard was written before we saw the data, not after.
+Reaching ten needs ~157 usable responses at the literature's 6.4% base rate, and ~860
+at the 1.1% this convenience sample actually showed. It's a recruitment problem
+(reaching a help-seeking population), not an analysis problem. Saying "we can't compute
+this yet" is the correct answer; computing it on n=1 would have been the wrong one.
+
+**Q: Why stop at 87? Why not collect more?**
+We collected until the numbers stopped moving. Across ten successive snapshots
+(n=33 → 87) the headline correlation stayed significant and its lower CI bound rose
+steadily (0.047 → 0.158). The one open question that *would* have justified more
+collection was the genre test — and it got **less** significant as n grew (p 0.159 at
+n=80 → 0.491 at n=86), which says the effect is smaller than the power analysis
+assumed, not that we were close. Continuing would have bought ~0.05 of CI width on a
+result already significant. We stopped and said so.
+
+**Q: Your genre multiplier failed the test. Why is it still in the product?**
+Kruskal-Wallis across seven genres: H = 5.42, **p = 0.491**. We report it as a null
+because a validation study that can only confirm isn't one. But the honest reading is
+*underpowered, not disproven* — resampling gives the test 36% power at this n, 90%
+only near n ≈ 258. Removing the multiplier flips 34.4% of served session bands (paper
+§6.5 sensitivity analysis), so we're not making a change that large on a null this
+weak. It stays flagged as the ensemble's least-evidenced component, first in line for
+the larger cohort, and its magnitude is an environment variable — so a future result
+retires it without a code change.
+
+**Q: Your parent-facing "craving score", "tolerance score" — do those mean anything?**
+Mostly no, and we tested it rather than waiting to be asked. Against the IGDS9-SF item
+each is *named* after: `craving_score` +0.325 (holds up), `gaming_priority_score`
++0.162 (weak), and `tolerance_score` +0.063, `control_loss_score` +0.040,
+`neglect_responsibilities_score` +0.073 (indistinguishable from zero). They were never
+model inputs — they're UI explanations derived from behaviour — but the clinical-sounding
+names overclaim. Renaming them to behaviour-descriptive labels is a concrete follow-up
+this study motivated. We'd rather report evidence against our own naming than have the
+panel find it.
+
+**Q: The threshold search found better cut-offs. Why didn't you apply them?**
+The grid search returns T1 = 0.51, T2 = 0.95 (quadratic-weighted κ = 0.197) vs the
+deployed 0.33/0.67. We declined. T2 sits at 0.95 precisely *because* the sample has
+almost no disordered-range respondents — the fitted value encodes the sample's missing
+tail, not a clinical boundary — and κ = 0.197 is fair agreement at best. The tuner is
+env-var wired and reversible in one deploy; it stays unused until a cohort with a real
+severity tail earns it. Same discipline as the parent-feedback threshold tuner: the
+mechanism ships, the change waits for evidence.
+
+**Q: These are adults. Your product monitors children.**
+Correct, and it's the study's biggest external-validity gap — we state it in the paper
+before anyone asks. Three specific consequences: prevalence and thresholds don't
+transfer; the respondents *self-reported* their patterns in bands where the app
+*measures* them (both coarsening and recall error attenuate the correlation); and the
+design is cross-sectional, so it says nothing about trajectory. What it does establish
+transfers regardless of age: the pipeline's output tracks a validated instrument, and
+pattern features carry signal volume features don't. The per-child cohort — guardian
+IGDS9-SF scores linked to telemetry — is stage two, and it needs ethics approval.
+
+**Q: Did you clean, filter, or discard any responses to get this result?**
+Every exclusion rule was fixed before analysis and is in the script: under-18 or
+non-gamer (17 dropped), failed attention check (8 dropped), incomplete IGDS items (0).
+That's 112 → 87. We also ran the headline *without* the 8 respondents who gave the
+identical answer to all nine items — ρ = 0.290 [0.080, 0.475], attenuated but still
+excluding zero. No response was ever added, edited, or invented.
+
+**Q: Why isn't the raw data in the repo?**
+The consent text covered use of anonymous responses *for research*, not public
+redistribution. We publish the aggregate JSON from both scripts and the scripts
+themselves, so any equivalently-formatted export reproduces every number. Releasing
+row-level data would have exceeded what participants agreed to.
+
+---
+
+## 11. The closing question
 
 **Q: What's the weakest part of this project?**
-Validation. The behaviour model's labels are synthetic (grounded, but synthetic); the
-voice model trains on acted adult emotion; chat is the only channel with a real
-in-domain evaluation. We know this, we quantified how much each proxy costs where we
-could (speaker leakage: 9 points; missing domain data: 32 PR-AUC points), and
-`docs/VALIDATION_PLAN.md` is the concrete, scripted path from here to validated. The
-project's contribution is not a solved clinical instrument — it's a fully-built,
-honestly-measured screening pipeline where every claim traces to a runnable script.
+Validation depth — though it is no longer validation *absence*. The behaviour model's
+training labels are still synthetic (grounded, but synthetic), so the 91.6% accuracy
+figure remains a synthetic-distribution number and the survey does not upgrade it. The
+voice model trains on acted adult emotion. What changed is that the pipeline's *output*
+now has an external anchor: ρ = 0.352 against IGDS9-SF, beating the screen-time
+baseline (§10). The remaining gap is specific and nameable — no caseness metrics,
+because the sample held one disordered-range respondent; adults rather than the
+adolescent target; cross-sectional rather than longitudinal. We quantified what each
+proxy costs where we could (speaker leakage: 9 points; missing domain data: 32 PR-AUC
+points), and `docs/VALIDATION_PLAN.md` is the scripted path onward. The contribution is
+not a solved clinical instrument — it's a fully-built, honestly-measured screening
+pipeline where every claim traces to a runnable script, including the two claims the
+validation study **refused** to support.
 
 **Q: What would you do with three more months?**
 In order: (1) a consented pilot with 10–20 families to replace synthetic behaviour
-labels with real ones (the validation plan's Phase 1); (2) child/teen speech
-adaptation for the voice model; (3) Postgres + managed hosting to retire the free-tier
-constraints; (4) threshold personalisation per family from the feedback tuner's
-posterior. Nothing on that list is a new model — the gap is data, not architecture.
+labels with real ones and, critically, to reach a cohort with a genuine severity tail —
+that single change unlocks the caseness metrics §10 currently cannot compute;
+(2) re-run the genre test at n ≈ 258 where it has 90% power, and act on the answer
+either way; (3) child/teen speech adaptation for the voice model; (4) threshold
+personalisation per family from the feedback tuner's posterior. Nothing on that list is
+a new model — the gap is data, not architecture.
 
 **Q: Does the chat model understand Hindi/Devanagari?**
 Yes — BOTH scripts, as of the 2026-08-04 HASOC 2019 adoptions (4,665 labeled Hindi

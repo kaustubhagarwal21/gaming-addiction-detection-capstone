@@ -1,0 +1,114 @@
+{
+  "csv": "responses.csv",
+  "n_raw": 112,
+  "n": 86,
+  "incremental": {
+    "rho_model": 0.3521374244179646,
+    "rho_model_ci": [
+      0.15816428365610752,
+      0.5205147009262258
+    ],
+    "rho_hours": 0.15500330384318112,
+    "rho_hours_ci": [
+      -0.057006421808617876,
+      0.37589977321018037
+    ],
+    "n": 86,
+    "delta_rho": 0.19464915805428804,
+    "delta_ci": [
+      0.025904018394286226,
+      0.3715446078307152
+    ],
+    "p_model_better": 0.986,
+    "partial_rho": 0.34902492597432805,
+    "partial_ci": [
+      0.14854899168526003,
+      0.5211385918482857
+    ],
+    "note": "paired on the scoreable subset; eval_behavior_survey.py reports the hours baseline over all usable rows"
+  },
+  "features": {
+    "per_feature": {
+      "avg_break_between_sessions_min": -0.30456669527530256,
+      "rapid_relogin_ratio": 0.30456669527530256,
+      "late_night_play_ratio": 0.28583987610551337,
+      "binge_sessions_per_week": 0.22073554195441814,
+      "longest_play_streak_days": 0.21567247234384704,
+      "sessions_per_day": 0.1894946933349731,
+      "weekly_play_time_hours": 0.14400011828226275,
+      "days_played_per_week": 0.1437227682612324,
+      "daily_play_time_hours": 0.06567767285647808,
+      "avg_session_duration_min": -0.0018227187897650887
+    },
+    "composites": {
+      "volume": {
+        "rho": 0.20151016336740685,
+        "ci": [
+          -0.010657553532559838,
+          0.39466368954411146
+        ]
+      },
+      "pattern": {
+        "rho": 0.3582609167967116,
+        "ci": [
+          0.15951950246865892,
+          0.5291116082524783
+        ]
+      }
+    }
+  },
+  "chat_premise": {
+    "rho": 0.3146771132943801,
+    "ci": [
+      0.11431898337583851,
+      0.4981567079306711
+    ],
+    "n": 86
+  },
+  "genre": {
+    "H": 5.418880179407662,
+    "p": 0.4913148449553518,
+    "n_groups": 7,
+    "means": {
+      "Casual (Candy Crush/Ludo)": 17.8,
+      "Sandbox (Minecraft/Roblox)": 16.3,
+      "FPS (Valorant/COD)": 19.6,
+      "RPG / open-world": 16.57894736842105,
+      "Strategy": 15.0,
+      "Battle Royale (BGMI/Free Fire/PUBG)": 19.714285714285715,
+      "Other": 18.7
+    },
+    "power_curve": {
+      "86": 0.365,
+      "172": 0.6725,
+      "258": 0.905,
+      "344": 0.9675,
+      "516": 0.9975
+    }
+  },
+  "robustness": {
+    "all responses": {
+      "n": 86,
+      "rho": 0.3521374244179646,
+      "ci": [
+        0.1558551974911716,
+        0.5196203830779668
+      ]
+    },
+    "excluding straight-line": {
+      "n": 78,
+      "rho": 0.2900805897517455,
+      "ci": [
+        0.08000190256635913,
+        0.47453139383622106
+      ]
+    }
+  },
+  "proxies": {
+    "craving_score": 0.32499603052436027,
+    "tolerance_score": 0.06303899434698074,
+    "control_loss_score": 0.039929349914743416,
+    "neglect_responsibilities_score": 0.07264537490895698,
+    "gaming_priority_score": 0.16173143835711387
+  }
+}

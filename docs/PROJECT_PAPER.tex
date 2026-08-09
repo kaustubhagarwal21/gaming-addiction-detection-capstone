@@ -103,8 +103,17 @@ authentication, versioned parental consent) ships a parent-feedback loop that
 turns accurate/false-alarm verdicts into measured threshold recommendations, a
 drift monitor, and a parent-to-child nudge channel; a consented live family
 pilot has exercised every capture channel and alert type in production.
-Remaining limits are stated plainly --- behavioural \emph{labels} are synthetic
-screening priors pending pilot-scale data --- and the output is framed
+Critically, the risk score is then validated \emph{externally}: in an anonymous
+adult survey ($n{=}87$), the score the system would have served correlates with
+the clinically-validated IGDS9-SF instrument at Spearman $\rho = 0.352$ ($95\%$
+CI $[0.158, 0.521]$) and \emph{beats the self-reported screen-time baseline it
+is meant to replace} (paired $\Delta\rho = +0.195$, $95\%$ CI
+$[+0.026, +0.372]$), with the signal concentrated in the behavioural-pattern
+features rather than the volume ones --- the project's core premise, confirmed
+against real labels rather than assumed. Remaining limits are stated plainly ---
+behavioural \emph{labels} remain synthetic screening priors, so caseness
+metrics at the clinical cut-off are still uncomputed, and one ensemble component
+(genre weighting) failed to reach significance --- and the output is framed
 explicitly as \emph{screening and awareness, not clinical diagnosis}.
 \end{abstract}
 
@@ -198,6 +207,20 @@ rather than to maximise a headline accuracy number.
         $\sim$9-point leakage inflation and \emph{reversed} a model-selection
         verdict), thresholds re-derived from held-out curves on every model change,
         and negative results reported alongside positive ones.
+  \item \textbf{External construct validation against a clinical instrument}
+        (\S\ref{sec:survey}). An anonymous adult survey ($n{=}87$) paired the
+        IGDS9-SF~\cite{igds9sf} with gaming-pattern questions scored through the
+        \emph{deployed} serving path. The risk score tracks IGDS9-SF severity
+        ($\rho = 0.352$, $95\%$ CI $[0.158, 0.521]$); it beats the self-reported
+        screen-time baseline on a paired bootstrap ($\Delta\rho = +0.195$, $95\%$
+        CI $[+0.026, +0.372]$) and survives partialling that baseline out
+        ($\rho = 0.349$); and the signal is carried by the five \emph{pattern}
+        features, whose composite ($\rho = 0.358$) separates cleanly from the
+        \emph{volume} composite ($\rho = 0.202$, CI including zero). The same
+        study reports two results \emph{against} the system --- the genre
+        multiplier reaches no significance, and four of five parent-facing
+        psychometric proxies fail to track the IGDS item they are named after ---
+        because a validation study that can only confirm is not one.
   \item Grounding in eleven real, open datasets (two behaviour-grounding surveys, five
         chat corpora, four speech corpora) --- each screened against explicit
         criteria, each adoption justified by a measured effect, and each rejection
@@ -540,6 +563,16 @@ variable, so it cannot ground the hours bands (the Gamers~\&~Anxiety survey does
 that); the two datasets cover complementary halves of the sim-to-real gap. The
 parent-feedback loop remains the designed path to labels from the system's own
 population.
+
+Beyond these eleven open corpora, the project collected \emph{primary} data of
+its own: an anonymous adult IGDS9-SF survey ($112$ responses, $87$ usable) run
+specifically because no open dataset pairs the instrument with the behavioural
+pattern variables this system measures. The LatAm dataset supplies IGD labels
+but no play-time variable; the Gamers~\&~Anxiety survey supplies play time but
+no instrument. Only a purpose-built collection could put both on the same
+respondent, which is what makes the construct-validity test in
+\S\ref{sec:survey} possible at all. It is counted separately from the eleven
+throughout this paper, being neither open nor third-party.
 
 \paragraph{Dataset selection: what was considered, and why each verdict.}
 Every candidate was screened against three criteria before any training run:
@@ -1146,6 +1179,7 @@ deliberately \emph{not} inflated; calibration and realistic-stream behaviour are
 reported alongside.
 
 \subsection{Behaviour model (primary, 3-class, ten objective features)}
+\label{sec:behresults}
 \begin{center}
 \begin{tabular}{lcccc}
 \toprule
@@ -1573,8 +1607,12 @@ only $0.871$ --- the model leans on \emph{how} a child plays more than on \emph{
 much}, which is precisely the DSM-5/ICD-11 framing that motivated the feature
 design. (Caveat, stated once for the whole table: these rows share the
 survey-grounded synthetic generator, so they measure the information structure of
-the feature space, not clinical validity --- the IGDS9-SF study remains the
-external anchor.)
+the feature space, not clinical validity --- the IGDS9-SF study
+(\S\ref{sec:survey}) is the external anchor. On the pattern-versus-volume row
+specifically, that anchor now agrees: against \emph{real} IGDS9-SF severity in
+$86$ respondents, the pattern composite reaches $\rho = 0.358$ and the volume
+composite only $0.202$ with a CI including zero --- the same ordering, obtained
+without the generator that could have manufactured it.)
 
 \subsection{ML pipeline revisions: what changed, why, and the measured effect}
 \label{sec:mlrevisions}
@@ -1902,7 +1940,12 @@ The pilot's findings, positive and negative alike:
         removing the genre multiplier flips $34.4\%$, and $\pm 0.05$ threshold
         shifts flip up to $26.7\%$. The stakes ranking stands --- thresholds and the
         genre effect are the high-stakes priors, the weights moderate --- and is
-        precisely why the IGDS9-SF anchoring study targets the thresholds first. A
+        precisely why the IGDS9-SF study targeted both first. It has since
+        returned a verdict on each, and neither changed the deployment:
+        the fitted thresholds are declined because the sample's missing severity
+        tail is what pins them, and the genre multiplier is retained-but-flagged
+        because its null is underpowered rather than decisive
+        (\S\ref{sec:survey}). A
         prevalence-anchoring method for the top-band threshold is implemented and
         population-gated (\texttt{ml/calibrate\_thresholds\_prevalence.py}).
   \item \textbf{Channel contribution to the fused decision, measured on real
@@ -2002,13 +2045,17 @@ trajectory}: daily session counts on the active device rose from 1--2 in week on
 pattern --- and the duration-weighted daily risk score rose in step, from
 $\approx$0.03 on day one to $\approx$0.40 by day 23, with roughly a third of sessions
 starting in the late-night window. Whether this reflects a real behavioural shift or
-ordinary within-child variability is precisely what the IGDS9-SF anchoring study is
-designed to decide; the point here is that the score moved \emph{coherently with the
+ordinary within-child variability is a question the completed cross-sectional
+study (\S\ref{sec:survey}) explicitly cannot settle --- one score against one
+questionnaire says nothing about trajectory --- and that only the per-child
+longitudinal cohort of \S9 can; the point here is that the score moved
+\emph{coherently with the
 observable pattern}, not as noise. (Two methodological notes. \emph{Circularity:}
 session frequency is itself a model input, so a rising score alongside rising
 frequency is construct-consistent measurement --- the model asserting its
-clinically-motivated mapping --- not independent confirmation; only the external
-IGDS9-SF anchor can supply that. \emph{Reliability before validity:} the daily
+clinically-motivated mapping --- not independent confirmation; only an external
+anchor can supply that, and \S\ref{sec:survey} now does so for the score's
+\emph{level}, though not for its \emph{movement}. \emph{Reliability before validity:} the daily
 series also yields the score's first reliability figures, a necessary condition any
 validity claim presupposes. Across the 12 consecutive-day pairs, lag-1
 autocorrelation is $0.65$ with a mean day-over-day movement of only $0.035$ on the
@@ -2024,6 +2071,190 @@ version was bumped while the device still ran the older APK, and the server corr
 \emph{paused all ingestion} for that device pending an app update and renewed
 parental consent --- the fail-closed consent design operating in production exactly
 as specified.
+
+\subsection{External construct validation: an IGDS9-SF survey}
+\label{sec:survey}
+Every behaviour-model number reported so far is measured against \emph{synthetic}
+labels (\S\ref{sec:features}), and the pilot is a single child --- so the paper's
+central claim, that \emph{how} a person plays carries screening signal that
+\emph{how long} they play does not, had never been tested against a real
+instrument. This subsection reports the study that tests it.
+
+\textbf{Design.} An anonymous, adults-only ($18+$) web survey paired the nine
+IGDS9-SF items~\cite{igds9sf} (each $1$--$5$; total $9$--$45$) with seven
+multiple-choice questions about gaming patterns --- daily hours, days per week,
+typical session length, after-midnight frequency, long sessions per week,
+rapid re-login frequency, and longest consecutive-day run. Those seven map onto
+the model's ten objective features by documented band midpoints, and are pushed
+through the \emph{deployed serving path} --- the same shared
+\texttt{derive\_psychometrics} derivation, the fitted scaler, the calibrated
+behaviour forest and the identical risk formula the backend uses --- so what is
+correlated is the score the system would actually have shown a parent. An
+embedded attention check (``select Often for this question'') and two
+eligibility gates screened responses. The instrument, protocol and analysis are
+in \texttt{docs/SURVEY\_IGDS9SF.md} and \texttt{docs/VALIDATION\_PLAN.md};
+the two analysis scripts (\texttt{ml/eval\_behavior\_survey.py},
+\texttt{ml/eval\_survey\_extras.py}) reproduce every number below.
+
+\textbf{Sample.} $112$ raw responses yielded $87$ usable ($77.7\%$): $17$ failed
+an eligibility gate (under-18 or non-gamer) and $8$ failed the attention check;
+$86$ answered every pattern question and are therefore scoreable. The sample is
+young ($76.7\%$ of the scoreable $86$ aged $18$--$24$) and skews non-severe:
+IGDS9-SF totals average
+$17.6$ (SD $6.1$, median $17$, range $9$--$37$), with $2$ respondents
+($2.3\%$) at or above the elevated cutoff ($\geq$$32$) and $1$ ($1.1\%$) in the
+disordered range ($\geq$$36$). That distribution is the study's governing
+limitation and is treated as such throughout.
+
+\textbf{This is a genuine held-out test.} No respondent contributed a training
+row: the behaviour model was fitted on the synthetic generator before the survey
+existed, the survey was never used to select features, tune thresholds, or refit
+anything, and the correlation below is the first time the model met real labels.
+
+\textbf{Result 1 --- construct validity.} The served risk score correlates with
+IGDS9-SF severity at Spearman $\rho = \mathbf{0.352}$ ($95\%$ bootstrap CI
+$[0.158, 0.521]$, $n{=}86$). The interval excludes zero, so the model's output
+tracks a validated clinical instrument in real respondents --- modestly, which
+is the expected magnitude when a behavioural proxy is measured against a
+self-report scale in a non-clinical sample, and honest for a screening signal
+that was never claimed to be diagnostic.
+
+\textbf{Result 2 --- it is not a screen-time proxy, and it beats one.} The
+baseline every commercial parental-control tool ships is self-reported hours per
+week; on the same $86$ respondents that baseline reaches only $\rho = 0.155$
+($95\%$ CI $[-0.057, 0.376]$), spanning zero. (The comparison is deliberately
+restricted to respondents the model can score, so both predictors are measured
+on identical rows; across all $87$ usable respondents the hours baseline reads
+$\rho = 0.138$ --- the same verdict.) A paired bootstrap on the \emph{difference} puts the model
+ahead by $\Delta\rho = +0.195$ ($95\%$ CI $[+0.026, +0.372]$; the model wins in
+$98.6\%$ of resamples), and partialling self-reported hours out of the model's
+correlation barely moves it ($\rho = 0.349$, $95\%$ CI $[0.149, 0.521]$). The
+score is therefore carrying severity information that volume does not, rather
+than re-expressing volume in another unit --- the project's core design premise,
+confirmed externally rather than assumed.
+
+\textbf{Result 3 --- pattern features carry it, volume features do not.}
+Correlating each objective feature against IGDS severity separates the two
+groups cleanly (Table~\ref{tab:surveyfeat}). Every one of the five
+\emph{pattern} features out-ranks every one of the five \emph{volume} features,
+and the sign-corrected composites diverge: pattern $\rho = 0.358$ ($95\%$ CI
+$[0.160, 0.529]$) against volume $\rho = 0.202$ ($95\%$ CI $[-0.011, 0.395]$,
+which does not exclude zero). Two features carry almost nothing:
+\texttt{daily\_play\_time\_hours} ($+0.066$) and
+\texttt{avg\_session\_duration\_min} ($-0.002$). This is the first
+\emph{external} evidence for the feature-engineering thesis of \S\ref{sec:features};
+it is also a directional result the ablations could not have produced, because
+synthetic labels were generated from the same priors the features encode.
+
+\begin{table}[ht]
+\centering
+\footnotesize
+\caption{Per-feature Spearman correlation against IGDS9-SF total ($n{=}86$),
+ordered by magnitude. The five pattern features occupy the top five places; the
+volume composite's confidence interval includes zero. Composites are
+sign-corrected $z$-score sums with bootstrap CIs.}
+\label{tab:surveyfeat}
+\begin{tabular}{lcc}
+\toprule
+\textbf{Objective feature} & \textbf{$\rho$ vs IGDS9-SF} & \textbf{Group} \\
+\midrule
+\texttt{avg\_break\_between\_sessions\_min} & $-0.305$ & pattern \\
+\texttt{rapid\_relogin\_ratio}              & $+0.305$ & pattern \\
+\texttt{late\_night\_play\_ratio}           & $+0.286$ & pattern \\
+\texttt{binge\_sessions\_per\_week}         & $+0.221$ & pattern \\
+\texttt{longest\_play\_streak\_days}        & $+0.216$ & pattern \\
+\midrule
+\texttt{sessions\_per\_day}                 & $+0.189$ & volume \\
+\texttt{weekly\_play\_time\_hours}          & $+0.144$ & volume \\
+\texttt{days\_played\_per\_week}            & $+0.144$ & volume \\
+\texttt{daily\_play\_time\_hours}           & $+0.066$ & volume \\
+\texttt{avg\_session\_duration\_min}        & $-0.002$ & volume \\
+\midrule
+\textbf{pattern composite} & $\mathbf{+0.358}$ \ [$0.160$, $0.529$] & --- \\
+\textbf{volume composite}  & $+0.202$ \ [$-0.011$, $0.395$] & --- \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\textbf{Result 4 --- the chat channel's premise replicates locally.} The survey
+also asked how often respondents send or receive toxic messages in game chat.
+That self-report tracks IGDS severity at $\rho = 0.315$ ($95\%$ CI
+$[0.114, 0.498]$, $n{=}86$) --- the same direction as, and stronger than, the
+$r = +0.156$ the paper borrows from the $11{,}191$-respondent Latin-American
+IGDS9-SF dataset (\S4.2). The justification for treating chat toxicity as a
+risk-relevant channel at all therefore holds in this population too, and no
+longer rests solely on a borrowed correlation.
+
+\textbf{Result 5 --- the genre multiplier is unsupported (a null we report).}
+Across the seven genres with $n \geq 4$, mean IGDS totals span $15.0$ (Strategy)
+to $19.7$ (Battle Royale) in the ordering the deployed multiplier assumes ---
+but a Kruskal-Wallis test finds no significant difference ($H = 5.42$,
+$p = 0.491$). The honest reading is \emph{underpowered, not disproven}:
+resampling from the observed group distributions gives this test only $36\%$
+power at the achieved $n$, reaching $90\%$ only near $n \approx 258$ scoreable
+respondents. Because the pilot's sensitivity analysis (\S\ref{sec:pilot}) ranks
+genre weighting among the parameters that measurably move served bands, we have
+neither removed the multiplier on a null this weak nor treated it as validated:
+it stays flagged as the ensemble's least-evidenced component, first in line for
+the larger cohort, and its magnitude remains an environment variable so a future
+result can retire it without a code change.
+
+\textbf{Result 6 --- most parent-facing proxies do not track their namesake
+items.} The ten derived psychometric proxies are explanations, never model
+inputs (\S\ref{sec:features}) --- but they carry clinical-sounding names, so we
+tested whether each tracks the IGDS9-SF item it is named after. Only
+\texttt{craving\_score} does ($\rho = +0.325$ vs the preoccupation item);
+\texttt{gaming\_priority\_score} is weak ($+0.162$) and
+\texttt{tolerance\_score}, \texttt{control\_loss\_score} and
+\texttt{neglect\_responsibilities\_score} are indistinguishable from zero
+($+0.063$, $+0.040$, $+0.073$). We report this because it is evidence against
+our own naming: these are heuristic transforms of behaviour, and the parent-app
+model card's framing of them as descriptive rather than diagnostic is the
+correct one. Renaming them to behaviour-descriptive labels is a concrete
+follow-up this study directly motivates.
+
+\textbf{Robustness.} Eight respondents gave the identical answer to all nine
+items. Dropping them attenuates the headline but does not overturn it:
+$\rho = 0.290$ ($95\%$ CI $[0.080, 0.475]$, $n{=}78$), still excluding zero.
+
+\textbf{What this study does \emph{not} establish, stated plainly.}
+(i) \emph{No caseness metrics.} With one disordered-range respondent, sensitivity
+and specificity at the clinical cut-off are uncomputable, and the analysis script
+refuses to print them below ten positives by design. Reaching that floor needs
+$\approx$$157$ usable responses at the literature's $6.4\%$ base rate ---
+and $\approx$$860$ at the rate this sample actually showed.
+(ii) \emph{Range restriction.} A sample topping out at $37/45$ cannot speak to
+the severe tail the system is ultimately meant to flag, and range restriction
+attenuates correlations, so $0.352$ is more plausibly a floor than a ceiling ---
+a direction that favours the model, which is exactly why we decline to lean on it.
+(iii) \emph{Self-reported behaviour, not telemetry.} Respondents reported their
+own patterns in bands; the deployed system measures them. Band midpoints
+coarsen the features, and self-report adds recall error --- both attenuating.
+(iv) \emph{Adults, not children.} The deployment target is adolescents; this
+cohort is adults, sampled by convenience, predominantly Indian university
+students. Prevalence and thresholds do not transfer without re-measurement.
+(v) \emph{Cross-sectional.} One score against one questionnaire says nothing
+about whether the score predicts trajectory.
+
+\textbf{Thresholds: measured, deliberately not applied.} A grid search over the
+band cut-offs maximising quadratic-weighted kappa against IGDS bands returns
+$T_1{=}0.51$, $T_2{=}0.95$ ($\kappa = 0.197$) versus the deployed
+$0.33 / 0.67$ prior. We have not applied it. The upper cut-off is pinned near
+the top of the scale precisely because the sample contains almost no
+disordered-range respondents, so the fitted $T_2$ encodes the sample's missing
+tail rather than a clinical boundary --- and $\kappa = 0.197$ is fair agreement
+at best. The tuner is wired to environment variables and reversible in one
+deploy; it stays unused until a cohort with a real severity tail justifies it.
+This is the same discipline applied to the parent-feedback threshold
+recommendations (\S\ref{sec:pilot}): the mechanism ships, the change waits for
+evidence that earns it.
+
+\textbf{Data availability.} The consent text covered use of anonymous responses
+\emph{for research}, not public redistribution, so row-level responses are not
+published. The aggregate outputs of both analysis scripts ship in the repository
+(\texttt{docs/survey\_validation.json}, \texttt{docs/survey\_extras.json}),
+and the scripts regenerate every figure quoted above from any equivalently
+formatted export.
 
 \subsection{Summary of features delivered}
 \begin{center}
@@ -2056,7 +2287,7 @@ throughout this paper; this section consolidates them in one place.
 family --- one active child, plus a second enrolled family that later withdrew
 --- run to validate engineering and instrumentation, not to draw clinical
 conclusions. No institutional ethics approval was sought for it and none is
-claimed. The subsequent IGDS9-SF survey (\S9) is a separate,
+claimed. The subsequent IGDS9-SF survey (\S\ref{sec:survey}) is a separate,
 lower-risk instrument --- anonymous, adults ($18+$) only, no names, email
 addresses or identifying data collected, with a consent statement shown before
 the first question and participation voluntary --- and the supervising faculty
@@ -2128,19 +2359,41 @@ decided in code. It has not been clinically validated; clinical review and
 adversarial safety testing are prerequisites to treating it as more than a
 floor.
 
-\textbf{Evidence limits, in one place.} Behaviour-model metrics are measured
-against synthetic labels (survey-grounded play-time distributions, synthetic
-labels --- \S\ref{sec:features}, \S\ref{sec:ablations}), so they bound the
-information structure of the feature space, not clinical validity. The voice
-channel's domain shift is measured live and its real influence on served
-bands quantified (\S\ref{sec:voiceresults}, \S\ref{sec:pilot}). The
+\textbf{Evidence limits, in one place.} Behaviour-model \emph{accuracy} figures
+are measured against synthetic labels (survey-grounded play-time distributions,
+synthetic labels --- \S\ref{sec:features}, \S\ref{sec:ablations}), so they bound
+the information structure of the feature space, not clinical validity. That gap
+is no longer unmeasured: the IGDS9-SF study (\S\ref{sec:survey}) supplies the
+external anchor, and it changes what can be claimed in a specific and limited
+way. What it establishes is that the served risk score tracks a validated
+instrument in real respondents ($\rho = 0.352$), does so beyond self-reported
+screen time (partial $\rho = 0.349$; a paired bootstrap puts it ahead of the
+hours baseline in $98.6\%$ of resamples), and that the signal sits in the
+\emph{pattern} features rather than the volume ones --- the design premise,
+externally confirmed. What it does not establish is equally definite:
+sensitivity and specificity at the clinical cut-off remain \emph{uncomputed},
+because a sample containing one disordered-range respondent cannot support
+them; the cohort is adults rather than the adolescent deployment target; the
+behaviour is self-reported in bands rather than measured by the app; and the
+design is cross-sectional. So the accuracy numbers in \S\ref{sec:behresults} are
+still synthetic-label numbers and are not upgraded by this study --- what is
+upgraded is the claim that the score means something, not the claim that it is
+accurate to a stated degree. The genre multiplier is the one ensemble component
+the study tested and failed to support ($p = 0.491$, at $36\%$ power); it is
+retained, flagged, and environment-tunable rather than defended.
+The voice channel's domain shift is measured live and its real influence on
+served bands quantified (\S\ref{sec:voiceresults}, \S\ref{sec:pilot}). The
 single-child pilot validates capture, delivery and instrumentation ---
 engineering evidence, not population inference --- and barely exercised the
 typed-chat path (the pilot child's game has no chat), so the chat channel's
-field evidence remains thinner than its held-out evidence. The drift
-monitor's three-child population gate is a floor for the pilot, not a
-statistically comfortable $n$. The IGDS9-SF study is the designated external
-anchor for all of these.
+field evidence remains thinner than its held-out evidence, though the survey
+does replicate the premise that motivates the channel ($\rho = 0.315$). The
+drift monitor's three-child population gate is a floor for the pilot, not a
+statistically comfortable $n$. A per-child cohort linking parent-reported
+IGDS9-SF scores to measured telemetry --- rather than adult self-report ---
+remains the outstanding instrument, and is what would convert the correlation
+reported here into the caseness metrics a screening tool is ultimately judged
+on.
 
 % =====================================================================
 \section{Conclusion}
@@ -2157,14 +2410,24 @@ hardware against the live deployment. Our central
 methodological commitments --- train/serve feature alignment, probability
 calibration, SHAP explanations, availability-weighted fusion, and an explicit account
 of synthetic-data limitations (\S7) --- make the system's outputs auditable and its
-claims checkable. Most importantly, the parent-feedback loop turns the platform from a
+claims checkable. The final commitment was to check the central claim rather than
+assert it: an external IGDS9-SF study (\S\ref{sec:survey}, $n{=}87$) shows the
+served risk score tracking a validated clinical instrument
+($\rho = 0.352$), outperforming the self-reported screen-time baseline it exists
+to replace ($\Delta\rho = +0.195$, CI excluding zero), with the signal residing
+in \emph{how} people play rather than \emph{how long} --- and, in the same
+study, failing to support the genre multiplier and most of the parent-facing
+proxy names. That is the shape of an honest result: the thesis survived
+contact with real labels; two of its components did not.
+Most importantly, the parent-feedback loop turns the platform from a
 frozen model into one that can learn from real verdicts --- and with the chat and
 voice channels already trained on real data, the behaviour generator's play-time
-distributions grounded in real surveys (its \emph{labels} remain synthetic, pending
-the IGDS9-SF study), and the pilot instruments (threshold tuner, drift monitor, reflections
-correlation) built and tested, that loop is the necessary next step from a working
-prototype \emph{toward} a validated product --- with the remaining gates (real
-labels at scale, the IGDS9-SF anchor study, ethics review) stated in \S7 and \S9.
+distributions grounded in real surveys and its output now externally anchored
+(its \emph{labels} remain synthetic), and the pilot instruments (threshold tuner,
+drift monitor, reflections correlation) built and tested, that loop is the
+necessary next step from a working prototype \emph{toward} a validated product
+--- with the remaining gates (real labels at scale, a per-child cohort large
+enough for caseness metrics, ethics review) stated in \S7 and \S9.
 
 % =====================================================================
 \section{Future Work}
@@ -2174,8 +2437,12 @@ labelled speech and the chat model on real gaming-domain data --- was \emph{exec
 during the project} and has been promoted out of Future Work into the results
 (\S\ref{sec:voiceresults}, \S\ref{sec:chatresults}, \S\ref{sec:ablations}); the same
 applies to feedback threshold tuning, drift monitoring, and the code-mixed lexicon
-mitigations. What remains falls into two categories: work whose \emph{value}
-is gated on real usage data, and directions that need partners or hardware.
+mitigations. The \emph{first stage} of the external-validation agenda has been
+promoted the same way: the anonymous adult IGDS9-SF study this section once
+proposed was designed, floated and analysed, and now reports as a result
+(\S\ref{sec:survey}) rather than a plan. What remains falls into two categories:
+work whose \emph{value} is gated on real usage data, and directions that need
+partners or hardware.
 
 \textbf{Data-dependent improvements.}
 The code for these is tractable (several have delivered first stages), but their
@@ -2189,10 +2456,17 @@ value depends on accumulating real usage data the prototype does not yet have:
         (\S\ref{sec:pilot}) already \emph{prioritises} this agenda: genre weighting and band
         thresholds measurably drive outcomes and go first; the ensemble weights
         matter less (median $0.8\%$ of session bands across the weight simplex,
-        though worst-case corners reach $10.7\%$) and can wait behind them. Needs a pilot at
-        scale, plus the IGDS9-SF ground-truth instrument (per-child parent-report
-        scores linked to telemetry; a locally floated adult survey supplies the
-        population prevalence anchor meanwhile). Two open research datasets are
+        though worst-case corners reach $10.7\%$) and can wait behind them. The
+        adult IGDS9-SF study (\S\ref{sec:survey}) has now supplied the first
+        external evidence on both: it \emph{confirms} the score's direction and
+        its independence from screen time, and it \emph{declines to support} the
+        genre multiplier ($p = 0.491$ at $36\%$ power), which sharpens rather
+        than settles the priority. What remains needed is a pilot at scale plus
+        the per-child form of the instrument --- parent-reported IGDS9-SF scores
+        linked to \emph{measured} telemetry rather than adult self-report ---
+        which is also the only route to caseness metrics at the clinical
+        cut-off (\S\ref{sec:survey} reports why: one disordered-range respondent
+        in $87$). Two open research datasets are
         the named interim resources for de-synthesising the behaviour
         \emph{features} before child data exists at scale --- and one check has
         already been \emph{run} from open telemetry. The StudentLife
@@ -2309,18 +2583,30 @@ value depends on accumulating real usage data the prototype does not yet have:
 These require partners, hardware, or scale beyond a capstone window and are described as
 direction rather than as work we can execute alone:
 \begin{itemize}[leftmargin=1.4em]
-  \item \textbf{Expert / clinical validation.} Validate the risk bands against an
-        established instrument --- specifically the \textbf{IGDS9-SF}, a validated
-        DSM-5-based Internet Gaming Disorder scale~\cite{igds9sf} --- collected from real
-        users. A practical first step is an anonymous adult (18+) survey pairing the
-        nine-item questionnaire with self-reported or app-measured behaviour, reporting the
-        model's risk score against the instrument (Spearman correlation, and
-        sensitivity/specificity at the clinical cut-off), alongside a counsellor or
-        psychologist for the clinical reading. This is the credible path from a screening
-        signal to a clinically-meaningful one --- a supervised study with ethics approval,
-        not a coding task. (A step-by-step protocol, including public-dataset links and the
-        survey design, is maintained in the project's \texttt{VALIDATION\_PLAN.md}.)
-        As a delivered stepping stone, an analysis script already correlates each
+  \item \textbf{Expert / clinical validation (stage two).} The first stage ---
+        an anonymous adult (18+) survey pairing the IGDS9-SF~\cite{igds9sf} with
+        gaming-pattern questions scored through the deployed pipeline --- was
+        executed and is reported in \S\ref{sec:survey}. It answered the question
+        it was designed to answer (does the score track the instrument, and does
+        it beat screen time?) and made the \emph{next} question precise. Three
+        things it could not do define stage two. First, \textbf{caseness
+        metrics}: sensitivity and specificity at the $\geq$$36$ cut-off need
+        $\approx$$10$ disordered-range respondents, i.e.\ $\approx$$157$ usable
+        responses at the literature's $6.4\%$ base rate --- a recruitment
+        problem (reaching a clinical or help-seeking population), not an
+        analysis one, since a convenience sample of university students returned
+        $1.1\%$. Second, \textbf{the right population}: adults reporting their
+        own habits are a proxy for adolescents whose habits the app
+        \emph{measures}; the per-child form pairs guardian-reported IGDS9-SF
+        scores with telemetry and removes both the self-report and the
+        band-coarsening attenuation at once. Third, \textbf{the clinical
+        reading}: a counsellor or psychologist interpreting what a given band
+        should mean for a given family --- the step that converts a validated
+        screening signal into clinically-meaningful guidance, and the one that
+        properly requires ethics approval rather than a coding task. (The
+        step-by-step protocol, public-dataset links and survey design are
+        maintained in the project's \texttt{VALIDATION\_PLAN.md}.)
+        As a further delivered stepping stone, an analysis script already correlates each
         child's daily risk score against their \emph{own next-day self-reports}
         (mood / sleep / energy from the in-app check-ins, Spearman rank correlation)
         --- a weak-label validity check that uses data the system already collects,
