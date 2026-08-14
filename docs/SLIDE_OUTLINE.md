@@ -151,6 +151,9 @@ asymmetric cost is parents ignoring alerts. Show you know both operating points:
 - Indian kids' game chat is **code-mixed**: English + romanised Hindi + Devanagari
 - Typed abuse in **all three registers** detected at **≥0.95 precision** (held-out)
 - Native **Devanagari keyboard** so Hindi is captured even in canvas games (Roblox)
+- **Accent-fairness audited** (Svarah, 6,656 clips / 117 speakers): **0 false alerts**
+  in 9.6 h of benign speech across every accent group; WER gap named honestly
+  (Dravidian 35% → Tibeto-Burman 61%, a coverage gap, not an accusation gap)
 - Honest capture matrix shown to parents — including the blind spots
 
 **Figure:** *(optional)* screenshot of the ParentApp "hi" language badge + a flagged

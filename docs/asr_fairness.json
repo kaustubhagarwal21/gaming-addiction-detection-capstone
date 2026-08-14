@@ -1,0 +1,205 @@
+{
+  "dataset": "Svarah (AI4Bharat), 6,656 clips / 9.6 h / 117 speakers, HF-gated download",
+  "asr_model": "vosk-model-small-en-in-0.4 (the deployed on-device recogniser)",
+  "alert_threshold": 0.95,
+  "scoring": "hypothesis -> clean_text -> TF-IDF -> LogReg(+isotonic) noisy-OR keyword lexicon, identical to serving; alert_fpr_ref is the same on the human reference transcript (the no-ASR control)",
+  "overall": {
+    "clips": 6656,
+    "speech_hours": 9.61,
+    "wer": 0.3856,
+    "alert_fpr_hyp": 0.0,
+    "alert_fpr_ref": 0.0,
+    "alerts_hyp": 0
+  },
+  "by_language_family": {
+    "Dravidian": {
+      "clips": 1798,
+      "speech_hours": 2.33,
+      "wer": 0.3456,
+      "alert_fpr_hyp": 0.0,
+      "alert_fpr_ref": 0.0,
+      "alerts_hyp": 0
+    },
+    "Indo-Aryan": {
+      "clips": 4456,
+      "speech_hours": 6.65,
+      "wer": 0.3814,
+      "alert_fpr_hyp": 0.0,
+      "alert_fpr_ref": 0.0,
+      "alerts_hyp": 0
+    },
+    "Tibeto-Burman": {
+      "clips": 402,
+      "speech_hours": 0.63,
+      "wer": 0.6077,
+      "alert_fpr_hyp": 0.0,
+      "alert_fpr_ref": 0.0,
+      "alerts_hyp": 0
+    }
+  },
+  "by_primary_language": {
+    "Assamese": {
+      "clips": 205,
+      "speech_hours": 0.26,
+      "wer": 0.5136,
+      "alert_fpr_hyp": 0.0,
+      "alert_fpr_ref": 0.0,
+      "alerts_hyp": 0
+    },
+    "Bengali": {
+      "clips": 297,
+      "speech_hours": 0.33,
+      "wer": 0.4025,
+      "alert_fpr_hyp": 0.0,
+      "alert_fpr_ref": 0.0,
+      "alerts_hyp": 0
+    },
+    "Bodo": {
+      "clips": 402,
+      "speech_hours": 0.63,
+      "wer": 0.6077,
+      "alert_fpr_hyp": 0.0,
+      "alert_fpr_ref": 0.0,
+      "alerts_hyp": 0
+    },
+    "Dogri": {
+      "clips": 255,
+      "speech_hours": 0.44,
+      "wer": 0.4037,
+      "alert_fpr_hyp": 0.0,
+      "alert_fpr_ref": 0.0,
+      "alerts_hyp": 0
+    },
+    "Gujarati": {
+      "clips": 242,
+      "speech_hours": 0.37,
+      "wer": 0.3206,
+      "alert_fpr_hyp": 0.0,
+      "alert_fpr_ref": 0.0,
+      "alerts_hyp": 0
+    },
+    "Hindi": {
+      "clips": 256,
+      "speech_hours": 0.4,
+      "wer": 0.3401,
+      "alert_fpr_hyp": 0.0,
+      "alert_fpr_ref": 0.0,
+      "alerts_hyp": 0
+    },
+    "Kannada": {
+      "clips": 577,
+      "speech_hours": 0.71,
+      "wer": 0.3554,
+      "alert_fpr_hyp": 0.0,
+      "alert_fpr_ref": 0.0,
+      "alerts_hyp": 0
+    },
+    "Kashmiri": {
+      "clips": 310,
+      "speech_hours": 0.4,
+      "wer": 0.3931,
+      "alert_fpr_hyp": 0.0,
+      "alert_fpr_ref": 0.0,
+      "alerts_hyp": 0
+    },
+    "Konkani": {
+      "clips": 302,
+      "speech_hours": 0.54,
+      "wer": 0.3775,
+      "alert_fpr_hyp": 0.0,
+      "alert_fpr_ref": 0.0,
+      "alerts_hyp": 0
+    },
+    "Maithili": {
+      "clips": 462,
+      "speech_hours": 0.76,
+      "wer": 0.3236,
+      "alert_fpr_hyp": 0.0,
+      "alert_fpr_ref": 0.0,
+      "alerts_hyp": 0
+    },
+    "Malayalam": {
+      "clips": 503,
+      "speech_hours": 0.68,
+      "wer": 0.3664,
+      "alert_fpr_hyp": 0.0,
+      "alert_fpr_ref": 0.0,
+      "alerts_hyp": 0
+    },
+    "Marathi": {
+      "clips": 231,
+      "speech_hours": 0.3,
+      "wer": 0.3988,
+      "alert_fpr_hyp": 0.0,
+      "alert_fpr_ref": 0.0,
+      "alerts_hyp": 0
+    },
+    "Nepali": {
+      "clips": 599,
+      "speech_hours": 1.16,
+      "wer": 0.4284,
+      "alert_fpr_hyp": 0.0,
+      "alert_fpr_ref": 0.0,
+      "alerts_hyp": 0
+    },
+    "Odia": {
+      "clips": 456,
+      "speech_hours": 0.61,
+      "wer": 0.3335,
+      "alert_fpr_hyp": 0.0,
+      "alert_fpr_ref": 0.0,
+      "alerts_hyp": 0
+    },
+    "Punjabi": {
+      "clips": 189,
+      "speech_hours": 0.27,
+      "wer": 0.358,
+      "alert_fpr_hyp": 0.0,
+      "alert_fpr_ref": 0.0,
+      "alerts_hyp": 0
+    },
+    "Tamil": {
+      "clips": 384,
+      "speech_hours": 0.44,
+      "wer": 0.3087,
+      "alert_fpr_hyp": 0.0,
+      "alert_fpr_ref": 0.0,
+      "alerts_hyp": 0
+    },
+    "Telugu": {
+      "clips": 334,
+      "speech_hours": 0.5,
+      "wer": 0.3384,
+      "alert_fpr_hyp": 0.0,
+      "alert_fpr_ref": 0.0,
+      "alerts_hyp": 0
+    },
+    "Urdu": {
+      "clips": 514,
+      "speech_hours": 0.64,
+      "wer": 0.3961,
+      "alert_fpr_hyp": 0.0,
+      "alert_fpr_ref": 0.0,
+      "alerts_hyp": 0
+    }
+  },
+  "by_gender": {
+    "Female": {
+      "clips": 3579,
+      "speech_hours": 5.3,
+      "wer": 0.3842,
+      "alert_fpr_hyp": 0.0,
+      "alert_fpr_ref": 0.0,
+      "alerts_hyp": 0
+    },
+    "Male": {
+      "clips": 3077,
+      "speech_hours": 4.31,
+      "wer": 0.3874,
+      "alert_fpr_hyp": 0.0,
+      "alert_fpr_ref": 0.0,
+      "alerts_hyp": 0
+    }
+  },
+  "flagged_examples": []
+}

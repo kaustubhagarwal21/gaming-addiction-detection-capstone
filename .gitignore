@@ -84,6 +84,11 @@ data/conda/
 # Downloaded survey data (CC-BY 4.0; fetched by ml/analyze_survey.py instructions)
 data/survey/
 data/chat_extra/
+# Svarah (AI4Bharat) — HF-login-gated download, so raw data is not committed
+# (same policy as HASOC); ml/eval_asr_fairness.py documents how to fetch it.
+data/svarah/
+# Auto-downloaded by ml/eval_asr_fairness.py (and the STT smoke tests)
+data/vosk-model-*/
 docs/figures/chat_scores_cache.npz
 
 # LaTeX build artifacts

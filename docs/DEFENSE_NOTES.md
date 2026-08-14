@@ -308,11 +308,23 @@ voice is absent. (2) **Keyboard switching** → detected, not silent: the monito
 the default-IME setting, heartbeats carry capture bits, the parent sees degraded
 monitoring + a one-shot alert, and the child gets a re-enable prompt (built after the
 pilot caught an OS reset disabling the keyboard for days). Residue: momentary IME
-flips, controllers, dictation. (3) **Browser cloud gaming** → genuinely invisible,
-and we keep it that way on purpose: closing it needs screen capture or URL
-surveillance, both worse than the gap. Dedicated cloud apps (GeForce NOW) ARE
-monitorable — OS game category or one tap in Manage Games; behavioural features are
-timing-based so streaming changes nothing. A disclosed boundary beats a privacy
+flips, controllers, dictation. (3) **Games inside another app** → genuinely
+invisible, and we keep it that way on purpose. This is ALL of: browser games (poki,
+io games), cloud-streaming portals (now.gg streams even Roblox into a tab — the
+realistic teenage evasion), and webview mini-games inside messengers/social apps.
+One sentence to anchor the answer: **detection is foreground-package-based and never
+inspects traffic or content, so the monitoring boundary is "installed apps," not
+"games."** Closing it needs screen capture or URL surveillance, both worse than the
+gap. Dedicated cloud apps (GeForce NOW, Xbox Game Pass — now on the curated list) ARE
+monitorable; behavioural features are timing-based so streaming changes nothing.
+"Online vs offline" is irrelevant — an offline installed game is fully monitored, an
+online browser game isn't. If pushed "so a kid just uses now.gg?": yes, and we say so
+in §7 rather than pretending otherwise; the parent still sees "monitoring healthy,
+zero gaming," and the in-posture future mitigation (§7) is a "high screen time, zero
+detected gaming" discrepancy nudge — no URLs, no pixels, just the mismatch. Nuance
+that usually defuses the Roblox version of this question: plain Roblox in mobile
+Chrome isn't playable — roblox.com pushes into the native app, which is on the
+curated list and was the pilot's demo game. A disclosed boundary beats a privacy
 regression.
 
 **Q: Couldn't a child just clear app data to stay in observation mode forever?**
@@ -478,6 +490,28 @@ accessibility path; spoken Hindi is still gated by the English STT.
 Second-order finding: the lexicon's alert-recall contribution shrank from +5pp
 to <1pp — the trained model now knows what the hand lexicon knew.
 `ml/eval_chat_hindi.py` reproduces both views.
+
+**Q: Your speech recogniser is one Indian-English model. Is it fair across India's
+accents? Could a mis-transcription falsely accuse a child?**
+Measured, not assumed — paper §6.4, `ml/eval_asr_fairness.py`, on Svarah (AI4Bharat,
+6,656 clips / 9.6 h / 117 speakers across 65 districts, CC BY 4.0). Every clip was
+transcribed with the **deployed** Vosk model and every hypothesis pushed through the
+**served** toxicity chain at the 0.95 threshold. Two findings, one good, one honest:
+(1) **Zero false toxicity alerts in 9.6 hours of benign speech — in every accent
+group** (rule-of-three bound ≤0.045% overall), despite a 38.6% WER giving the system
+plenty of raw material to hallucinate profanity from. The precision-first threshold
+does exactly what it was designed to do: the chain degrades toward *silence*, never
+toward *accusation*. (2) But recognition quality is not accent-uniform: WER runs
+34.6% for Dravidian-L1 speakers, 38.1% Indo-Aryan, **60.8% Tibeto-Burman** — the
+Northeast (Bodo, Assamese, Nepali) occupies the entire worst tail at ~2× Tamil's
+error rate, while gender is balanced (38.4% vs 38.7%). So the equity issue is a
+*coverage* gap, not an accusation gap: toxic speech from a Northeast-accented child
+is more likely to be *missed*. We say that in the paper, name Northeast-accent
+adaptation as the highest-leverage STT improvement, and the audit is a two-command
+re-run that gates any future recogniser swap. If asked "why is 38.6% WER acceptable
+at all": it's the price of a 50 MB on-device model that keeps raw audio off the
+network — a privacy trade stated in §7 — and the fusion treats voice as an optional
+witness, never the sole evidence.
 
 **Q: Did you measure battery drain / on-device latency?**
 Split answer, no bluffing. SERVER latency: yes — concurrency smoke p50 66 ms /

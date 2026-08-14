@@ -598,6 +598,7 @@ Hindi Wikipedia clean sample~\cite{wikihi} & adopted & drains a measured script-
 Mechanical loanword code-mixing of CONDA (a \emph{synthetic augmentation}, not a corpus) & \textbf{rejected} & measured whack-a-mole: clean-only conversion collapsed an abusive transcript ($0.73 \rightarrow 0.45$); label-neutral conversion pushed held-out precision below the $0.95$ bar (\texttt{ml/make\_hindi\_gaming\_codemixed.py} kept as the negative result) \\
 RAVDESS + CREMA-D & adopted & real labelled English speech, 115 speakers \\
 EMO-DB + URDU & adopted & speaker/language diversity; Urdu $\approx$ target users' Hindi \\
+Svarah Indian-accent English~\cite{svarah2023} & adopted (eval-only) & $6{,}656$ clips / $117$ speakers / $19$ native languages, CC~BY~4.0; powers the STT accent-fairness audit (\S\ref{sec:asrfairness}). Login-gated download (auto-approved), so like HASOC the raw rows are not redistributed --- the fetch recipe ships in the script \\
 \addlinespace
 ``Predict Online Gaming Behavior'' (Kaggle) & \textbf{rejected} & synthetically generated (author's catalogue of educational synthetic sets); target is \emph{engagement}, not addiction; covers $\sim$3 of 10 features --- adopting it would recreate the false-provenance problem \\
 ``Mobile App Usage Behavior'' (Kaggle) & \textbf{rejected} & device-usage summaries, no gaming sessions, no relevant labels; credential-walled \\
@@ -1499,6 +1500,62 @@ caveat, stated plainly: all four speech corpora are \emph{acted, adult} speech -
 reality than synthetic features but still not child gaming speech, which stays the
 validation target.
 
+\subsection{ASR accent-fairness audit (spoken-chat front end)}
+\label{sec:asrfairness}
+The spoken-chat path chains the on-device Indian-English recogniser into the
+served toxicity scorer, and \S7 argues that such a chain owes its users a
+fairness audit: a transcription error that \emph{creates} a toxic word would
+concentrate false accusations on whoever the acoustic model serves worst. We
+executed the accent axis of that audit on Svarah~\cite{svarah2023} --- $6{,}656$
+clips / $9.6$ hours of transcribed Indian-English from $117$ speakers across
+$65$ districts, each carrying the speaker's primary language --- by
+transcribing every clip with the \emph{deployed} recogniser
+(\texttt{vosk-model-small-en-in-0.4}) and pushing every hypothesis through the
+\emph{served} scoring formula (clean $\rightarrow$ TF-IDF $\rightarrow$
+calibrated LogReg, noisy-OR keyword fusion, alert at $0.95$).
+Reproduction: \texttt{ml/eval\_asr\_fairness.py}; aggregate output ships as
+\texttt{docs/asr\_fairness.json}.
+
+\textbf{Finding 1 --- the alert path is accent-safe at the deployed threshold.}
+Across all $6{,}656$ benign clips the chain raised \textbf{zero} false toxicity
+alerts --- on the ASR hypotheses \emph{and} on the human reference transcripts
+(the no-ASR control). Zero observed events bound the benign-speech alert FPR at
+$\leq 0.045\%$ overall (rule of three, $95\%$), and $\leq 0.75\%$ even for the
+smallest per-family stratum. Despite a $38.6\%$ overall word-error rate ---
+plenty of raw material for hallucinated profanity --- the precision-first
+threshold plus domain-trained scorer never converted a mis-transcription into
+an accusation. The equity failure mode \S7 warns about is, at this threshold
+and on this benchmark, not observed in any group.
+
+\textbf{Finding 2 --- but recognition quality is not accent-uniform, so
+\emph{coverage} is.} WER stratifies cleanly by language family: Dravidian-L1
+speakers $34.6\%$ ($n{=}1{,}798$ clips), Indo-Aryan $38.1\%$ ($n{=}4{,}456$) ---
+and Tibeto-Burman $60.8\%$ ($n{=}402$), $1.76\times$ the Dravidian rate.
+Per-language extremes run Tamil $30.9\%$ to Bodo $60.8\%$, essentially
+$2\times$, with the Northeast (Bodo, Assamese $51.4\%$, Nepali $42.8\%$)
+occupying the entire worst tail. Gender, by contrast, is balanced ($38.4\%$
+female vs $38.7\%$ male). The fairness impact is therefore \emph{asymmetric}:
+no group is falsely accused, but for Northeast-Indian speakers the recogniser
+recovers barely two words in five, so genuinely toxic speech is
+correspondingly less likely to be \emph{caught} --- a recall gap, not a
+false-positive gap, concentrated on under-served accents. The honest summary
+for the model card is ``the voice-to-chat channel hears some Indian accents
+markedly worse than others, and degrades toward silence, not toward false
+alarms.''
+
+\textbf{Scope, stated plainly.} Svarah is adult read and conversational
+speech, so this audit bounds the \emph{accent} axis only; the gaming-domain
+axis is exercised separately by the spoken-chat smoke tests
+(\S\ref{sec:chatresults}), and \emph{toxic} accented speech --- needed to turn
+the recall-gap inference into a measured per-accent recall --- exists in no
+open corpus we could locate. The absolute WER also reflects a deliberate
+trade: a $50$\,MB on-device model keeps raw audio off the network entirely,
+at an accuracy cost server-scale ASR would not pay. The actionable output is
+specific: Northeast-accent adaptation data is the highest-leverage STT
+improvement the system could adopt, and any future recogniser swap
+(\S\ref{sec:futurework}) should be gated on re-running this audit, which is
+now a two-command reproducible artefact.
+
 \subsection{Ablation studies}
 \label{sec:ablations}
 One component is removed per row from the deployed recipe and re-measured on the
@@ -2376,13 +2433,22 @@ behavioural feature is timing-based and therefore unaffected by where the game
 renders --- though sessions attribute to the launcher app rather than the
 title, the genre multiplier receives no signal for them (default weight), and
 streamed frames are opaque to the accessibility reader (the IME
-path still captures typed chat). Games played \emph{inside a browser},
-however, are invisible: the browser is not a game, and force-monitoring it
-would count all browsing as play. We accept this evasion path deliberately ---
-closing it would require screen capture (MediaProjection) or URL surveillance,
-both of which violate the no-raw-media, minimum-collection posture this
-section defends; a monitoring boundary honestly disclosed to the parent is
-preferable to a privacy regression that closes it.
+path still captures typed chat). Games played \emph{inside another app},
+however, are invisible --- browser games of any kind (io games, web portals,
+cloud-streaming sites such as now.gg that stream even Roblox into a tab) and
+mini-games inside a host app's webview (messenger and social-media games)
+alike --- because detection is foreground-\emph{package}-based and never
+inspects network traffic or page content: the monitoring boundary is
+\emph{installed apps, not games}. The browser is not a game, and
+force-monitoring it would count all browsing as play. We accept this evasion
+path deliberately --- closing it would require screen capture
+(MediaProjection) or URL surveillance, both of which violate the no-raw-media,
+minimum-collection posture this section defends; a monitoring boundary
+honestly disclosed to the parent is preferable to a privacy regression that
+closes it. (A future mitigation \emph{within} the posture: the app already
+logs screen events, so a ``high screen time, zero detected gaming''
+discrepancy nudge could surface likely evasion without reading a single URL
+or pixel.)
 
 \textbf{Retention and encryption at rest.} Raw audio is deleted at
 extraction. Behavioural events, chat rows and alerts are retained until
@@ -2489,6 +2555,7 @@ enough for caseness metrics, ethics review) stated in \S7 and \S9.
 
 % =====================================================================
 \section{Future Work}
+\label{sec:futurework}
 % =====================================================================
 The original near-term tier of this section --- retraining the voice model on real
 labelled speech and the chat model on real gaming-domain data --- was \emph{executed
@@ -2673,18 +2740,20 @@ direction rather than as work we can execute alone:
         data from a wearable to strengthen the sleep-disruption signal. Needs hardware
         and real users; the app already logs screen-off / device-idle patterns as a
         lightweight proxy in the meantime.
-  \item \textbf{ASR fairness audit across Indian accents.} The on-device STT is
-        an Indian-English Vosk model, but India's phonetic diversity spans
-        Indo-Aryan and Dravidian accent families, and both the word-error rate
-        and --- more consequentially --- the toxicity-alert false-positive rate
-        conditioned on accent are unquantified. A transcription error that
-        \emph{creates} a slur is an equity failure concentrated on whoever the
-        acoustic model serves worst, so an alerting system carrying an ASR front
-        end owes its users a demographic audit: WER and per-accent alert-FPR
-        measured on a labelled, accent-stratified corpus of Indian adolescent
-        speech. No such open corpus exists for gaming speech; assembling one
-        (consented, ethics-reviewed) is the actual work, and the audit is a
-        precondition to any deployment claim of fairness across regions.
+  \item \textbf{ASR fairness audit across Indian accents (stage two).} The
+        accent axis was \emph{executed} during the project and promoted to a
+        result (\S\ref{sec:asrfairness}): on Svarah's $6{,}656$ clips the
+        deployed chain raised zero benign-speech false alerts in every accent
+        group, while WER split $34.6\%$ (Dravidian) / $38.1\%$ (Indo-Aryan) /
+        $60.8\%$ (Tibeto-Burman) --- an accent-coverage gap, not an
+        accusation gap. What remains is the half no open corpus can currently
+        support: \emph{toxic} accented speech, to convert the inferred recall
+        gap into a measured per-accent recall, and \emph{adolescent gaming}
+        speech, to close the domain axis. Assembling either corpus (consented,
+        ethics-reviewed) is the actual work; the audit itself is now a
+        two-command re-runnable artefact, and re-running it gates any future
+        recogniser swap --- with Northeast-accent adaptation data identified
+        as the highest-leverage improvement.
   \item \textbf{Multi-guardian consensus.} The family model supports several
         guardians, and their feedback verdicts currently pool into one evidence
         stream: two parents disagreeing about the same alert partially cancel,
@@ -2780,6 +2849,9 @@ Kaggle, 2018.
 \bibitem{hasoc2019} T. Mandl, S. Modha, P. Majumder, D. Patel, M. Dave, C. Mandlia,
 and A. Patel, ``Overview of the HASOC track at FIRE 2019: Hate speech and offensive
 content identification in Indo-European languages,'' in \emph{Proc.\ FIRE}, 2019.
+\bibitem{svarah2023} T. Javed, S. Joshi, V. Nagarajan, S. Sundaresan, J. Nawale,
+M. Raman, K. Kumar, P. Kumar, and M. M. Khapra, ``Svarah: Evaluating English ASR
+systems on Indian accents,'' in \emph{Proc.\ INTERSPEECH}, 2023.
 \bibitem{detoxify2020} L. Hanu and Unitary team, ``Detoxify: toxic comment
 classification models,'' open-source software,
 \texttt{github.com/unitaryai/detoxify}, 2020.
