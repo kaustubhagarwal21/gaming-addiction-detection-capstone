@@ -279,6 +279,53 @@ truncation flags. Excluded: PIN hashes and FCM push tokens (`_EXPORT_EXCLUDE`) �
 an export must never become a credential-exfiltration path. Parent-only, rate-limited
 5/hour.
 
+**Q: You alert parents about swear words but stay silent when a child tells Mira
+they want to hurt themselves. How is that defensible?**
+Name the asymmetry before defending it — it's real, it's deliberate, and paper §7 now
+states it in exactly those terms. The reasoning: a toxicity alert is low-stakes and
+reversible; auto-disclosing a suicidal confidence is neither. It can destroy the one
+channel the child chose to trust at the worst possible moment, and clinical guidance
+on guardian disclosure of adolescent self-harm ideation is genuinely divided — so we
+refused to hard-code a clinical judgement in engineering code. What the child *does*
+get, immediately: recall-first detection (deliberately the opposite tuning of the
+precision-first toxicity channel) and real helpline signposting (Tele-MANAS 14416).
+The likely correct design — offer the child help involving their parent first, else a
+non-verbatim "wellbeing check-in suggested" prompt to the parent that discloses
+concern without quoting the confidence — is documented in §7 **as a proposal, not
+shipped**, because shipping it is precisely the decision that requires clinical
+review. If pushed "so you did nothing?": no — we did the thing engineers can defend,
+and documented the thing clinicians must decide.
+
+**Q: What are the system's sensing blindspots? / Can a child evade monitoring?**
+Volunteer the three real ones (paper §7 "Sensing blindspots, named"), each with its
+mitigation: (1) **In-game VOIP holds the mic** (Android exclusive
+`VOICE_COMMUNICATION` focus) → our recorder gets silence exactly when the child is
+most vocal. The pipeline degrades honestly rather than mis-scoring: silence is
+rejected at extraction (silence floor + VAD), no voice event is produced, fusion
+renormalises over present channels, and the drift monitor's modality-presence rates
+catch sustained regressions. Missing piece (future work): telling the parent *why*
+voice is absent. (2) **Keyboard switching** → detected, not silent: the monitor polls
+the default-IME setting, heartbeats carry capture bits, the parent sees degraded
+monitoring + a one-shot alert, and the child gets a re-enable prompt (built after the
+pilot caught an OS reset disabling the keyboard for days). Residue: momentary IME
+flips, controllers, dictation. (3) **Browser cloud gaming** → genuinely invisible,
+and we keep it that way on purpose: closing it needs screen capture or URL
+surveillance, both worse than the gap. Dedicated cloud apps (GeForce NOW) ARE
+monitorable — OS game category or one tap in Manage Games; behavioural features are
+timing-based so streaming changes nothing. A disclosed boundary beats a privacy
+regression.
+
+**Q: Couldn't a child just clear app data to stay in observation mode forever?**
+No — that's a local-state assumption and the state isn't local. Observation mode
+counts **server-side** completed, scored sessions per child account (`app.py`:
+`COUNT(*) FROM sessions WHERE user_id=? AND end_time IS NOT NULL AND final_risk_score
+IS NOT NULL`). Clearing app data resets nothing server-side; it also kills the
+heartbeat, which raises an offline tamper alert. Creating a fresh child profile
+appears on the parent dashboard, and deletion is parent-role-only. Same family of
+question — "can one anxious parent drag the thresholds down?": no, the feedback tuner
+caps at ±0.05 per run, refuses to move below a minimum-evidence floor, and writes
+recommendations a human applies via env vars — there is no automatic loop to drift.
+
 ---
 
 ## 10. External validation — the IGDS9-SF survey

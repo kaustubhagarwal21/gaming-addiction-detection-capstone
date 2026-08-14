@@ -2340,6 +2340,41 @@ did not individually consent --- mitigated, not eliminated, by the deletion
 policy. Deployment beyond one household needs explicit household-level consent
 language.
 
+\textbf{Sensing blindspots, named.} Each capture channel has conditions under
+which it is structurally blind, and we state them rather than leave them to be
+discovered. \emph{Voice during in-game VOIP:} competitive titles hold the
+microphone through \texttt{VOICE\_COMMUNICATION} audio focus, and Android's
+concurrent-capture policy then starves a background recorder into silence ---
+precisely during the sessions where the child is most vocal. The pipeline
+degrades gracefully rather than mis-scoring: silent segments are rejected at
+feature extraction (silence floor, then the VAD gate), no voice event is
+produced, the availability-weighted fusion renormalises over the channels
+present, and the drift monitor's modality-presence rates would surface a
+sustained capture regression --- but the parent-facing health strip currently
+shows \emph{less voice data}, not \emph{why}, and an explicit
+audio-focus-aware "voice unavailable during in-game VOIP" flag is future work.
+\emph{Keyboard bypass:} the custom IME only captures while it is the active
+input method. Switching the default keyboard \emph{is} detected --- the
+monitor polls \texttt{DEFAULT\_INPUT\_METHOD}, the heartbeat carries capture
+bits, the parent sees a degraded-monitoring state plus a one-shot alert, and a
+child-side self-heal prompt fires on the transition (a real pilot failure: an
+OS reset silently disabled the keyboard for days) --- but momentary
+IME-switcher flips between polls, hardware controllers, and dictation typed
+through another app's voice keyboard remain uncaptured. \emph{Cloud and
+browser gaming:} dedicated cloud-gaming apps (GeForce NOW, Xbox cloud) are
+monitorable --- they are caught when they self-declare the OS game category
+and are one tap away in the parent's manual game overrides, and every
+behavioural feature is timing-based and therefore unaffected by where the game
+renders --- though sessions attribute to the launcher app rather than the
+title, and streamed frames are opaque to the accessibility reader (the IME
+path still captures typed chat). Games played \emph{inside a browser},
+however, are invisible: the browser is not a game, and force-monitoring it
+would count all browsing as play. We accept this evasion path deliberately ---
+closing it would require screen capture (MediaProjection) or URL surveillance,
+both of which violate the no-raw-media, minimum-collection posture this
+section defends; a monitoring boundary honestly disclosed to the parent is
+preferable to a privacy regression that closes it.
+
 \textbf{Retention and encryption at rest.} Raw audio is deleted at
 extraction. Behavioural events, chat rows and alerts are retained until
 guardian-initiated deletion, bounded by a configurable server-side retention
@@ -2355,9 +2390,23 @@ scale-up.
 (\S5) is recall-first by design and returns fixed helpline content; it does
 not diagnose or counsel, and whether a disclosure should escalate to the
 parent is treated as an open clinical-ethics question rather than silently
-decided in code. It has not been clinically validated; clinical review and
-adversarial safety testing are prerequisites to treating it as more than a
-floor.
+decided in code. We state the resulting asymmetry plainly, because it is the
+system's sharpest ethical tension: a parent is alerted in real time to
+profanity in game chat, yet receives no alert when their child discloses
+self-harm ideation to the in-app companion. That is not an oversight; it is a
+refusal. Toxicity alerts are low-stakes and reversible. Auto-disclosing a
+suicidal confidence is neither: it can destroy the one channel the child
+chose to trust, clinical guidance on guardian disclosure of adolescent
+self-harm is genuinely divided, and a wrong default hard-coded by engineers
+would operate silently at the worst possible moment. The design we consider
+most likely correct --- a tiered protocol in which the child is first offered
+help involving their parent, and the parent otherwise receives a
+non-verbatim ``wellbeing check-in suggested'' prompt that discloses concern
+without quoting the confidence --- is documented here as a proposal, and
+deliberately \emph{not} shipped: it encodes exactly the clinical judgement
+that requires clinical review. The detector has not been clinically
+validated; clinical review and adversarial safety testing are prerequisites
+to treating it as more than a floor.
 
 \textbf{Evidence limits, in one place.} Behaviour-model \emph{accuracy} figures
 are measured against synthetic labels (survey-grounded play-time distributions,
@@ -2615,6 +2664,36 @@ direction rather than as work we can execute alone:
         data from a wearable to strengthen the sleep-disruption signal. Needs hardware
         and real users; the app already logs screen-off / device-idle patterns as a
         lightweight proxy in the meantime.
+  \item \textbf{ASR fairness audit across Indian accents.} The on-device STT is
+        an Indian-English Vosk model, but India's phonetic diversity spans
+        Indo-Aryan and Dravidian accent families, and both the word-error rate
+        and --- more consequentially --- the toxicity-alert false-positive rate
+        conditioned on accent are unquantified. A transcription error that
+        \emph{creates} a slur is an equity failure concentrated on whoever the
+        acoustic model serves worst, so an alerting system carrying an ASR front
+        end owes its users a demographic audit: WER and per-accent alert-FPR
+        measured on a labelled, accent-stratified corpus of Indian adolescent
+        speech. No such open corpus exists for gaming speech; assembling one
+        (consented, ethics-reviewed) is the actual work, and the audit is a
+        precondition to any deployment claim of fairness across regions.
+  \item \textbf{Multi-guardian consensus.} The family model supports several
+        guardians, and their feedback verdicts currently pool into one evidence
+        stream: two parents disagreeing about the same alert partially cancel,
+        which is safe (the tuner's minimum-evidence floor means conflict mostly
+        yields \emph{no} recommendation) but unmodelled. At pilot scale this is
+        the correct behaviour; at product scale, guardian roles (primary /
+        secondary) and concordance-weighted feedback --- moving thresholds only
+        on agreeing verdicts --- would make disagreement explicit instead of
+        silent. The same applies to settings with last-write-wins semantics
+        (limits, extensions), which should surface \emph{who} changed them.
+  \item \textbf{Capture-context telemetry.} Extend the monitoring-health
+        vocabulary from \emph{whether} a channel produced data to \emph{why
+        not}: an audio-focus listener reporting ``voice unavailable ---
+        in-game VOIP held the microphone'' (\S7), and a controller-input flag
+        (\texttt{SOURCE\_GAMEPAD}) marking sessions where typed capture was
+        structurally impossible. Neither changes what is collected; both make
+        an honest absence legible to the parent and to the availability-weighted
+        fusion's audit trail.
 \end{itemize}
 
 We deliberately \emph{do not} pursue on-device TFLite conversion, transformer/CNN
