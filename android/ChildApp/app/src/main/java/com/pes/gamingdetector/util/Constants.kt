@@ -60,6 +60,15 @@ object Constants {
         "com.miHoYo.GenshinImpact"           to "Genshin Impact",
         "com.gameloft.android.ANMP.GloftA9HM" to "Asphalt 9",
         "com.nianticlabs.pokemongo"          to "Pokemon Go",
+        // Cloud gaming / streaming launchers. One package = a whole catalog, so the
+        // session attributes to the launcher, not the title, and the genre stays
+        // unknown (default weight) — but every behavioural feature is timing-based,
+        // so detection is what matters. Curated because these may not self-declare
+        // CATEGORY_GAME; browser-based cloud play remains out of scope (paper §7).
+        "com.nvidia.geforcenow"              to "GeForce NOW (cloud)",
+        "com.gamepass"                       to "Xbox Game Pass (cloud)",
+        "com.valvesoftware.steamlink"        to "Steam Link (streaming)",
+        "com.playstation.remoteplay"         to "PS Remote Play (streaming)",
     )
 
     // Known gaming app packages for UsageStats detection — must match PACKAGE_TO_GAME keys

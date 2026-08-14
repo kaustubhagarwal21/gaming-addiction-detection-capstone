@@ -2210,8 +2210,15 @@ tested whether each tracks the IGDS9-SF item it is named after. Only
 ($+0.063$, $+0.040$, $+0.073$). We report this because it is evidence against
 our own naming: these are heuristic transforms of behaviour, and the parent-app
 model card's framing of them as descriptive rather than diagnostic is the
-correct one. Renaming them to behaviour-descriptive labels is a concrete
-follow-up this study directly motivates.
+correct one. We acted on it: the four discredited labels served to parents were
+renamed to describe the behaviour each score is computed from ---
+``Loss of control'' $\rightarrow$ ``Frequent long sessions'', ``Tolerance
+buildup'' $\rightarrow$ ``Lengthening sessions'', ``Neglecting duties''
+$\rightarrow$ ``Heavy daily play'', ``Gaming over priorities'' $\rightarrow$
+``High daily hours'' --- while ``Gaming cravings'', the one proxy the data
+supported, keeps its name. Internal keys and the export schema are unchanged;
+the served explanation text is the thing that overclaimed, so the served
+explanation text is what changed.
 
 \textbf{Robustness.} Eight respondents gave the identical answer to all nine
 items. Dropping them attenuates the headline but does not overturn it:
@@ -2361,12 +2368,14 @@ child-side self-heal prompt fires on the transition (a real pilot failure: an
 OS reset silently disabled the keyboard for days) --- but momentary
 IME-switcher flips between polls, hardware controllers, and dictation typed
 through another app's voice keyboard remain uncaptured. \emph{Cloud and
-browser gaming:} dedicated cloud-gaming apps (GeForce NOW, Xbox cloud) are
-monitorable --- they are caught when they self-declare the OS game category
-and are one tap away in the parent's manual game overrides, and every
+browser gaming:} dedicated cloud-gaming apps are monitorable, and the four
+major launchers (GeForce NOW, Xbox Game Pass, Steam Link, PS Remote Play) are
+now on the curated detection list outright --- with the OS game category and
+the parent's manual overrides as the fallback for the rest --- and every
 behavioural feature is timing-based and therefore unaffected by where the game
 renders --- though sessions attribute to the launcher app rather than the
-title, and streamed frames are opaque to the accessibility reader (the IME
+title, the genre multiplier receives no signal for them (default weight), and
+streamed frames are opaque to the accessibility reader (the IME
 path still captures typed chat). Games played \emph{inside a browser},
 however, are invisible: the browser is not a game, and force-monitoring it
 would count all browsing as play. We accept this evasion path deliberately ---

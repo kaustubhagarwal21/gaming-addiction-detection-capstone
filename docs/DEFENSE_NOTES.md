@@ -394,9 +394,14 @@ each is *named* after: `craving_score` +0.325 (holds up), `gaming_priority_score
 +0.162 (weak), and `tolerance_score` +0.063, `control_loss_score` +0.040,
 `neglect_responsibilities_score` +0.073 (indistinguishable from zero). They were never
 model inputs — they're UI explanations derived from behaviour — but the clinical-sounding
-names overclaim. Renaming them to behaviour-descriptive labels is a concrete follow-up
-this study motivated. We'd rather report evidence against our own naming than have the
-panel find it.
+names overclaim. **And we acted on the finding**: the four discredited labels served to
+parents were renamed to describe the behaviour each score is computed from ("Loss of
+control" → "Frequent long sessions", "Tolerance buildup" → "Lengthening sessions",
+"Neglecting duties" → "Heavy daily play", "Gaming over priorities" → "High daily
+hours"); "Gaming cravings" — the one the data supported — keeps its name. Internal keys
+and the export schema are unchanged. This is the validation loop closing in the
+product: the study found our naming overclaimed, so the served text changed. We'd
+rather report evidence against our own naming than have the panel find it.
 
 **Q: The threshold search found better cut-offs. Why didn't you apply them?**
 The grid search returns T1 = 0.51, T2 = 0.95 (quadratic-weighted κ = 0.197) vs the

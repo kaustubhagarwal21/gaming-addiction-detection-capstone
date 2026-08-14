@@ -749,14 +749,20 @@ FEATURE_LABELS = {
     'rapid_relogin_ratio':             'Rapid re-login',
     'urge_to_continue_score':          'Urge to continue',
     'loss_of_time_awareness_score':    'Time awareness loss',
-    'control_loss_score':              'Loss of control',
+    # Four labels below were renamed to describe the BEHAVIOUR each score is computed
+    # from, after the IGDS9-SF survey (paper §6.6, Result 6) found the derived score
+    # does not track the clinical construct it was named after (rho vs its namesake
+    # item: control_loss +0.040, tolerance +0.063, neglect +0.073, priority +0.162).
+    # 'Gaming cravings' keeps its name — the one proxy that did track its item (+0.325).
+    # Internal keys are unchanged (DB columns, model card, export schema).
+    'control_loss_score':              'Frequent long sessions',
     'craving_score':                   'Gaming cravings',
-    'tolerance_score':                 'Tolerance buildup',
+    'tolerance_score':                 'Lengthening sessions',
     'missed_sleep_days_per_week':      'Sleep disruption',
     'fatigue_after_play_score':        'Post-play fatigue',
     'routine_disruption_score':        'Routine disruption',
-    'neglect_responsibilities_score':  'Neglecting duties',
-    'gaming_priority_score':           'Gaming over priorities',
+    'neglect_responsibilities_score':  'Heavy daily play',
+    'gaming_priority_score':           'High daily hours',
 }
 
 # This is a wellbeing SCREENING tool, NOT a clinical diagnosis. Internal category
