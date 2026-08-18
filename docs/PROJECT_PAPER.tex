@@ -2696,19 +2696,36 @@ value depends on accumulating real usage data the prototype does not yet have:
         hallucinate fluent text on non-speech audio --- for an alerting product,
         inventing words a child never said. Dual-Vosk keeps the safe failure
         mode: on noise it outputs silence. The build carrying it was
-        functionally validated end to end on real hardware (Devanagari
-        capture, dual-language transcription, transparency screens, session
-        lifecycle, PIN gates) and promoted to the current release; the mode
-        itself ships behind a parent-gated toggle, default \emph{off}. What
-        was \emph{not} run is the quantified resource drill --- battery
-        attribution, RAM and per-session data with the toggle off vs.\ on,
-        which 	exttt{TESTING.md} scripts with an explicit acceptance gate
-        and whose results table is, at the time of writing, still blank. We
-        state that rather than infer it: the default-off toggle means a family
-        enabling dual-language recognition is opting into a resource cost we
-        have not measured, and with the toggle off the deployed behaviour is
-        byte-identical to v2.3.11. Running that drill is the first post-defence
-        engineering task.
+        validated on real hardware in two stages. Functionally, end to end:
+        Devanagari capture, dual-language transcription, transparency
+        screens, session lifecycle, PIN gates. Then \emph{quantitatively},
+        with the scripted 	exttt{TESTING.md} drill --- two 15-minute Roblox
+        sessions on a Galaxy M52 5G, per-minute sampling of memory, CPU,
+        network and thermal state, toggle off vs.\ on. The deployed default
+        (English STT) costs $\approx$$14\%$ of one core and $288$\,MB mean /
+        $301$\,MB peak resident memory --- about one-fifteenth of the CPU the
+        game itself uses ($215\%$) --- with no thermal throttling. The
+        dual-language mode costs $51$--$72\%$ of a core ($\approx$$4$--$5\times$,
+        because both recognisers decode every segment) and $399$\,MB mean /
+        $419$\,MB peak, over the $400$\,MB gate for eight of fifteen minutes.
+        It therefore \emph{failed our own acceptance gate} on two of three
+        criteria, and that measured failure is why it ships behind a
+        parent-gated toggle, default \emph{off}, whose label states the
+        battery cost; with the toggle off the deployed behaviour is
+        byte-identical to v2.3.11. (Battery attribution in mAh is unreadable
+        on a USB-tethered phone --- 	exttt{batterystats} reports zero while
+        charging --- so the CPU-time proxy Android's own drain model derives
+        from is reported instead.) The drill also surfaced a native-heap
+        sawtooth in the voice process in both modes ($\approx$$30$\,MB
+        swing): the streaming recogniser retains an open utterance's decoding
+        lattice until an endpoint, so quiet play grows it and a pause releases
+        it --- bounded and released, not leaked. That was our first
+        explanation; we tested it by resetting the recogniser at every
+        ten-second segment boundary and re-measuring, and the curve did
+        \emph{not} flatten, so the explanation is at best incomplete and the
+        change was not shipped. The growth stays under the memory gate in the
+        default mode and is torn down with each session; its cause is
+        recorded as an open engineering finding rather than a closed one.
 \end{itemize}
 
 \textbf{Longer-term research directions.}

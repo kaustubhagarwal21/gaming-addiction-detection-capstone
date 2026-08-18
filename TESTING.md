@@ -179,25 +179,54 @@ adb shell am start -W com.pes.gamingdetector/.MainActivity | grep TotalTime
 adb shell am start -W com.pes.parentmonitor/.SplashActivity | grep TotalTime
 ```
 
-Record results here (fill on first run):
+Results — **measured 2026-08-18** on a Samsung Galaxy M52 5G (Android 13, 4 GB-class
+device), ChildApp 2.4.0-beta3 signed release build, two back-to-back 15-minute Roblox
+sessions with the recorder active, per-minute sampling (`dumpsys meminfo` by PID,
+`top`, `dumpsys cpuinfo` averaged, `dumpsys thermalservice`, `dumpsys netstats`).
+Phone was on USB for adb, so `batterystats` power attribution reads 0 while charging;
+the charging-safe proxy Android's own model derives drain from — averaged per-app CPU
+time — is reported instead.
 
-| Metric | Toggle OFF | Toggle ON (dual STT) |
+| Metric | Toggle OFF (English STT) | Toggle ON (dual Hindi+English) |
 |---|---|---|
-| Battery attribution, 15-min session | ___ % | ___ % |
-| ChildApp PSS RAM | ___ MB | ___ MB |
-| CPU snapshot during session | ___ % | ___ % |
-| Data sent per 15-min session | ___ MB | ___ MB |
-| ChildApp cold start | ___ ms | (same) |
+| Battery attribution, 15-min session | not measurable on USB (see CPU proxy) | not measurable on USB (see CPU proxy) |
+| **CPU, averaged over the run** (`cpuinfo`) | **14.4 %** of one core | **51–72 %** of one core (**~4–5×**) |
+| CPU, per-minute `top` samples | mean 14 %, bursts to 63 % | mean 41 %, bursts to 100 %+ |
+| **ChildApp PSS RAM** (both processes) | **mean 288 MB, peak 301 MB** | **mean 399 MB, peak 419 MB** |
+| Data sent per 15-min session | 7.16 MB up / 0.19 MB down (WAV segments) | same upload path; decoding is on-device |
+| Battery temperature drift | 37.5 → 39.2 °C | 39.0 → 40.6 °C |
+| OS thermal throttling (`thermalservice`) | none — Status 0 | none — Status 0 |
+| ChildApp cold start (`am start -W`) | 569 ms true-cold / ~230 ms warm | (same binary) |
+| *For scale: Roblox itself* | *215 % CPU* | *229 % CPU* |
 
 Acceptance gate for the dual-STT toggle: toggle-ON battery attribution < 2×
 toggle-OFF, RAM under ~400 MB on a 4 GB device, and no thermal throttling
 notification during the session.
 
-> **Status (2026-08-18):** v2.4.0 was promoted to the current release on *functional*
-> validation (every checkbox drill below passed on real hardware). This metrics table
-> was **not** filled — the numbers above are still unmeasured, which is why the
-> dual-STT toggle stays default OFF. Fill it before recommending the toggle to any
-> family; `docs/DEFENSE_NOTES.md` states the same thing in the battery answer.
+> **Gate outcome (2026-08-18): toggle OFF passes on every criterion; toggle ON
+> FAILS two of three.** RAM peaks at 419 MB and sits on/over the 400 MB line for 8 of
+> 15 minutes; the CPU cost is ~4–5× the single-model path (both recognisers decode
+> every segment, plus the mixed-window comparison), well beyond the 2× bar. Thermal
+> passes. This is the measured basis for keeping dual-STT **default OFF** and for the
+> toggle's "uses more battery" wording; the release notes, `docs/DEFENSE_NOTES.md`
+> (battery answer) and paper §9 quote these numbers.
+>
+> **Second finding the drill surfaced:** in *both* runs ChildApp PSS follows a
+> sawtooth (272→301→277 MB; 374→419→387 MB). Category breakdown shows it is entirely
+> **native heap** in the voice process (Dalvik flat at ~9 MB): Vosk's streaming
+> recogniser holds an open utterance's decoding lattice until an endpoint, so memory
+> grows through quiet stretches and is released when a pause closes the utterance —
+> bounded, not leaked, but unbounded *between* pauses — **or so we hypothesised.**
+> We tried the obvious fix (`Recognizer.reset()` at each 10 s segment boundary, API present
+> in vosk-android 0.3.47) as a beta4 build and **re-measured: it did NOT flatten the curve**
+> (post-warm-up slope +4.3 MB/min vs +2.1 baseline, same 29 MB swing). So the lattice
+> hypothesis is at least incomplete — candidates are the WAV-upload buffers awaiting a
+> slow server, or Vosk internals `reset()` does not touch. beta4 was **not shipped**; the
+> reset patch stays on `main` as a harmless, *unverified* mitigation, and the growth is
+> recorded as an open finding. Practical bound: sessions end and the process is torn down,
+> so it never accumulates across sessions; within one long session it stays under the
+> 400 MB gate in single-STT mode.
+
 - [ ] **Voice capture**: speak near the phone during the session → voice events +
       🎙️ STT lines appear (verified working on real hardware already).
 - [ ] **Auto session end**: leave the game (Home / screen off) → ~25 s later the

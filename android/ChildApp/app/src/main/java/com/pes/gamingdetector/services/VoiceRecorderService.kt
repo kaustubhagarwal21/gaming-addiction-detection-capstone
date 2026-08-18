@@ -245,6 +245,26 @@ class VoiceRecorderService : Service() {
                     val pcmCopy = pcmAccumulator.toByteArray()
                     pcmAccumulator.reset()
                     segmentStartElapsed = SystemClock.elapsedRealtime()
+                    // Flush-and-reset the streaming recogniser at each segment boundary.
+                    // Intended to bound Vosk's per-utterance native lattice (the on-device
+                    // drill saw a ~30 MB sawtooth over 15 min in the voice process). NOTE:
+                    // re-measured on hardware (2026-08-18) and this did NOT flatten the
+                    // curve — the growth's cause is still open (WAV-upload buffers or Vosk
+                    // internals reset() doesn't touch are the next suspects). Kept because
+                    // it is harmless and correct by the Vosk API contract (FinalResult then
+                    // Reset), not because it is proven to help. Flushing first means a
+                    // sentence straddling the boundary is not lost; the tone-analysis PCM
+                    // upload is a separate path and unaffected. Dual mode uses fresh
+                    // per-segment recognisers (decodeSegmentDual) and never reaches here.
+                    recognizer?.let { r ->
+                        try {
+                            val tail = JSONObject(r.finalResult).optString("text").trim()
+                            if (tail.isNotBlank()) submitChat(captureSession, captureUrl, tail)
+                            r.reset()
+                        } catch (_: Exception) {
+                            // A failed reset only forfeits the memory bound, never capture.
+                        }
+                    }
                     if (pcmCopy.isNotEmpty()) {
                         if (dualMode) decodeSegmentDual(
                             captureSession, captureUrl, pcmCopy, model, hindiModel)

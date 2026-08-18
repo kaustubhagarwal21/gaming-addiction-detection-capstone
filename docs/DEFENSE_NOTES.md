@@ -514,24 +514,36 @@ network — a privacy trade stated in §7 — and the fusion treats voice as an 
 witness, never the sole evidence.
 
 **Q: Did you measure battery drain / on-device latency?**
-Split answer, no bluffing. SERVER latency: yes — concurrency smoke p50 66 ms /
-p95 684 ms at 24 threads, zero server errors; server memory was hardened after a
-real 512 MB OOM under live voice load. DEVICE functional latencies: yes, observed
-on real hardware and pinned in the manual checklist (session auto-start ~10 s,
-auto-end ~25 s, nudge ~12 s, tamper detection ~10-15 min). DEVICE functional
-validation of the v2.4.0 Hindi build (Devanagari keyboard, dual-STT, transparency
-screens, PIN gates, cloud-launcher detection): yes — passed end to end on real
-hardware on 2026-08-18, which is what promoted it to the current release.
-QUANTIFIED battery/CPU/RAM/data on-device: **no, and we say so.** The evidence for
-viability is 23 days of continuous pilot operation on one phone without the family
-abandoning it (viability, not measurement). TESTING.md contains a scripted adb
-device-metrics drill (batterystats/meminfo/netstats deltas, toggle-OFF vs
-toggle-ON) with an explicit acceptance gate — its results table is still blank. We
-chose to ship on functional validation and keep the one feature with an unmeasured
-resource cost, dual-STT, **default OFF** — a family turning it on is opting into a
-cost we haven't quantified, and the toggle text says so. If pressed "why not just run
-it?": fair — it is a 30-minute drill and the first thing to do post-defense; we
-would rather report a blank table than a number we didn't measure.
+Yes — and the measurement changed a product decision, which is the best kind. SERVER
+latency: concurrency smoke p50 66 ms / p95 684 ms at 24 threads, zero server errors;
+server memory hardened after a real 512 MB OOM under live voice load. DEVICE functional
+latencies: session auto-start ~10 s, auto-end ~25 s, nudge ~12 s, tamper detection
+~10–15 min, ChildApp cold start 569 ms (warm ~230 ms). ON-DEVICE RESOURCE COST:
+measured 2026-08-18 on a Galaxy M52 5G, two 15-minute Roblox sessions with the
+recorder active, per-minute sampling (`TESTING.md` has the full table):
+
+| | English STT (default) | Dual Hindi+English (toggle) |
+|---|---|---|
+| CPU, averaged | **14 %** of one core | **51–72 %** (~4–5×) |
+| RAM (PSS), mean / peak | **288 / 301 MB** | **399 / 419 MB** |
+| Thermal throttling | none | none |
+| Data / 15-min session | 7.2 MB up | same path |
+| *Roblox itself, for scale* | *215 %* | *229 %* |
+
+So the deployed default costs about **1/15th of the game it monitors**. The dual-STT
+toggle **failed our own acceptance gate** (RAM > 400 MB peak, CPU far beyond 2×) — which
+is exactly why it ships default OFF with "uses more battery" on the toggle, and we can
+now say that with a number instead of a caveat. Two honest footnotes: (1) `batterystats`
+mAh attribution reads zero on a USB-tethered phone, so we report the CPU-time proxy that
+Android's own drain model is derived from; (2) the drill also caught a memory sawtooth
+in the voice process — Vosk's streaming recogniser holds an utterance lattice in native
+memory until a pause, so quiet play grows it (~30 MB swing) — bounded and released, not a
+leak. We tried the textbook fix (`Recognizer.reset()` per segment), re-measured, and **it
+did not flatten the curve** — so we did not ship it and say the cause is still open rather
+than pretend a two-line patch closed it. It stays under the gate in the default mode and
+resets with every session. A measurement that only confirmed what we hoped would be less
+convincing than one that failed a feature, found a bug, and then falsified our first
+explanation of the bug.
 
 **Q: Has anyone independently audited the app's security?**
 An automated independent static audit (MobSF v4.5.1, 2026-08-04) of both signed release
