@@ -518,12 +518,20 @@ Split answer, no bluffing. SERVER latency: yes — concurrency smoke p50 66 ms /
 p95 684 ms at 24 threads, zero server errors; server memory was hardened after a
 real 512 MB OOM under live voice load. DEVICE functional latencies: yes, observed
 on real hardware and pinned in the manual checklist (session auto-start ~10 s,
-auto-end ~25 s, nudge ~12 s, tamper detection ~10-15 min). QUANTIFIED battery/
-CPU/RAM/data on-device: no — the honest evidence is 23 days of continuous pilot
-operation on one phone without the family abandoning it (viability, not
-measurement). TESTING.md now contains a scripted adb device-metrics drill
-(batterystats/meminfo/netstats deltas, toggle-OFF vs toggle-ON) with an explicit
-acceptance gate; the dual-STT beta stays a pre-release until those numbers exist.
+auto-end ~25 s, nudge ~12 s, tamper detection ~10-15 min). DEVICE functional
+validation of the v2.4.0 Hindi build (Devanagari keyboard, dual-STT, transparency
+screens, PIN gates, cloud-launcher detection): yes — passed end to end on real
+hardware on 2026-08-18, which is what promoted it to the current release.
+QUANTIFIED battery/CPU/RAM/data on-device: **no, and we say so.** The evidence for
+viability is 23 days of continuous pilot operation on one phone without the family
+abandoning it (viability, not measurement). TESTING.md contains a scripted adb
+device-metrics drill (batterystats/meminfo/netstats deltas, toggle-OFF vs
+toggle-ON) with an explicit acceptance gate — its results table is still blank. We
+chose to ship on functional validation and keep the one feature with an unmeasured
+resource cost, dual-STT, **default OFF** — a family turning it on is opting into a
+cost we haven't quantified, and the toggle text says so. If pressed "why not just run
+it?": fair — it is a 30-minute drill and the first thing to do post-defense; we
+would rather report a blank table than a number we didn't measure.
 
 **Q: Has anyone independently audited the app's security?**
 An automated independent static audit (MobSF v4.5.1, 2026-08-04) of both signed release

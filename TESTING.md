@@ -189,9 +189,15 @@ Record results here (fill on first run):
 | Data sent per 15-min session | ___ MB | ___ MB |
 | ChildApp cold start | ___ ms | (same) |
 
-Acceptance gate for promoting v2.4.0 out of pre-release: toggle-ON battery
-attribution < 2× toggle-OFF, RAM under ~400 MB on a 4 GB device, and no thermal
-throttling notification during the session.
+Acceptance gate for the dual-STT toggle: toggle-ON battery attribution < 2×
+toggle-OFF, RAM under ~400 MB on a 4 GB device, and no thermal throttling
+notification during the session.
+
+> **Status (2026-08-18):** v2.4.0 was promoted to the current release on *functional*
+> validation (every checkbox drill below passed on real hardware). This metrics table
+> was **not** filled — the numbers above are still unmeasured, which is why the
+> dual-STT toggle stays default OFF. Fill it before recommending the toggle to any
+> family; `docs/DEFENSE_NOTES.md` states the same thing in the battery answer.
 - [ ] **Voice capture**: speak near the phone during the session → voice events +
       🎙️ STT lines appear (verified working on real hardware already).
 - [ ] **Auto session end**: leave the game (Home / screen off) → ~25 s later the

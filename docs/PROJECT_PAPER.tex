@@ -2695,13 +2695,20 @@ value depends on accumulating real usage data the prototype does not yet have:
         \emph{desktop} CPU, and carries Whisper's documented tendency to
         hallucinate fluent text on non-speech audio --- for an alerting product,
         inventing words a child never said. Dual-Vosk keeps the safe failure
-        mode: on noise it outputs silence. The mode ships behind a
-        parent-gated toggle, default \emph{off}: until the on-device validation
-        checklist runs on real hardware (STT quality on real speech, CPU and
-        battery with two models resident --- \texttt{TESTING.md} scripts the
-        quantified drill, battery attribution / RAM / per-session data with the
-        toggle off vs.\ on, whose deltas gate the beta's promotion), the
-        deployed default behaviour is byte-identical to v2.3.11.
+        mode: on noise it outputs silence. The build carrying it was
+        functionally validated end to end on real hardware (Devanagari
+        capture, dual-language transcription, transparency screens, session
+        lifecycle, PIN gates) and promoted to the current release; the mode
+        itself ships behind a parent-gated toggle, default \emph{off}. What
+        was \emph{not} run is the quantified resource drill --- battery
+        attribution, RAM and per-session data with the toggle off vs.\ on,
+        which 	exttt{TESTING.md} scripts with an explicit acceptance gate
+        and whose results table is, at the time of writing, still blank. We
+        state that rather than infer it: the default-off toggle means a family
+        enabling dual-language recognition is opting into a resource cost we
+        have not measured, and with the toggle off the deployed behaviour is
+        byte-identical to v2.3.11. Running that drill is the first post-defence
+        engineering task.
 \end{itemize}
 
 \textbf{Longer-term research directions.}
