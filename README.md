@@ -150,3 +150,10 @@ They talk to the live cloud backend — no GitHub or build tools needed.
 - [docs/PROJECT_PAPER.tex](docs/PROJECT_PAPER.tex) — the full project paper: architecture, models, honest metrics, limitations
 - [docs/VALIDATION_PLAN.md](docs/VALIDATION_PLAN.md) — real-data validation record: the public-dataset tier and the IGDS9-SF construct-validity survey are **executed and closed** (n=87; risk score ↔ IGDS9-SF ρ = 0.352, beating the self-reported screen-time baseline); the remaining per-child cohort is scoped there
 - [PRIVACY.md](PRIVACY.md) — privacy & data handling
+
+**Defense kit** (Phase III)
+- [docs/DEFENSE_DECK.pptx](docs/DEFENSE_DECK.pptx) — 17-slide deck with speaker notes; regenerate with `python tools/build_deck.py` (numbers are read from the committed result JSONs, never retyped)
+- [docs/SLIDE_OUTLINE.md](docs/SLIDE_OUTLINE.md) — the deck's content source, per-slide notes
+- [docs/DEFENSE_NOTES.md](docs/DEFENSE_NOTES.md) — anticipated examiner questions with measured answers
+- [docs/TEAM_BRIEFING.md](docs/TEAM_BRIEFING.md) — who owns which slides / questions, run order, night-before drill
+- [docs/DEMO_VIDEO_SCRIPT.md](docs/DEMO_VIDEO_SCRIPT.md) — timed narration for the backup video, beat-matched to DEMO_RUNBOOK §3

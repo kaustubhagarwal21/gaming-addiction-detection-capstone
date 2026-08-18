@@ -1,0 +1,62 @@
+# Team Briefing — who defends what (PW26_SAS-03)
+
+Read this the night before. It maps the deck (`docs/DEFENSE_DECK.pptx`, 17 slides,
+speaker notes in every slide) and the Q&A bank (`docs/DEFENSE_NOTES.md`) onto the four
+of us, so that no question lands on someone who has to say "I'd have to check."
+Everyone reads all of DEFENSE_NOTES once; each person *owns* their rows below cold.
+
+**Ground rules for every answer**
+1. Cite the measurement, then name the limitation *before* the examiner does.
+2. Never say "addicted" / "diagnosis" — say "screening", "concern", "signal".
+3. If you don't own the question, hand it over by name ("Kaustubh has that number") —
+   a clean hand-off beats a guess every time.
+4. Two phrases to keep in your pocket: *"the score's meaning is validated; its accuracy at
+   the clinical cut-off is not"* and *"a disclosed boundary beats a privacy regression."*
+
+---
+
+## Kaustubh Agarwal — ML, validation, and the closing arguments
+**Slides:** 6 (behaviour), 7 (chat), 8 (voice), 11 (verification), **12 (validation)**, 16 (limitations), 17 (close)
+**Owns in DEFENSE_NOTES:** §2 behaviour · §3 chat · §4 voice · §6 evaluation · **§10 external validation (all 11 Q&As)** · §11 closing · the accent-fairness Q&A
+**Numbers to have cold:** 91.6 % (synthetic, say so) · PR-AUC 0.825, P 0.956 @ 0.95 · voice 0.574 speaker-independent (9-pt leakage story) · **ρ = 0.352 [0.158, 0.521], hours 0.155, Δρ = +0.195, partial 0.349** · pattern 0.358 vs volume 0.202 · genre p = 0.491 (36 % power) · 1 disordered respondent → ~157 usable needed · Svarah 0 false alerts / 9.6 h, WER 35 → 61 %
+**Hardest questions you'll get:** "0.35 is weak" (lead with the baseline comparison) · "why no sensitivity/specificity" (one positive; guard written before the data) · "training data is synthetic" (yes — and here is where the score meets real labels) · "why keep the genre multiplier" (underpowered null; 34 % of bands flip)
+
+## Khushee P Kiran — Android apps, capture, and anti-tamper
+**Slides:** 4 (system overview & deployment), 10 (Built for India — keyboard/capture half), 14 (system testing — device half)
+**Owns in DEFENSE_NOTES:** §8 engineering (Android side) · §9 sensing-blindspots Q&A · §9 cold-start rebuttal · the battery/latency Q&A · Hindi keyboard/capture parts of the Hindi Q&A
+**Numbers to have cold:** ChildApp default path **14 % of one core, 288 / 301 MB**; dual-STT **51–72 %, 399 / 419 MB → fails our gate, hence default OFF** · session auto-start ~10 s, auto-end ~25 s, nudge ~12 s · Galaxy M52, 2 × 15-min Roblox, 2026-08-18 · v2.4.0 signed release, cert unchanged since day one
+**Hardest questions you'll get:** "can a child evade it" (yes — browser/webview games; boundary is *installed apps, not games*; closing it needs screen/URL surveillance we refuse) · "keyboard switching" (detected: heartbeat capture bits, parent alert, child self-heal prompt) · "clear app data to reset observation mode" (server-side counter; heartbeat dies → offline alert) · "does adb beat the uninstall block" (no — we tried, `DELETE_FAILED_DEVICE_POLICY_MANAGER`)
+
+## Kanak Goyal — backend, deployment, fusion, and datasets
+**Slides:** 5 (why three channels), 9 (fusion & alerting), 13 (dataset audit), 14 (system testing — backend/CI half)
+**Owns in DEFENSE_NOTES:** §1 problem framing · §5 fusion & alerting · §7 datasets · §8 engineering (server side) · the feedback-tuner-drift rebuttal
+**Numbers to have cold:** 40/30/30 renormalised over present channels · max-not-mean chat · operating points 0.85 → P 0.800 / R 0.703, 0.90 → 0.888 / 0.623, **0.95 → 0.956 / 0.428** · tuner cap ±0.05, human-applied · 180 backend tests on SQLite **and** Postgres 16, 288 concurrent requests 0 errors p50 66 ms · 11 adopted corpora + 2 rejected with evidence + StudentLife reality check
+**Hardest questions you'll get:** "why threshold 0.95 not best-F1" (false alarms cost trust; ~1 in 23 wrong vs 1 in 5) · "can an anxious parent drag thresholds down" (capped, floored, human-applied — no automatic loop) · "why RF/LogReg not BERT" (measured: toxic-BERT 0.709 vs 0.825; 512 MB serving budget) · "why did you reject those Kaggle sets" (downloaded and inspected: synthetic provenance, engagement ≠ addiction)
+
+## Vidisha Murali — ethics, privacy, scope, and the India story
+**Slides:** 2 (Phase III map — you open, so you frame), 3 (problem & scope), 10 (Built for India — code-mixed chat/fairness half), 15 (privacy & ethics)
+**Owns in DEFENSE_NOTES:** §9 privacy & consent (mic defence, export/delete symmetry) · **the crisis-paradox Q&A** · the "why children not adults" framing · Hindi dual-script parts of the Hindi Q&A · the ASR-fairness framing (Kaustubh has the numbers, you have the *why it matters*)
+**Numbers to have cold:** export scope = deletion scope, 15 tables, credentials excluded · consent versioned, fails closed (403 until re-consent) · raw audio deleted after extraction, STT on-device · Hindi ≥ 0.95 precision on all three registers · survey: adults 18+, anonymous, guide notified in writing — *not* an ethics-committee determination
+**Hardest questions you'll get:** "you alert on swear words but stay silent on self-harm" (name the asymmetry first; it's a refusal to hard-code a contested clinical judgement; the tiered wellbeing-check is documented as a proposal, deliberately not shipped) · "why only children" (a guardian with duty of care is what makes screening the unwilling possible and proportionate; an adult version is a journal or spyware) · "you're recording a child's microphone" (layered: consent → on-device STT → server deletion → VAD gate → export/delete rights)
+
+---
+
+## Run order on the day (16 min + Q&A)
+1. **Vidisha** opens: slides 1–3 (title, Phase III map, scope) — ~2½ min
+2. **Kanak**: slides 4–5 (overview/deployment, three channels) — ~2 min *(Khushee can take 4 if Kanak prefers)*
+3. **Kaustubh**: slides 6–8 (three models) — ~3½ min
+4. **Kanak**: slide 9 (fusion) — ~1 min
+5. **Vidisha + Khushee**: slide 10 (India: chat/fairness, then keyboard/capture) — ~1½ min
+6. **Kaustubh**: slides 11–12 (verification, **validation**) — ~3 min — *protect this time*
+7. **Kanak**: slide 13 (datasets) — ~45 s
+8. **Khushee**: slide 14 (testing + device numbers) — ~1 min
+9. **Vidisha**: slide 15 (privacy & ethics) — ~1 min
+10. **Kaustubh**: slides 16–17 (limitations, close) → **demo** (Khushee drives the phones; DEMO_RUNBOOK §3; video is the fallback)
+
+If forced to cut: merge 4+5, and 13 into 14. **Never cut slide 12.**
+
+## The night before — 30-minute drill
+- Each person: read your rows aloud once, then have someone else fire your "hardest questions" at you unannounced.
+- Kaustubh: re-run `python -m pytest ml/tests/ -q` (7 guards) so you can say "green this morning".
+- Khushee: pre-warm the backend (`/api/health` → `models_loaded: true`), reseed if needed (`SEED_DEMO_FORCE=1`), both phones charged and on the venue Wi-Fi, video file on the laptop desktop.
+- Everyone: the one-sentence project summary, identical from all four mouths — *"a deployed, multimodal screening system for parents that measures how a child plays, not just how long — externally validated against a clinical instrument, with its limitations named before you ask."*
