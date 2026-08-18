@@ -75,6 +75,7 @@ android/*/keystore.properties
 *.fls
 *.fdb_latexmk
 docs/PROJECT_PAPER.pdf
+docs/IEEE_PAPER.pdf   # generated from IEEE_PAPER.tex, same policy
 
 # Downloaded ML corpora (fetched by the training/eval scripts — not repo content;
 # RAVDESS alone is ~600 MB extracted, and datasets carry their own licences)
