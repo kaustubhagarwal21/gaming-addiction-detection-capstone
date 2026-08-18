@@ -154,6 +154,7 @@ They talk to the live cloud backend — no GitHub or build tools needed.
 
 **Defense kit** (Phase III)
 - [docs/DEFENSE_DECK.pptx](docs/DEFENSE_DECK.pptx) — 17-slide deck with speaker notes; regenerate with `python tools/build_deck.py` (numbers are read from the committed result JSONs, never retyped)
+- [docs/PES_REVIEW1_DECK.pptx](docs/PES_REVIEW1_DECK.pptx) — the **department-template** Phase-3 Review-1 deck (12 slides: outline, abstract & scope, Phase-1/2 summary + suggestions incorporated, literature inferences, architecture, tasks & tools, individual contribution, demo & testing, Gantt, IEEE references); regenerate with `python tools/build_pes_deck.py` — **edit the per-person contribution table with the team first**
 - [docs/SLIDE_OUTLINE.md](docs/SLIDE_OUTLINE.md) — the deck's content source, per-slide notes
 - [docs/DEFENSE_NOTES.md](docs/DEFENSE_NOTES.md) — anticipated examiner questions with measured answers
 - [docs/TEAM_BRIEFING.md](docs/TEAM_BRIEFING.md) — who owns which slides / questions, run order, night-before drill
