@@ -11,10 +11,11 @@ Brand: PES orange header/footer bars, "Title of the Project" top-left,
 "name1_name2_name3_name4" footer, PES logo top-right — matched to the template.
 Numbers are READ from the committed JSONs; LOC from `git ls-files | wc -l`.
 
-*** The per-person LOC/hours split on the Individual Contribution slide is a
-*** PROPOSAL derived from the module ownership in docs/TEAM_BRIEFING.md — git
-*** history is single-account, so it cannot be derived from evidence. Edit
-*** the CONTRIB table below with the team before presenting.
+*** The per-person split on the Individual Contribution slide follows the team's
+*** AGREED module ownership (confirmed 2026-08-18; also in docs/TEAM_BRIEFING.md).
+*** Module LOC are measured (git ls-files | wc -l); hours are team estimates. Git
+*** history is single-account (all pushes via one machine), so LOC-by-author is
+*** not derivable from git — say so if asked, and cite module ownership.
 
 Re-run: python tools/build_pes_deck.py
 """
@@ -335,18 +336,17 @@ CONTRIB = [
      LOC['parent'] + LOC['parent_tests'] + LOC['docs'] // 2, '≈ 260 h'),
 ]
 s = slide('Individual Contribution', notes=(
-    'IMPORTANT: git history is single-account (all pushes via one machine), so LOC per PERSON cannot be derived from '
-    'evidence — the module LOC are real (git ls-files | wc -l on 2026-08-18: backend ~8.7k, ML ~5.9k, ChildApp ~11.1k, '
-    'ParentApp ~7.2k, tests ~3.9k, docs ~5.9k), the split by person follows the module ownership the team agreed, and the '
-    'hours are estimates. Confirm both with the team before presenting; if a panelist asks, say exactly that. Timeline '
-    'is on the Gantt slide.'))
+    'The split follows the module ownership the team agreed (each member owns the modules listed). Module LOC are '
+    'measured (git ls-files | wc -l on 2026-08-18); hours are team estimates. If a panelist asks how LOC were '
+    'attributed: by module ownership — the repo is pushed from one machine, so git author lines do not split by '
+    'person, and we say that rather than fake per-author blame. Timeline is on the Gantt slide.'))
 table(s, [['Team member', 'Tasks / modules assigned', 'Development (LOC, approx.)', 'Time spent']] +
       [[n, m, f'{l:,}', h] for n, m, l, h in CONTRIB] +
       [['**Total (repo)**', f'backend {LOC["backend"]:,} · ML {LOC["ml"]:,} · ChildApp {LOC["child"]:,} · ParentApp {LOC["parent"]:,} · tests {LOC["backend_tests"] + LOC["child_tests"] + LOC["parent_tests"]:,} · docs {LOC["docs"]:,} · CI {LOC["ci"]:,}',
         f'**{sum(LOC.values()):,}**', '≈ 1,260 h']],
       Inches(0.6), Inches(1.5), Inches(12.1), col_w=[Inches(1.9), Inches(6.5), Inches(2.0), Inches(1.7)], size=11, hi=(5,))
 _tb(s, Inches(0.6), Inches(5.35), Inches(12.1), Inches(0.9),
-    'LOC counted with `git ls-files | wc -l` on 2026-08-18 (source, tests, docs, CI). Per-person split reflects module ownership; '
+    'LOC counted with `git ls-files | wc -l` on 2026-08-18 (source, tests, docs, CI), attributed by agreed module ownership; '
     'hours are team estimates. Timeline of every task/module: see the Gantt chart.', 11, False, GREY)
 
 # =============== 9. Demonstration & testing (template p8) ===============
