@@ -45,7 +45,7 @@ held-out data with bootstrap confidence intervals and one-component ablations
 (chat PR-AUC $0.825$ in-domain, $\geq$$0.95$ alert precision on every register;
 voice $0.574$ speaker-independent, exposing a 9-point leakage inflation in random splits).
 Critically, we then validate the served risk score \emph{externally}: in an anonymous
-adult IGDS9-SF survey ($n{=}87$), the score correlates with the clinical instrument at
+adult IGDS9-SF survey ($87$ usable, $86$ scoreable), the score correlates with the clinical instrument at
 Spearman $\rho{=}0.352$ ($95\%$ CI $[0.158,0.521]$), beats the self-reported screen-time
 baseline on a paired bootstrap ($\Delta\rho{=}{+}0.195$, CI excluding zero), and the
 signal is carried by \emph{pattern} features (composite $\rho{=}0.358$) rather than
@@ -73,7 +73,9 @@ tools each miss the pattern: self-report questionnaires require the child's hone
 cooperation --- and denial is itself a diagnostic criterion --- while screen-time
 counters measure volume, which is a weak correlate of severity. Prior computational
 work either models survey data~\cite{huang2024,strojny2024} or reviews family
-factors~\cite{ergin2025}; none deploys a passive, multi-signal screen to a guardian.
+factors~\cite{ergin2025}; passive smartphone sensing of behaviour and mental state has
+precedent in student populations~\cite{studentlife2014}, but none of this work deploys a
+passive, multi-signal screen to a guardian.
 
 We built and deployed such a system and, distinctively, evaluated it the way a
 screening instrument should be: real data where it exists, stated limits where it
@@ -136,8 +138,8 @@ and never fed to the model. No public dataset pairs per-session device telemetry
 IGD labels --- we audited candidates and rejected two Kaggle sets after inspection
 (synthetic provenance; engagement labels) --- so labels are \emph{synthetic screening
 priors}, with play-time distributions grounded in a real survey of $13{,}464$ gamers
-and the severity base rate ($6.4\%$ scoring $\geq$$36$) taken from an $11{,}191$-player
-IGDS9-SF dataset~\cite{igdslatam2024}. We state throughout that the resulting accuracy
+and the severity base rate ($6.4\%$ scoring $\geq$$36$) taken from the open $11{,}191$-row
+release of a seven-country IGDS9-SF study of League of Legends players~\cite{igdslatam2024}. We state throughout that the resulting accuracy
 bounds separability of the synthetic distribution, not clinical validity; \S\ref{sec:survey}
 is where the score meets real labels.
 
@@ -194,7 +196,7 @@ $0.491\!\rightarrow\!0.434$ at equal precision.
 
 \textbf{Voice.} Speaker-independent accuracy $0.574$, macro-F1 $0.568$ (chance
 $0.25$); random splits had reported $0.657$, a 9-point speaker-leakage inflation we
-corrected. The channel is deliberately the lowest-weighted (0.3) and an optional
+corrected. The channel is deliberately tied-lowest in the fusion prior (0.3, with chat) and an optional
 witness in fusion; frozen wav2vec~2.0 embeddings reach $0.776$ on the identical
 split, so a distilled on-device encoder is the identified next step rather than a
 claim of this paper.
