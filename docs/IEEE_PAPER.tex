@@ -76,7 +76,7 @@ work either models survey data~\cite{huang2024,strojny2024} or reviews family
 factors~\cite{ergin2025}; none deploys a passive, multi-signal screen to a guardian.
 
 We built and deployed such a system and, distinctively, evaluated it the way a
-screening instrument should be: real data where it exists, honest numbers where it
+screening instrument should be: real data where it exists, stated limits where it
 does not, and an external validation against a clinical instrument that could --- and
 partly did --- fail. Contributions:
 \begin{enumerate}
@@ -94,7 +94,7 @@ partly did --- fail. Contributions:
 \item External construct validation of the served score against IGDS9-SF~\cite{igds9sf}
   in $87$ respondents, with incremental validity over screen time, a
   pattern-versus-volume decomposition, and two negative results reported.
-\item An evaluation discipline with teeth: speaker-independent splits, one-component
+\item An evaluation protocol designed to be falsifiable: speaker-independent splits, one-component
   ablations with bootstrap CIs, three transformer baselines, and continuous-integration
   guards that fail the build if the paper's numbers diverge from the committed data.
 \end{enumerate}
@@ -193,10 +193,11 @@ $0.511$; removing char\_wb n-grams costs $0.031$; removing keyword fusion costs 
 $0.491\!\rightarrow\!0.434$ at equal precision.
 
 \textbf{Voice.} Speaker-independent accuracy $0.574$, macro-F1 $0.568$ (chance
-$0.25$). Random splits reported $0.657$ --- a 9-point speaker-leakage inflation that
-also flipped the bake-off winner. Frozen wav2vec~2.0 embeddings with the same
-classifier reach $0.776$ on the identical split, quantifying the headroom a deployable
-distillation could recover.
+$0.25$); random splits had reported $0.657$, a 9-point speaker-leakage inflation we
+corrected. The channel is deliberately the lowest-weighted (0.3) and an optional
+witness in fusion; frozen wav2vec~2.0 embeddings reach $0.776$ on the identical
+split, so a distilled on-device encoder is the identified next step rather than a
+claim of this paper.
 
 \begin{table}[t]
 \centering\footnotesize
@@ -307,6 +308,26 @@ longitudinal claim. A grid-searched threshold refit ($T_1{=}0.51,T_2{=}0.95$,
 $\kappa{=}0.197$) was measured and \emph{declined}: $T_2$ is pinned by the sample's
 missing severity tail, not a clinical boundary.
 
+\textbf{What this validates, precisely --- and common-method variance.} The study
+validates the served risk \emph{formula} applied to self-reported pattern answers
+mapped to band midpoints; it does not yet validate the passive-sensing pipeline
+end-to-end, whose inputs are measured telemetry rather than recalled bands. Because
+both the predictor questions and the IGDS9-SF items are self-report from the same
+respondent in one sitting, part of the association may be common-method
+variance~\cite{podsakoff2003}. Three observations bound, without eliminating, that
+concern: the incremental effect over self-reported hours ($\Delta\rho{=}{+}0.195$)
+is a \emph{within-method} contrast, since hours are self-reported on the same form
+and share any method inflation; the pattern-vs-volume separation is a
+\emph{between-feature} contrast that shared method cannot manufacture; and the
+predictor questions are behavioural frequencies, not attitudes, which typically
+attenuates rather than inflates method effects. The clean test remains a
+telemetry-linked cohort (\S V). On magnitude: $\rho{=}0.352$ ($\approx$$12\%$ shared
+variance) is modest in absolute terms, with a wide interval at $n{=}86$; it sits
+inside the $0.3$--$0.5$ range that criterion-validity coefficients for brief
+behavioural screeners against full instruments typically
+occupy~\cite{kroenke2003,cohen1988}, and is reported as evidence that the score
+carries the intended construct, not as evidence of clinical accuracy.
+
 \subsection{Accent-fairness audit of the spoken-chat path}
 A transcription error that \emph{creates} a slur would concentrate false accusations on
 whoever the acoustic model serves worst. We transcribed all $6{,}656$ clips of
@@ -335,6 +356,17 @@ therefore ships default-off. A consented single-family pilot ran 23 days in prod
 
 % =====================================================================
 \section{Ethics and Limitations}
+\textbf{Ethics statement.} The consented family pilot was an engineering pilot within
+the authors' own extended family and did not seek institutional review; no clinical
+conclusions are drawn from it. The IGDS9-SF survey was anonymous, adults ($18+$)
+only, collected no names, e-mail addresses or identifiers, displayed a consent
+statement before the first item, and was voluntary; the supervising faculty member
+was notified in writing before distribution. That is documented faculty
+notification, \emph{not} an ethics-committee or IRB determination, and we do not
+describe it as one; any cohort involving minors is gated on institutional review,
+guardian consent and age-appropriate assent. Row-level responses are not released
+(consent covered research use, not redistribution); aggregate outputs are.
+
 The system is screening, not diagnosis, and every surface says so. It is scoped to
 minors by design: a guardian with duty of care is what makes screening the unwilling
 both possible and proportionate; an adult version is either a self-help journal or
@@ -362,7 +394,7 @@ backed by held-out evidence and ablations; the pipeline's output is then anchore
 outside its own training distribution against a clinical instrument, where the design
 premise --- pattern over volume --- survives contact with real labels while two of its
 components do not, and we publish both. The contribution is not a solved clinical
-instrument; it is a fully built, honestly measured screening pipeline in which every
+instrument; it is a fully built, transparently measured screening pipeline in which every
 claim traces to a runnable script. The gap that remains is data, not architecture.
 
 % =====================================================================
