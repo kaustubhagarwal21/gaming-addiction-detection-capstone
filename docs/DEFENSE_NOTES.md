@@ -258,6 +258,31 @@ distribution story for a capstone, and the paper says so.
 
 ---
 
+**Q: Your weekly drift-monitor CI went red on 24 Aug. What happened?**
+It caught us — correctly, and the postmortem made the monitor better. Verified
+composition of the two windows: the reference (20 Jul–17 Aug, 1,812 predictions) was
+**98.7% the real pilot child** (1,788 rows); the recent week was **99% the developer's
+device-drill account** (307 rows from the 18 Aug resource drill — one prediction per
+10-s voice segment) plus the same-day demo reseed. Fused-score PSI 2.48; and the
+monitor's modality-presence separator did its exact job: `chat_present` 1.1% → 45.2%
+(the pilot child's game has no chat; the drill streamed STT transcripts), attributing
+the shift to **population/capture-mix, not the model** — nothing deployed had changed
+(models trained 4 Jul, last backend deploy 14 Aug). Two actions followed. (1) The
+published demo children (ids 1, 3) are now excluded from both windows
+(`DRIFT_EXCLUDE_USERS`): `seed_demo.py` rewrites them and re-anchors their history on
+every reseed, so their distributions change by construction, not by drift. With them
+out, the post-pilot windows hold one real account each — below the 3-child population
+floor — and the job reports that honestly instead of failing. (2) The incident exposed
+a real **false negative**: chat's verdict said "stable" at PSI 0.000 despite KS p = 0
+and a 30× mean shift, because PSI's quantile bins collapse on a near-constant
+reference and the old fallback put every non-negative score in one bin. Fixed with a
+tolerance-band fallback, flagged `[degenerate ref]` in reports, and regression-tested
+on the exact production shape (chat now reads PSI 1.71 DRIFT on that same data). A
+monitor that fires on a known perturbation, attributes it correctly, and gets improved
+by its own false negative is evidence the system is *monitored*, not decorated.
+
+---
+
 ## 9. Privacy and consent
 
 **Q: You're recording a child's microphone. Defend that.**

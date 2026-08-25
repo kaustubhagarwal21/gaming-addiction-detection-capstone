@@ -29,6 +29,12 @@ jobs:
           # vs pilot reports the population handover as model drift (PSI ~6 on the
           # first pilot Monday). Windows are clamped to start at/after this date.
           DRIFT_EPOCH: '2026-07-06'
+          # Published demo children (seed_demo.py overwrites ids 1 and 3 and re-anchors
+          # their history to "now" on every reseed) are excluded from BOTH windows:
+          # their distributions change by construction, not by drift. The 2026-08-24
+          # red run was exactly this — a demo reseed + a device-metrics drill dominated
+          # the recent window (PSI 2.48 on the fused score, chat_present 1% -> 45%).
+          DRIFT_EXCLUDE_USERS: '1,3'
         run: |
           if [ -z "$DATABASE_URL" ]; then
             echo "::warning::DATABASE_URL secret not set — drift monitor is not configured; skipping."

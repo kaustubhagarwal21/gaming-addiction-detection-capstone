@@ -38,17 +38,39 @@ def psi(ref, cur, bins: int = 10) -> float:
     """Population Stability Index over quantile bins of the REFERENCE distribution.
     0 = identical; >0.2 = material drift (standard monitoring convention). Bins are
     taken from reference quantiles so the measure is scale-free; a small epsilon
-    keeps empty bins finite."""
+    keeps empty bins finite.
+
+    Near-constant reference: the quantile bins collapse, and the previous fallback
+    (a single interior edge at the reference median) put every non-negative score in
+    ONE bin on both sides — so any amount of mass arriving away from the constant
+    reported PSI 0.000. Observed in production (2026-08-24 run: chat mean 0.005 ->
+    0.145, KS p = 0, verdict 'stable'). The fallback is now a tolerance band around
+    the constant: mass leaving that band IS what drift means there."""
     ref, cur = np.asarray(ref, dtype=float), np.asarray(cur, dtype=float)
     edges = np.unique(np.quantile(ref, np.linspace(0, 1, bins + 1)))
     if len(edges) < 3:                       # degenerate reference (near-constant)
-        edges = np.array([min(ref.min(), cur.min()) - 1e-9,
-                          np.median(ref), max(ref.max(), cur.max()) + 1e-9])
-    edges[0], edges[-1] = -np.inf, np.inf
+        v = float(np.median(ref))
+        eps = max(1e-6, 1e-3 * max(abs(v), 1.0))
+        edges = np.array([-np.inf, v - eps, v + eps, np.inf])
+    else:
+        edges[0], edges[-1] = -np.inf, np.inf
     r = np.histogram(ref, edges)[0] / len(ref)
     c = np.histogram(cur, edges)[0] / len(cur)
     r, c = np.clip(r, 1e-4, None), np.clip(c, 1e-4, None)
     return float(np.sum((c - r) * np.log(c / r)))
+
+
+def reference_degenerate(ref, bins: int = 10) -> bool:
+    """True when the reference's quantile bins collapse (near-constant reference).
+    Surfaced in the report because PSI then measures departure-from-a-constant
+    rather than a reshaped distribution."""
+    ref = np.asarray(ref, dtype=float)
+    return len(np.unique(np.quantile(ref, np.linspace(0, 1, bins + 1)))) < 3
+
+
+def parse_excluded(spec: str):
+    """'1,3' / '1 3' / '' -> sorted unique ints. Raises ValueError on junk."""
+    return sorted({int(t) for t in (spec or '').replace(',', ' ').split()})
 
 
 _PH = '?'   # SQL placeholder — swapped to %s when connecting to Postgres (psycopg2)
@@ -74,24 +96,39 @@ def _connect():
     return conn
 
 
-def load_window(cur, start_iso, end_iso):
-    cur.execute(f'''SELECT final_risk_score, behavior_score, chat_score, voice_score,
-                          risk_category, behavior_present, chat_present, voice_present,
-                          SUBSTR(timestamp,1,10) AS day
-                   FROM predictions WHERE timestamp >= {_PH} AND timestamp < {_PH}''',
-                (start_iso, end_iso))
+def _exclusion_sql(excluded):
+    """(sql_fragment, params) filtering out excluded user ids. LEFT JOIN semantics:
+    predictions whose session row is gone (orphans) are kept, exactly as the
+    pre-exclusion loader kept them — the filter must only ever REMOVE the named ids."""
+    if not excluded:
+        return '', []
+    ph = ','.join([_PH] * len(excluded))
+    return f' AND (s.user_id IS NULL OR s.user_id NOT IN ({ph}))', list(excluded)
+
+
+def load_window(cur, start_iso, end_iso, excluded=()):
+    frag, extra = _exclusion_sql(excluded)
+    cur.execute(f'''SELECT p.final_risk_score, p.behavior_score, p.chat_score,
+                          p.voice_score, p.risk_category, p.behavior_present,
+                          p.chat_present, p.voice_present,
+                          SUBSTR(p.timestamp,1,10) AS day
+                   FROM predictions p
+                   LEFT JOIN sessions s ON s.session_id = p.session_id
+                   WHERE p.timestamp >= {_PH} AND p.timestamp < {_PH}{frag}''',
+                [start_iso, end_iso] + extra)
     return [dict(r) for r in cur.fetchall()]
 
 
-def window_users(cur, start_iso, end_iso) -> int:
+def window_users(cur, start_iso, end_iso, excluded=()) -> int:
     """Distinct children behind a window's predictions. PSI's industry 0.1/0.2 bars
     assume a POPULATION; with one pilot user, week-over-week PSI blows past 0.2 from
     ordinary behavioural variability (observed: PSI 1.4 because one child simply
     played 4.7x more in week two). Used to gate --fail-on-drift, not the report."""
+    frag, extra = _exclusion_sql(excluded)
     cur.execute(f'''SELECT COUNT(DISTINCT s.user_id) AS n
                     FROM predictions p JOIN sessions s ON s.session_id = p.session_id
-                    WHERE p.timestamp >= {_PH} AND p.timestamp < {_PH}''',
-                (start_iso, end_iso))
+                    WHERE p.timestamp >= {_PH} AND p.timestamp < {_PH}{frag}''',
+                [start_iso, end_iso] + extra)
     row = cur.fetchone()
     return int(row['n'] or 0)
 
@@ -135,7 +172,21 @@ def main():
                          'need a population: with a single pilot user, week-over-week '
                          'PSI exceeds 0.2 from ordinary behavioural variability. The '
                          'report is still printed and written either way.')
+    ap.add_argument('--exclude-users',
+                    default=os.environ.get('DRIFT_EXCLUDE_USERS', '1,3'),
+                    help='comma-separated user ids removed from BOTH windows before any '
+                         'statistic (env DRIFT_EXCLUDE_USERS; default the published demo '
+                         'children, ids 1 and 3). seed_demo.py OVERWRITES those accounts '
+                         'and re-anchors their history to "now" on every reseed, so their '
+                         'distributions change by construction, not by drift — the '
+                         '2026-08-24 red run was exactly this (a demo reseed plus a '
+                         'device-metrics drill dominating the recent window). Pass an '
+                         'empty string to monitor everything.')
     args = ap.parse_args()
+    try:
+        excluded = parse_excluded(args.exclude_users)
+    except ValueError:
+        ap.error(f'--exclude-users must be comma-separated integers, got {args.exclude_users!r}')
     if args.recent_days <= 0 or args.reference_days <= 0:
         ap.error('--recent-days and --reference-days must be positive')
     if args.min_users <= 0:
@@ -153,12 +204,14 @@ def main():
 
     conn = _connect()
     cur = conn.cursor()
-    ref = load_window(cur, ref_start.isoformat(), recent_start.isoformat())
-    rec = load_window(cur, recent_start.isoformat(), now.isoformat())
-    users_ref = window_users(cur, ref_start.isoformat(), recent_start.isoformat())
-    users_rec = window_users(cur, recent_start.isoformat(), now.isoformat())
+    ref = load_window(cur, ref_start.isoformat(), recent_start.isoformat(), excluded)
+    rec = load_window(cur, recent_start.isoformat(), now.isoformat(), excluded)
+    users_ref = window_users(cur, ref_start.isoformat(), recent_start.isoformat(), excluded)
+    users_rec = window_users(cur, recent_start.isoformat(), now.isoformat(), excluded)
     conn.close()
 
+    if excluded:
+        print(f"excluded user ids (demo/test accounts): {excluded}")
     print(f"reference: {ref_start.date()} .. {recent_start.date()}  "
           f"({len(ref)} predictions, {users_ref} children)")
     print(f"recent   : {recent_start.date()} .. {now.date()}  "
@@ -167,7 +220,7 @@ def main():
                                         len(ref)],
                           'recent': [str(recent_start.date()), str(now.date()), len(rec)]},
               'population': {'reference_users': users_ref, 'recent_users': users_rec,
-                             'min_users': args.min_users},
+                             'min_users': args.min_users, 'excluded_users': excluded},
               'scores': {}, 'bands': {}, 'presence': {}, 'volume': {}}
     if len(ref) < MIN_ROWS or len(rec) < MIN_ROWS:
         print(f"\nInsufficient data (need >= {MIN_ROWS} predictions per window) — "
@@ -191,12 +244,17 @@ def main():
             continue
         v = psi(a, b)
         ks_p = float(ks_2samp(a, b).pvalue)
-        report['scores'][col] = {'psi': round(v, 4), 'ks_p': round(ks_p, 5),
-                                 'mean_ref': round(float(a.mean()), 4),
-                                 'mean_recent': round(float(b.mean()), 4),
-                                 'verdict': label(v)}
+        entry = {'psi': round(v, 4), 'ks_p': round(ks_p, 5),
+                 'mean_ref': round(float(a.mean()), 4),
+                 'mean_recent': round(float(b.mean()), 4),
+                 'verdict': label(v)}
+        if reference_degenerate(a):
+            entry['psi_note'] = ('reference near-constant: PSI measures departure '
+                                 'from that constant (tolerance-band bins)')
+        report['scores'][col] = entry
         print(f"{col:<18} {v:7.3f} {label(v):<10} {ks_p:9.4f} "
-              f"{a.mean():.3f} -> {b.mean():.3f}")
+              f"{a.mean():.3f} -> {b.mean():.3f}"
+              + ('   [degenerate ref]' if 'psi_note' in entry else ''))
 
     print("\nrisk-band shares (reference -> recent):")
     for band in ('casual', 'at_risk', 'addicted'):

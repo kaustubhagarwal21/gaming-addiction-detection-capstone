@@ -89,7 +89,7 @@ risk-flap bugs (`AlertTriage`).
 | `python ml/analyze_fusion_sensitivity.py` | Stress-tests the fusion priors on stored pilot predictions (weight simplex sweep, genre-effect sweep, threshold sweep) after proving exact replication of served scores; writes `docs/fusion_sensitivity.json` |
 | `python ml/calibrate_thresholds_prevalence.py` | Prevalence-anchored RISK_T2 calibration (IGDS9-SF disordered-range rate), population-gated below 10 children |
 | `python ml/analyze_voice_shadow.py` | Offline evaluation of the voice domain-shift mitigations (abstain-margin sweep, BBSE prior correction) on shadow-logged probability vectors from live pilot audio |
-| `python ml/monitor_drift.py` | Score-distribution drift monitor (PSI + KS, band shares, modality-presence rates) — recent window vs reference; the pilot-phase health check |
+| `python ml/monitor_drift.py` | Score-distribution drift monitor (PSI + KS, band shares, modality-presence rates) — recent window vs reference; the pilot-phase health check. Published demo children (ids 1, 3) are excluded by default (`DRIFT_EXCLUDE_USERS`) because every reseed rewrites them; near-constant references use tolerance-band PSI bins so mass arriving from zero can't report as "stable" (regression-tested — the 2026-08-24 red run's chat row was exactly this false negative) |
 
 ---
 

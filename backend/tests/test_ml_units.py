@@ -152,6 +152,30 @@ def test_psi_identical_and_shifted():
     assert np.isfinite(psi(np.full(500, 0.5), rng.normal(0.5, 0.1, 500)))  # degenerate ref
 
 
+def test_psi_degenerate_reference_detects_arrivals():
+    """Regression for the 2026-08-24 production false-'stable': chat's reference was
+    ~99% zeros, the old median-anchored fallback put every non-negative score in one
+    bin on both sides, and a 30x mean shift (0.005 -> 0.145, KS p = 0) reported
+    PSI 0.000. A near-constant reference must flag mass ARRIVING away from the
+    constant — and must still read ~0 when nothing changed."""
+    from monitor_drift import parse_excluded, psi, reference_degenerate
+    rng = np.random.default_rng(1)
+    ref = np.zeros(2000)
+    ref[:22] = rng.uniform(0.2, 0.9, 22)          # ~1% nonzero, like pilot chat
+    same = np.zeros(310)
+    same[:3] = rng.uniform(0.2, 0.9, 3)           # same ~1% regime
+    cur = np.zeros(310)
+    cur[:140] = rng.uniform(0.05, 0.9, 140)       # ~45% nonzero, like the drill week
+    assert reference_degenerate(ref) is True
+    assert reference_degenerate(rng.normal(0.4, 0.15, 2000)) is False
+    assert psi(ref, cur) > 0.2                    # must now read as DRIFT
+    assert psi(ref, same) < 0.1                   # unchanged regime stays quiet
+    assert psi(ref, ref) < 1e-6
+    assert parse_excluded('1,3') == [1, 3]
+    assert parse_excluded(' 3 1 3 ') == [1, 3]
+    assert parse_excluded('') == []
+
+
 def test_drift_population_gate_requires_both_windows():
     from monitor_drift import drift_gate_eligible, finite_mean
     assert drift_gate_eligible(3, 3, 3) is True
