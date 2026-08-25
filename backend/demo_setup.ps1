@@ -1,5 +1,5 @@
 # ─────────────────────────────────────────────────────────────────────────
-#  One-command demo setup — PES Capstone PW26_SJ_05
+#  One-command demo setup — PES Capstone PW26_SAS-03
 #  Run from the backend folder:   .\demo_setup.ps1
 #
 #  Does everything needed for a reliable live demo:

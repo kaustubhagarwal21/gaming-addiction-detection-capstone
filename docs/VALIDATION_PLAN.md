@@ -279,8 +279,10 @@ synthetic data — this is the actual ~9.5 move.
 
 ## Suggested sequencing (updated)
 1. ~~Public-dataset tier~~ — **done** (see status block above).
-2. ~~Ethics check + build the Google Form~~ — **done**; guide notified in writing
-   2026-08-07, form floated the same day.
+2. ~~Ethics check + build the Google Form~~ — **done**; form floated 2026-08-07;
+   guide notified in writing 2026-08-14 (official PES account, design disclosed,
+   approval query on record) while the form was open — after the main wave, before
+   close-out and before analysis of the final sample. Papers state this timing exactly.
 3. ~~Survey analysis~~ — **done** at n=104 usable (incl. the late passive batch); construct-validity numbers are in the paper
    (§6.6), the defense notes (§10) and the committed aggregate JSONs.
 4. **Next (blocked on ethics approval): the per-child cohort.** Guardian-reported

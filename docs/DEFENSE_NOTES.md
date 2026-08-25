@@ -475,6 +475,38 @@ transfers regardless of age: the pipeline's output tracks a validated instrument
 pattern features carry signal volume features don't. The per-child cohort — guardian
 IGDS9-SF scores linked to telemetry — is stage two, and it needs ethics approval.
 
+**Q: Did you take permission for the survey? Where's the ethics approval?**
+The exact record, have it cold: on **14 Aug 2026** Kaustubh mailed Prof. Sawant from
+the official PES account (pes1ug23cs291@pesu.pes.edu), cc'ing all three teammates,
+disclosing the full design — adults 18+ only, fully anonymous, no names/emails/
+identifiers, ~3 minutes, consent statement before starting, participation voluntary —
+with the form link and the explicit sentence *"please let us know if the department
+requires any additional approval for anonymous surveys of this kind."* That is written
+faculty notification with a documented good-faith query, **not** an ethics-committee
+or IRB determination, and no paper claims otherwise. Timing, stated honestly before
+anyone else does: the mail went out **while the form was open** — after the 7–9 Aug
+main wave, before the late batch finished arriving, before close-out, and before any
+analysis of the final n = 134 sample; the papers say exactly this. If pressed on "why
+not before launch," concede the sequencing plainly *first*: **notification should have
+preceded the first collected response; it didn't, and we corrected course mid-window
+rather than after the fact.** Only then the mitigations, which now land as mitigation
+rather than evasion: the survey is minimal-risk by construction (anonymous, adults-only,
+consent-gated, voluntary); from 14 Aug the guide had the full design, the form link,
+and the standing written approval query while the form was still open; and the final
+n = 134 analysis postdates both the notification and the close-out. **If asked "did she
+reply?"** — state only what the record documents: the notification and approval query
+were sent from the official account on 14 Aug; we claim no reply, no approval, and no
+absence-of-objection, and neither do the papers. Do not improvise beyond that. **If
+asked "so you analyzed data before notifying her?"** — yes, interim looks at the
+main-wave data existed; every claim in the papers and here is deliberately scoped to
+the *final* analysis, which postdates notification and close-out — say that, don't
+deny the interim looks. What *does* need prior institutional review — and is gated on
+it — is stage two: minors, guardian consent, telemetry-linked IGDS9-SF. (One blemish
+to own if the department cross-references: the mail's body cites project code
+"PW26_SJ_05" — a stale early code that also lingered in two repo files (since fixed to
+PW26_SAS-03); the signature block carries the correct "Team PW26_SAS-03". Own it as a
+stale internal code, not concealment.)
+
 **Q: Did you clean, filter, or discard any responses to get this result?**
 Every exclusion rule was fixed before analysis and is in the script: under-18 or
 non-gamer (20 dropped), failed attention check (10 dropped), incomplete IGDS items (0).

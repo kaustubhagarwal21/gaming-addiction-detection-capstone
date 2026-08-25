@@ -3,7 +3,7 @@ info:
   title: Gaming Addiction Detection API
   description: |
     Backend REST API for the AI-driven gaming addiction detection system —
-    PES University Capstone PW26_SJ_05.
+    PES University Capstone PW26_SAS-03.
 
     Three-modality server-side ML ensemble: behavioral Random Forest,
     TF-IDF/logistic-regression chat toxicity, and acoustic voice-emotion

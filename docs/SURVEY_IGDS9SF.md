@@ -31,9 +31,11 @@ grounding the system currently borrows from the IGDS9-SF Latin-America dataset
 - **Adults only (18+), reporting on their own gaming.** Surveying minors needs guardian
   consent and likely ethics clearance — keep this clean by restricting to adults. Still
   mention it to your guide; PES may want a nod even for an anonymous survey.
-  *(Done: the guide was notified in writing before distribution, with an explicit
-  request for direction if the department required further approval. That is faculty
-  notification, not an ethics-committee determination, and the paper says so.)*
+  *(Done 2026-08-14: the guide was notified in writing from the official PES account,
+  all teammates cc'd, with the design disclosed and an explicit request for direction
+  if the department required further approval. Sent while the form was open — after
+  the 7–9 Aug main wave, before close-out and analysis. That is faculty notification,
+  not an ethics-committee determination, and the papers state the timing exactly.)*
 - **Anonymous.** No names, no email collection (turn OFF "Collect email addresses" in
   Google Forms settings), no identifying data.
 - This survey does **not** validate the fusion weights — that needs IGDS9-SF scores
