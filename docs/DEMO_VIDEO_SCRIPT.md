@@ -104,7 +104,7 @@ Timings are what to aim for, not a metronome. **Bold** = what to say. *Italic* =
 
 *Cut to a still: the validation slide (deck slide 12) or the paper's §6.6 table.*
 
-> **"Does the score mean anything? We tested it outside our own training data: an anonymous survey of 87 adults, scored through this exact deployed pipeline against a validated clinical instrument. Correlation 0.35, and it beats self-reported screen time — the baseline every commercial tool ships — with the signal coming from *how* people play, not how long. The same study also told us two things we didn't want to hear, and we published both."**
+> **"Does the score mean anything? We tested it outside our own training data: an anonymous survey — 134 responses, 104 usable — scored through this exact deployed pipeline against a validated clinical instrument. Correlation 0.32, significant, and it carries information self-reported screen time doesn't: partial out the hours — the baseline every commercial tool ships — and the correlation barely moves. The signal comes from *how* people play, not how long. The same study also told us two things we didn't want to hear, and we published both."**
 
 *Title card: repo URL, team, guide.*
 
