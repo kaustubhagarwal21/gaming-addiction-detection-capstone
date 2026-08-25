@@ -6,31 +6,36 @@
 > **Collection is closed; the recipe below is retained as method documentation, not as
 > a to-do list.** Results are reported in paper §6.6 and `docs/DEFENSE_NOTES.md` §10.
 >
-> **Final sample:** 112 raw → **87 usable** (77.7%), 86 scoreable. Dropped: 17
-> eligibility (under-18 / non-gamer), 8 attention-check, 0 incomplete IGDS.
-> 76.7% aged 18–24. IGDS9-SF totals: mean 17.6 (SD 6.1), median 17, range 9–37.
+> **Final sample:** 134 raw → **104 usable** (77.6%), 103 scoreable — the main wave
+> (7–9 Aug, 112 raw) plus a passive late batch of 22 (13–20 Aug), folded in per a
+> rule fixed before any late data existed. Dropped: 20 eligibility (under-18 /
+> non-gamer), 10 attention-check, 0 incomplete IGDS. 79.6% aged 18–24. IGDS9-SF
+> totals: mean 17.6 (SD 6.0), median 17, range 9–37. The late batch *attenuated*
+> the headline (pre-batch ρ = 0.352 [0.158, 0.521]) and we report the attenuated
+> values — pre-committing to a rule matters most when it costs you something.
 >
 > | Endpoint | Result | Verdict |
 > |---|---|---|
-> | **Construct validity** (served risk vs IGDS9-SF) | **ρ = 0.352** [0.158, 0.521], n=86 | ✅ significant |
-> | Screen-time baseline (hours/week vs IGDS9-SF) | ρ = 0.155 [−0.057, 0.376] | — CI spans zero |
-> | **Model beats baseline** (paired bootstrap) | **Δρ = +0.195** [+0.026, +0.372], P=98.6% | ✅ significant |
-> | **Incremental validity** (partial, hours removed) | **ρ = 0.349** [0.149, 0.521] | ✅ not a screen-time proxy |
-> | Pattern composite vs volume composite | 0.358 [0.160, 0.529] vs 0.202 [−0.011, 0.395] | ✅ core premise confirmed |
-> | Chat-channel premise (toxic chat vs IGDS9-SF) | ρ = 0.315 [0.114, 0.498] | ✅ replicates LatAm r=+0.156 |
-> | Robustness (drop 8 straight-liners) | ρ = 0.290 [0.080, 0.475], n=78 | ✅ survives |
-> | Genre multiplier (Kruskal-Wallis, 7 genres) | H=5.42, **p = 0.491** | ❌ null — underpowered (36%), needs n≈258 |
-> | Derived psychometric proxies vs namesake items | only craving +0.325; 3 of 5 ≈ zero | ❌ names overclaim |
-> | Prevalence ≥36 / ≥32 | 1.1% / 2.3% | ⚠️ no severity tail |
+> | **Construct validity** (served risk vs IGDS9-SF) | **ρ = 0.317** [0.137, 0.478], n=103 | ✅ significant |
+> | Screen-time baseline (hours/week vs IGDS9-SF) | ρ = 0.147 [−0.053, 0.339] | — CI spans zero |
+> | Model leads baseline (paired bootstrap) | Δρ = +0.167 [−0.002, +0.341], P=97.4% | ⚠️ CI grazes zero — lean on the partial |
+> | **Incremental validity** (partial, hours removed) | **ρ = 0.303** [0.110, 0.476] | ✅ not a screen-time proxy |
+> | Pattern composite vs volume composite | 0.330 [0.154, 0.489] vs 0.128 [−0.083, 0.328] | ✅ core premise confirmed |
+> | Chat-channel premise (toxic chat vs IGDS9-SF) | ρ = 0.323 [0.144, 0.491] | ✅ replicates LatAm r=+0.156 |
+> | Robustness (drop 9 straight-liners) | ρ = 0.292 [0.104, 0.461], n=94 | ✅ survives |
+> | Genre multiplier (Kruskal-Wallis, 7 genres) | H=4.59, **p = 0.598** | ❌ null — underpowered (32%), needs n≈400 |
+> | Derived psychometric proxies vs namesake items | only craving +0.322; 4 of 5 ≈ zero | ❌ names overclaim |
+> | Prevalence ≥36 / ≥32 | 1.0% / 1.9% | ⚠️ no severity tail |
 > | Caseness metrics (sens/spec at ≥36) | **not computed** — 1 positive | ⚠️ needs ~157 usable at 6.4% base rate |
-> | Threshold refit (κ vs IGDS bands) | T1=0.51, T2=0.95, κ=0.197 | ⚠️ **measured, deliberately not applied** |
+> | Threshold refit (κ vs IGDS bands) | T1=0.51, T2=0.83, κ=0.177 (moved 0.12 on one late batch) | ⚠️ **measured, deliberately not applied** |
 >
-> **Why collection stopped at 112 raw.** The headline was significant and stable across
-> ten snapshots (n=33→87; lower CI bound rose 0.047→0.158). The only endpoint that
-> would have justified more was the genre test — and it grew *less* significant with
-> more data (p 0.159 at n=80 → 0.491 at n=86), indicating a smaller true effect than
-> the power analysis assumed rather than a near miss. Further collection bought ~0.05
-> of CI width on already-significant results.
+> **Why recruiting stopped at 112 raw — and what the late batch did.** The headline
+> was significant and stable across ten snapshots (n=33→87; lower CI bound rose
+> 0.047→0.158), so active recruiting stopped; the form stayed open. A passive batch
+> of 22 arrived 13–20 Aug and was folded in per the pre-stated rule: it attenuated
+> the headline to 0.317 (still significant) and widened the paired delta to graze
+> zero. The genre test grew *less* significant at every n (p 0.159 → 0.491 → 0.598),
+> indicating a smaller true effect than any power analysis assumed.
 >
 > **What is still open** (now the *only* open validation tier): a per-child cohort
 > pairing guardian-reported IGDS9-SF scores with *measured* telemetry — the sole route
@@ -276,14 +281,14 @@ synthetic data — this is the actual ~9.5 move.
 1. ~~Public-dataset tier~~ — **done** (see status block above).
 2. ~~Ethics check + build the Google Form~~ — **done**; guide notified in writing
    2026-08-07, form floated the same day.
-3. ~~Survey analysis~~ — **done** at n=87; construct-validity numbers are in the paper
+3. ~~Survey analysis~~ — **done** at n=104 usable (incl. the late passive batch); construct-validity numbers are in the paper
    (§6.6), the defense notes (§10) and the committed aggregate JSONs.
 4. **Next (blocked on ethics approval): the per-child cohort.** Guardian-reported
    IGDS9-SF scores linked to measured telemetry. This is the only remaining tier, and
    the only route to (a) caseness metrics at the ≥36 cut-off, (b) the adolescent target
    population rather than adult self-report, and (c) a longitudinal reading of whether
    the score predicts trajectory. Target ≥157 usable at the literature's 6.4% base rate
-   to clear the ten-positive floor; re-run the genre test at n≈258 for 90% power while
+   to clear the ten-positive floor; re-run the genre test at n≈400 for 90% power while
    collecting.
 5. **Optional, cheap:** a behaviour model retrained on real labels becomes possible the
    moment (4) yields data — until then the deployed model stays synthetic-trained by

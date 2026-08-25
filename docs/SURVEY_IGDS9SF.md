@@ -2,9 +2,11 @@
 
 > ## 🔒 CLOSED 2026-08-09 — do not re-open or re-word
 >
-> Ran 2026-08-07 → 2026-08-09. **112 raw responses → 87 usable.** Headline:
-> construct validity ρ = **0.352** [0.158, 0.521] (n=86), beating the self-reported
-> screen-time baseline (Δρ = +0.195 [+0.026, +0.372]). Full results in paper §6.6,
+> Main wave 2026-08-07 → 08-09 (112 raw); passive late batch 08-13 → 08-20 (22 more,
+> folded in per the pre-stated rule). **Final: 134 raw → 104 usable.** Headline:
+> construct validity ρ = **0.317** [0.137, 0.478] (n=103), leading the self-reported
+> screen-time baseline in 97.4% of paired resamples (partial ρ = 0.303 excludes
+> zero). Full results in paper §6.6,
 > the completion block in `VALIDATION_PLAN.md`, and defense answers in
 > `DEFENSE_NOTES.md` §10.
 >

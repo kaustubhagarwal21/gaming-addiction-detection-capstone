@@ -49,8 +49,9 @@ Latin-America dataset (n=11,191 real MOBA players, `ml/analyze_igds.py`) fixes t
 severity base rate, and the Gamers & Anxiety survey (n=13,464, `ml/analyze_survey.py`)
 grounds the behaviour–severity relationships;
 (3) we then ran the external check rather than only planning it — an adult IGDS9-SF
-survey (n=87) shows the *served score* tracking the clinical instrument at ρ = 0.352
-and beating the self-reported screen-time baseline (§10). That does **not** upgrade the
+survey (n=104 usable) shows the *served score* tracking the clinical instrument at ρ = 0.317,
+leading the self-reported screen-time baseline in 97.4% of paired resamples, and
+surviving partialling it out (§10). That does **not** upgrade the
 91.6%, and we don't claim it does: the accuracy figure is still a synthetic-distribution
 number. What it upgrades is the claim that the score *means* something. The honest split
 is: separability = synthetic, construct validity = measured, caseness accuracy = still
@@ -372,28 +373,32 @@ and `python ml/eval_survey_extras.py data/survey/responses.csv`; aggregate outpu
 committed as `docs/survey_validation.json` and `docs/survey_extras.json`.
 
 **Q: You say the score means something. What's the evidence?**
-An anonymous adult survey (n=112 raw, 87 usable, 86 scoreable) pairing the nine
+An anonymous adult survey (134 raw; 104 usable, 103 scoreable — main wave 7–9 Aug
+plus a passive late batch of 22 through 20 Aug, folded in per a rule fixed before
+any late data existed) pairing the nine
 IGDS9-SF items with seven gaming-pattern questions. Those seven are mapped to the
 model's 10 objective features and pushed through the **deployed serving path** — same
 `derive_psychometrics`, same fitted scaler, same calibrated forest, same risk formula
 — so what we correlate is the score a parent would actually have seen. Result:
-**Spearman ρ = 0.352, 95% CI [0.158, 0.521]**. The interval excludes zero.
+**Spearman ρ = 0.317, 95% CI [0.137, 0.478]**. The interval excludes zero.
 
 **Q: 0.35 is a weak correlation. Why should that impress us?**
 Two reasons, and we don't oversell it. First, the comparison that matters is not
 against 1.0 — it's against the baseline this product exists to replace. Self-reported
-hours/week reaches only ρ = 0.155 on the same respondents, CI spanning zero. A paired
-bootstrap on the difference gives **Δρ = +0.195, CI [+0.026, +0.372]**, model ahead in
-98.6% of resamples. Second, we tested whether the score is just screen time wearing a
-hat: partialling hours out barely moves it (**ρ = 0.349, CI [0.149, 0.521]**). So it
+hours/week reaches only ρ = 0.147 on the same respondents, CI spanning zero. A paired
+bootstrap on the difference gives **Δρ = +0.167, model ahead in 97.4% of resamples** —
+say yourself, before they do, that the difference's CI now grazes zero ([−0.002,
++0.341]; it excluded zero pre-batch), so the claim rests on the partial correlation.
+Second, we tested whether the score is just screen time wearing a hat: partialling
+hours out barely moves it (**ρ = 0.303, CI [0.110, 0.476], excluding zero**). So it
 carries severity information volume does not. That's the project's whole design
 premise, and it's now measured rather than argued.
 
 **Q: Which features actually carried it?**
 All five *pattern* features out-rank all five *volume* features — no interleaving.
-Composites: pattern ρ = 0.358 [0.160, 0.529], volume ρ = 0.202 [−0.011, 0.395] (CI
+Composites: pattern ρ = 0.330 [0.154, 0.489], volume ρ = 0.128 [−0.083, 0.328] (CI
 includes zero). Two volume features are inert: `daily_play_time_hours` (+0.066) and
-`avg_session_duration_min` (−0.002). This is the first *external* evidence for the
+`avg_session_duration_min` (+0.042). This is the first *external* evidence for the
 feature engineering; the ablations couldn't produce it because synthetic labels were
 generated from the same priors the features encode.
 
@@ -401,25 +406,30 @@ generated from the same priors the features encode.
 Because the sample contains **one** respondent in the disordered range (≥36). Caseness
 metrics on one positive are noise, and the script refuses to print them below ten
 positives *by design* — that guard was written before we saw the data, not after.
-Reaching ten needs ~157 usable responses at the literature's 6.4% base rate, and ~860
-at the 1.1% this convenience sample actually showed. It's a recruitment problem
+Reaching ten needs ~157 usable responses at the literature's 6.4% base rate, and
+~1,040 at the 1.0% this convenience sample actually showed. It's a recruitment problem
 (reaching a help-seeking population), not an analysis problem. Saying "we can't compute
 this yet" is the correct answer; computing it on n=1 would have been the wrong one.
 
-**Q: Why stop at 87? Why not collect more?**
-We collected until the numbers stopped moving. Across ten successive snapshots
-(n=33 → 87) the headline correlation stayed significant and its lower CI bound rose
-steadily (0.047 → 0.158). The one open question that *would* have justified more
-collection was the genre test — and it got **less** significant as n grew (p 0.159 at
-n=80 → 0.491 at n=86), which says the effect is smaller than the power analysis
-assumed, not that we were close. Continuing would have bought ~0.05 of CI width on a
-result already significant. We stopped and said so.
+**Q: Why stop recruiting at 112? And didn't more responses arrive after you "closed"?**
+We stopped *recruiting* when the numbers stopped moving: across ten snapshots
+(n=33 → 87 usable) the headline stayed significant and its lower CI bound rose
+steadily. We left the form open, and a passive late batch of 22 arrived 13–20 Aug.
+The rule — fixed before any late data existed — was: fold in whatever arrives and
+re-run everything, whichever way it moves the numbers. It moved them down: ρ 0.352 →
+0.317 (still significant), and the paired delta's CI widened to graze zero. We
+updated every document to the attenuated values and kept the pre-batch snapshot on
+record. That is what pre-committing to a rule looks like when it costs you something.
+The genre test, meanwhile, weakened for the third straight time as n grew (p 0.159 →
+0.491 → 0.598) — the effect is smaller than any power analysis assumed, not nearly
+significant.
 
 **Q: Your genre multiplier failed the test. Why is it still in the product?**
-Kruskal-Wallis across seven genres: H = 5.42, **p = 0.491**. We report it as a null
+Kruskal-Wallis across seven genres: H = 4.59, **p = 0.598** — and the group ordering
+no longer even matches the multiplier's assumption. We report it as a null
 because a validation study that can only confirm isn't one. But the honest reading is
-*underpowered, not disproven* — resampling gives the test 36% power at this n, 90%
-only near n ≈ 258. Removing the multiplier flips 34.4% of served session bands (paper
+*underpowered, not disproven* — resampling gives the test 32% power at this n, 90%
+only near n ≈ 400. Removing the multiplier flips 34.4% of served session bands (paper
 §6.5 sensitivity analysis), so we're not making a change that large on a null this
 weak. It stays flagged as the ensemble's least-evidenced component, first in line for
 the larger cohort, and its magnitude is an environment variable — so a future result
@@ -427,9 +437,9 @@ retires it without a code change.
 
 **Q: Your parent-facing "craving score", "tolerance score" — do those mean anything?**
 Mostly no, and we tested it rather than waiting to be asked. Against the IGDS9-SF item
-each is *named* after: `craving_score` +0.325 (holds up), `gaming_priority_score`
-+0.162 (weak), and `tolerance_score` +0.063, `control_loss_score` +0.040,
-`neglect_responsibilities_score` +0.073 (indistinguishable from zero). They were never
+each is *named* after: `craving_score` +0.322 (holds up); the other four read +0.020
+to +0.092 — indistinguishable from zero (including `gaming_priority_score`, which was
+a marginal +0.162 pre-batch and fell to +0.090). They were never
 model inputs — they're UI explanations derived from behaviour — but the clinical-sounding
 names overclaim. **And we acted on the finding**: the four discredited labels served to
 parents were renamed to describe the behaviour each score is computed from ("Loss of
@@ -441,16 +451,19 @@ product: the study found our naming overclaimed, so the served text changed. We'
 rather report evidence against our own naming than have the panel find it.
 
 **Q: The threshold search found better cut-offs. Why didn't you apply them?**
-The grid search returns T1 = 0.51, T2 = 0.95 (quadratic-weighted κ = 0.197) vs the
+The grid search returns T1 = 0.51, T2 = 0.83 (quadratic-weighted κ = 0.177) vs the
 deployed 0.33/0.67. We declined. T2 sits at 0.95 precisely *because* the sample has
 almost no disordered-range respondents — the fitted value encodes the sample's missing
-tail, not a clinical boundary — and κ = 0.197 is fair agreement at best. The tuner is
+tail, not a clinical boundary (the pre-batch fit read T2 = 0.95 — one late batch of
+22 moved it by 0.12, which is the demonstration) — and κ = 0.177 is fair agreement
+at best. The tuner is
 env-var wired and reversible in one deploy; it stays unused until a cohort with a real
 severity tail earns it. Same discipline as the parent-feedback threshold tuner: the
 mechanism ships, the change waits for evidence.
 
 **Q: Both sides of your correlation are self-report from the same person. Isn't this just common-method variance? And doesn't it validate a formula on survey answers, not your sensing pipeline?**
-Both halves are fair and we say so in the paper (§6.6 (iii), IEEE §IV.B). Precisely: the study validates the served risk *formula* applied to self-reported pattern answers mapped to band midpoints — the exact serving path, but with recalled bands as inputs rather than measured telemetry. So it is not yet an end-to-end validation of passive sensing; the telemetry-linked per-child cohort is. On CMV: yes, part of a self-report-vs-self-report association can be method inflation (Podsakoff et al. 2003). Three things bound it without eliminating it — and these are the answer, so have them cold: (1) the **hours baseline is self-reported on the same form**, so it shares any method inflation, and the model still beats it (Δρ = +0.195, CI excluding zero) — a *within-method* contrast; (2) **pattern features beat volume features on the same form** — a *between-feature* contrast that shared method cannot manufacture, and exactly the design premise; (3) the predictor items are behavioural *frequencies*, not attitudes, which typically attenuates method effects rather than inflating them. And on "0.35 is modest": ~12% shared variance, wide CI at n = 86 — but 0.3–0.5 is the normal range for brief behavioural screeners against full instruments (e.g. PHQ-2 vs PHQ-9), so "modest" is "expected", and we claim construct carriage, not clinical accuracy. Never say "it's fine"; say "it's bounded, here's how, and here's the study that closes it."
+Both halves are fair and we say so in the paper (§6.6 (iii), IEEE §IV.B). Precisely: the study validates the served risk *formula* applied to self-reported pattern answers mapped to band midpoints — the exact serving path, but with recalled bands as inputs rather than measured telemetry. So it is not yet an end-to-end validation of passive sensing; the telemetry-linked per-child cohort is. On CMV: yes, part of a self-report-vs-self-report association can be method inflation (Podsakoff et al. 2003). Three things bound it without eliminating it — and these are the answer, so have them cold: (1) the **hours baseline is self-reported on the same form**, so it shares any method inflation, and the model still leads it in 97.4% of paired
+resamples (Δρ = +0.167, CI grazing zero) — a *within-method* contrast; (2) **pattern features beat volume features on the same form** — a *between-feature* contrast that shared method cannot manufacture, and exactly the design premise; (3) the predictor items are behavioural *frequencies*, not attitudes, which typically attenuates method effects rather than inflating them. And on "0.32 is modest": ~10% shared variance, wide CI at n = 103 — but 0.3–0.5 is the normal range for brief behavioural screeners against full instruments (e.g. PHQ-2 vs PHQ-9), so "modest" is "expected", and we claim construct carriage, not clinical accuracy. Never say "it's fine"; say "it's bounded, here's how, and here's the study that closes it."
 
 **Q: These are adults. Your product monitors children.**
 Correct, and it's the study's biggest external-validity gap — we state it in the paper
@@ -464,9 +477,9 @@ IGDS9-SF scores linked to telemetry — is stage two, and it needs ethics approv
 
 **Q: Did you clean, filter, or discard any responses to get this result?**
 Every exclusion rule was fixed before analysis and is in the script: under-18 or
-non-gamer (17 dropped), failed attention check (8 dropped), incomplete IGDS items (0).
-That's 112 → 87. We also ran the headline *without* the 8 respondents who gave the
-identical answer to all nine items — ρ = 0.290 [0.080, 0.475], attenuated but still
+non-gamer (20 dropped), failed attention check (10 dropped), incomplete IGDS items (0).
+That's 134 → 104. We also ran the headline *without* the 9 respondents who gave the
+identical answer to all nine items — ρ = 0.292 [0.104, 0.461], attenuated but still
 excluding zero. No response was ever added, edited, or invented.
 
 **Q: Why isn't the raw data in the repo?**
@@ -484,8 +497,9 @@ Validation depth — though it is no longer validation *absence*. The behaviour 
 training labels are still synthetic (grounded, but synthetic), so the 91.6% accuracy
 figure remains a synthetic-distribution number and the survey does not upgrade it. The
 voice model trains on acted adult emotion. What changed is that the pipeline's *output*
-now has an external anchor: ρ = 0.352 against IGDS9-SF, beating the screen-time
-baseline (§10). The remaining gap is specific and nameable — no caseness metrics,
+now has an external anchor: ρ = 0.317 against IGDS9-SF, leading the screen-time
+baseline in 97.4% of paired resamples with the partial correlation excluding zero
+(§10). The remaining gap is specific and nameable — no caseness metrics,
 because the sample held one disordered-range respondent; adults rather than the
 adolescent target; cross-sectional rather than longitudinal. We quantified what each
 proxy costs where we could (speaker leakage: 9 points; missing domain data: 32 PR-AUC
@@ -498,7 +512,7 @@ validation study **refused** to support.
 In order: (1) a consented pilot with 10–20 families to replace synthetic behaviour
 labels with real ones and, critically, to reach a cohort with a genuine severity tail —
 that single change unlocks the caseness metrics §10 currently cannot compute;
-(2) re-run the genre test at n ≈ 258 where it has 90% power, and act on the answer
+(2) re-run the genre test at n ≈ 400 where it has 90% power, and act on the answer
 either way; (3) child/teen speech adaptation for the voice model; (4) threshold
 personalisation per family from the feedback tuner's posterior. Nothing on that list is
 a new model — the gap is data, not architecture.

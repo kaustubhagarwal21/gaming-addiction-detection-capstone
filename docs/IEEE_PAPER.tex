@@ -45,11 +45,12 @@ held-out data with bootstrap confidence intervals and one-component ablations
 (chat PR-AUC $0.825$ in-domain, $\geq$$0.95$ alert precision on every register;
 voice $0.574$ speaker-independent, exposing a 9-point leakage inflation in random splits).
 Critically, we then validate the served risk score \emph{externally}: in an anonymous
-adult IGDS9-SF survey ($87$ usable, $86$ scoreable), the score correlates with the clinical instrument at
-Spearman $\rho{=}0.352$ ($95\%$ CI $[0.158,0.521]$), beats the self-reported screen-time
-baseline on a paired bootstrap ($\Delta\rho{=}{+}0.195$, CI excluding zero), and the
-signal is carried by \emph{pattern} features (composite $\rho{=}0.358$) rather than
-\emph{volume} ($0.202$, CI including zero) --- the design premise confirmed rather than
+adult IGDS9-SF survey ($134$ raw; $104$ usable, $103$ scoreable), the score correlates with the clinical
+instrument at Spearman $\rho{=}0.317$ ($95\%$ CI $[0.137,0.478]$), leads the
+self-reported screen-time baseline in $97.4\%$ of paired resamples
+($\Delta\rho{=}{+}0.167$), survives partialling that baseline out ($\rho{=}0.303$,
+CI excluding zero), and the signal is carried by \emph{pattern} features (composite
+$\rho{=}0.330$) rather than \emph{volume} ($0.128$, CI including zero) --- the design premise confirmed rather than
 assumed. The same study returns two results against the system (an unsupported genre
 multiplier; four of five parent-facing proxy names failing to track their namesake
 items), which we report and act on. An accent-fairness audit on 6{,}656 Indian-English
@@ -94,7 +95,7 @@ partly did --- fail. Contributions:
   toxicity prior; a native Devanagari keyboard so canvas games are not blind spots;
   and an accent-fairness audit on Svarah~\cite{svarah2023}.
 \item External construct validation of the served score against IGDS9-SF~\cite{igds9sf}
-  in $87$ respondents, with incremental validity over screen time, a
+  in $104$ usable respondents, with incremental validity over screen time, a
   pattern-versus-volume decomposition, and two negative results reported.
 \item An evaluation protocol designed to be falsifiable: speaker-independent splits, one-component
   ablations with bootstrap CIs, three transformer baselines, and continuous-integration
@@ -253,29 +254,33 @@ does not --- had never met a real instrument. We ran an anonymous, adults-only w
 survey pairing the nine IGDS9-SF items~\cite{igds9sf} with seven multiple-choice
 gaming-pattern questions that map onto the ten objective features by documented band
 midpoints. Each respondent was scored through the \emph{deployed serving path} (shared
-derivation, fitted scaler, calibrated forest, identical risk formula). $112$ raw
-responses yielded $87$ usable (17 failed eligibility, 8 an attention check); $86$ were
-scoreable. IGDS totals averaged $17.6$ (SD $6.1$; range $9$--$37$); one respondent was
-in the disordered range. The model was fitted before the survey existed and nothing was
-tuned on it.
+derivation, fitted scaler, calibrated forest, identical risk formula). The main
+wave (7--9 Aug) stood at $112$ raw responses; the form remained open and a passive
+late batch of $22$ arrived 13--20 Aug. Per a rule fixed before any late data
+existed, all analyses use the final $134$ raw responses: $104$ usable (20 failed
+eligibility, 10 an attention check), $103$ scoreable. (The pre-batch snapshot read
+$\rho{=}0.352$ $[0.158,0.521]$; the late batch attenuated it, and the attenuated
+value is what we report.) IGDS totals averaged $17.6$ (SD $6.0$; range $9$--$37$);
+one respondent was in the disordered range. The model was fitted before the survey
+existed and nothing was tuned on it.
 
 \begin{table}[t]
 \centering\footnotesize
-\caption{Construct validity against IGDS9-SF ($n{=}86$; Spearman, bootstrap 95\% CIs).}
+\caption{Construct validity against IGDS9-SF ($n{=}103$; Spearman, bootstrap 95\% CIs).}
 \label{tab:survey}
 \begin{tabular}{@{}lcc@{}}
 \toprule
 Predictor & $\rho$ & 95\% CI \\
 \midrule
-\textbf{Served risk score} & $\mathbf{0.352}$ & $[0.158, 0.521]$ \\
-Self-reported hours/week (baseline) & $0.155$ & $[-0.057, 0.376]$ \\
-\textbf{Paired difference} (model $-$ hours) & $\mathbf{+0.195}$ & $[+0.026, +0.372]$ \\
-Partial (hours removed) & $0.349$ & $[0.149, 0.521]$ \\
+\textbf{Served risk score} & $\mathbf{0.317}$ & $[0.137, 0.478]$ \\
+Self-reported hours/week (baseline) & $0.147$ & $[-0.053, 0.339]$ \\
+Paired difference (model $-$ hours) & $+0.167$ & $[-0.002, +0.341]$ \\
+\textbf{Partial (hours removed)} & $\mathbf{0.303}$ & $[0.110, 0.476]$ \\
 \midrule
-Pattern-feature composite & $0.358$ & $[0.160, 0.529]$ \\
-Volume-feature composite & $0.202$ & $[-0.011, 0.395]$ \\
-Toxic-chat involvement (chat premise) & $0.315$ & $[0.114, 0.498]$ \\
-Excluding 8 straight-liners ($n{=}78$) & $0.290$ & $[0.080, 0.475]$ \\
+Pattern-feature composite & $0.330$ & $[0.154, 0.489]$ \\
+Volume-feature composite & $0.128$ & $[-0.083, 0.328]$ \\
+Toxic-chat involvement (chat premise) & $0.323$ & $[0.144, 0.491]$ \\
+Excluding 9 straight-liners ($n{=}94$) & $0.292$ & $[0.104, 0.461]$ \\
 \bottomrule
 \end{tabular}
 \end{table}
@@ -289,26 +294,33 @@ every volume feature, with no interleaving.}
 \end{figure}
 
 \textbf{Results} (Table~\ref{tab:survey}, Fig.~\ref{fig:feat}). The served score
-tracks the instrument at $\rho{=}0.352$, CI excluding zero. The screen-time baseline
-every commercial tool ships reaches $0.155$ with a CI spanning zero; a paired bootstrap
-puts the model ahead by $\Delta\rho{=}{+}0.195$ (CI excluding zero; model ahead in
-$98.6\%$ of resamples), and partialling hours out barely moves it ($0.349$) --- the
-score is not screen time in another unit. All five pattern features out-rank all five
-volume features; the composites diverge ($0.358$ vs $0.202$, the latter's CI including
-zero). Self-reported toxic-chat involvement tracks severity at $0.315$, replicating in
-this population the $r{=}{+}0.156$ premise borrowed from~\cite{igdslatam2024}.
+tracks the instrument at $\rho{=}0.317$, CI excluding zero. The screen-time baseline
+every commercial tool ships reaches $0.147$ with a CI spanning zero; a paired
+bootstrap puts the model ahead in $97.4\%$ of resamples ($\Delta\rho{=}{+}0.167$),
+though the difference's interval now grazes zero ($[-0.002,+0.341]$; it excluded
+zero pre-batch), so the incremental claim rests on the partial correlation:
+partialling hours out barely moves the score's correlation ($0.303$, CI excluding
+zero) --- it is not screen time in another unit. All five pattern features out-rank
+all five volume features; the composites diverge ($0.330$ vs $0.128$, the latter's
+CI including zero). Self-reported toxic-chat involvement tracks severity at
+$0.323$, replicating in this population the $r{=}{+}0.156$ premise borrowed
+from~\cite{igdslatam2024}.
 \textbf{Two results against the system.} The genre multiplier is unsupported
-(Kruskal--Wallis across seven genres, $H{=}5.42$, $p{=}0.491$; power $36\%$, needing
-$n\!\approx\!258$), so it is retained-and-flagged rather than defended --- removing it
-flips $34\%$ of served bands. Four of five parent-facing proxies fail to track the IGDS
-item they are named after (only ``craving'' holds, $\rho{=}0.325$); we renamed the
-served labels to behaviour-descriptive wording. \textbf{Not established:} sensitivity /
+(Kruskal--Wallis across seven genres, $H{=}4.59$, $p{=}0.598$ --- weakening at every
+growth of the sample, from $p{=}0.159$ at $n{=}80$ --- and the group ordering no
+longer matches the multiplier's assumption; power $32\%$, needing
+$n\!\approx\!400$), so it is retained-and-flagged rather than defended --- removing
+it flips $34\%$ of served bands. Four of five parent-facing proxies fail to track
+the IGDS item they are named after (only ``craving'' holds, $\rho{=}0.322$; the
+rest read $+0.020$ to $+0.092$); we renamed the served labels to
+behaviour-descriptive wording. \textbf{Not established:} sensitivity /
 specificity at the $\geq$$36$ cut-off (one positive; the analysis refuses caseness
 metrics below ten by a guard written before the data arrived --- $\approx$$157$
 usable responses are needed at the $6.4\%$ base rate); transfer to adolescents; any
-longitudinal claim. A grid-searched threshold refit ($T_1{=}0.51,T_2{=}0.95$,
-$\kappa{=}0.197$) was measured and \emph{declined}: $T_2$ is pinned by the sample's
-missing severity tail, not a clinical boundary.
+longitudinal claim. A grid-searched threshold refit ($T_1{=}0.51,T_2{=}0.83$,
+$\kappa{=}0.177$) was measured and \emph{declined}: the fitted $T_2$ moved by
+$0.12$ on one late batch --- the demonstration that it encodes the sample's missing
+severity tail, not a clinical boundary.
 
 \textbf{What this validates, precisely --- and common-method variance.} The study
 validates the served risk \emph{formula} applied to self-reported pattern answers
@@ -317,14 +329,15 @@ end-to-end, whose inputs are measured telemetry rather than recalled bands. Beca
 both the predictor questions and the IGDS9-SF items are self-report from the same
 respondent in one sitting, part of the association may be common-method
 variance~\cite{podsakoff2003}. Three observations bound, without eliminating, that
-concern: the incremental effect over self-reported hours ($\Delta\rho{=}{+}0.195$)
-is a \emph{within-method} contrast, since hours are self-reported on the same form
+concern: the incremental effect over self-reported hours ($\Delta\rho{=}{+}0.167$,
+leading in $97.4\%$ of paired resamples) is a \emph{within-method} contrast, since
+hours are self-reported on the same form
 and share any method inflation; the pattern-vs-volume separation is a
 \emph{between-feature} contrast that shared method cannot manufacture; and the
 predictor questions are behavioural frequencies, not attitudes, which typically
 attenuates rather than inflates method effects. The clean test remains a
-telemetry-linked cohort (\S V). On magnitude: $\rho{=}0.352$ ($\approx$$12\%$ shared
-variance) is modest in absolute terms, with a wide interval at $n{=}86$; it sits
+telemetry-linked cohort (\S V). On magnitude: $\rho{=}0.317$ ($\approx$$10\%$ shared
+variance) is modest in absolute terms, with a wide interval at $n{=}103$; it sits
 inside the $0.3$--$0.5$ range that criterion-validity coefficients for brief
 behavioural screeners against full instruments typically
 occupy~\cite{kroenke2003,cohen1988}, and is reported as evidence that the score

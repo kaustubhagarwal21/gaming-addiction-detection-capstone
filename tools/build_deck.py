@@ -211,7 +211,7 @@ table(s, [
     ['**System testing**', '290 automated tests in CI (backend on SQLite + Postgres, Android JVM); load smoke, API fuzz, CVE + MobSF audits; on-device resource drill on real hardware', 'slide 14 · TESTING.md · ci.yml'],
     ['**Validation & verification**', 'Held-out / speaker-independent / in-domain evaluation; ablations with 95 % CIs; **external construct validation** vs IGDS9-SF (n = 87); accent-fairness audit; 7 research-integrity guards', 'slides 10–12 · docs/*.json · ml/tests/'],
     ['**Deployment**', 'Live cloud backend (Render + Neon Postgres, HTTPS, tokens); signed APKs v2.4.0 on GitHub, validated on device; consented family pilot ran 23 days', 'slide 4 · DEPLOY.md · GitHub Releases'],
-    ['**Final experimental results**', 'Behaviour 91.6 % (synthetic); chat PR-AUC 0.825 in-domain, ≥ 0.95 precision on 3 registers; voice 0.574 speaker-independent; **ρ = 0.352 vs clinical instrument**, beats hours baseline', 'slides 6–12 · model_metadata.json'],
+    ['**Final experimental results**', 'Behaviour 91.6 % (synthetic); chat PR-AUC 0.825 in-domain, ≥ 0.95 precision on 3 registers; voice 0.574 speaker-independent; **ρ = 0.317 vs clinical instrument**, leads hours baseline (97% of paired resamples; partial excludes zero)', 'slides 6–12 · model_metadata.json'],
     ['**Performance analysis (tables & graphs)**', 'PR curve · confusion matrices · reliability diagrams · ablation tables · survey correlation table + feature chart · device resource table · fairness-by-accent table', 'slides 6–14 · docs/figures/'],
     ['**Complete research paper draft**', '47-page paper: architecture, methodology, 11-dataset audit, results, ablations, external validation, fairness audit, ethics & limitations, 44 references — numbers pinned to the data by CI', 'docs/PROJECT_PAPER.pdf'],
 ], Inches(0.6), Inches(1.45), Inches(12.1), col_w=[Inches(2.7), Inches(6.5), Inches(2.9)], size=13)
@@ -419,7 +419,7 @@ s = base('Validation — does the score mean anything?', 'An IGDS9-SF survey, sc
     'This is the slide the whole project builds toward — protect its time. Every other number in the deck is measured INSIDE '
     'our own training distribution; this one is measured outside it, against an instrument we did not design, on people who '
     'never touched the app. Lead with the comparison, not the magnitude — 0.35 sounds modest until you say the baseline every '
-    'commercial parental-control tool ships reaches 0.155 with a CI spanning zero, and our lead over it is itself significant. '
+    'commercial parental-control tool ships reaches 0.147 with a CI spanning zero — and volunteer that the paired delta grazes zero after the late batch, so the partial correlation (0.303, CI excluding zero) carries the incremental claim. '
     'Pre-empt the two follow-ups: WHY NO SENSITIVITY/SPECIFICITY — one respondent scored in the disordered range; the script '
     'refuses caseness metrics below ten positives, a guard written before we saw the data. WHY KEEP THE GENRE MULTIPLIER — the '
     'null is underpowered (36%), not decisive, and removing it flips 34% of served bands; it stays flagged and env-tunable. '
@@ -427,10 +427,10 @@ s = base('Validation — does the score mean anything?', 'An IGDS9-SF survey, sc
 bullets(s, [
     f'Anonymous adult IGDS9-SF survey — **{SV["n_raw"]} raw → {SV["n_usable"]} usable**; pattern answers scored through the **deployed** serving path',
     f'Construct validity: **ρ = {SV["construct_validity"]["rho"]:.3f}** {ci(SV["construct_validity"]["ci95"])} vs the clinical instrument — CI excludes zero',
-    f'**Beats the screen-time baseline it replaces**: hours ρ = {inc["rho_hours"]:.3f} (CI spans zero); paired **Δρ = +{inc["delta_rho"]:.3f}** {ci(inc["delta_ci"])}',
+    f'**Leads the screen-time baseline it replaces** in {inc["p_model_better"]*100:.1f} % of paired resamples: hours ρ = {inc["rho_hours"]:.3f} (CI spans zero); Δρ = +{inc["delta_rho"]:.3f} {ci(inc["delta_ci"])} — **CI grazes zero; the partial carries the claim**',
     f'Not a screen-time proxy: partial ρ = **{inc["partial_rho"]:.3f}** with hours removed',
     f'Signal is in **pattern** features ({comp["pattern"]["rho"]:.3f}) not **volume** ({comp["volume"]["rho"]:.3f}, CI includes zero)',
-    f'Two results **against** us: genre multiplier p = {SX["genre"]["p"]:.3f}; 3 of 5 proxy names track nothing → **labels renamed in the product**',
+    f'Two results **against** us: genre multiplier p = {SX["genre"]["p"]:.3f}; 4 of 5 proxy names track nothing → **labels renamed in the product**',
 ], w=Inches(7.4), h=Inches(2.7), size=12, gap=3)
 table(s, [
     ['', 'ρ vs IGDS9-SF', '95 % CI'],
@@ -510,7 +510,7 @@ s = base('Limitations & What Is Still Open', 'Partial in a specific, nameable wa
     '(DEFENSE_NOTES §10, §11)'))
 bullets(s, [
     'Training labels still **synthetic** — the 91.6 % is a synthetic-distribution number, and the survey does **not** upgrade it',
-    'Validated: the score\'s **meaning** (ρ = 0.352, beats hours). Not validated: its **accuracy at the clinical cut-off**',
+    'Validated: the score\'s **meaning** (ρ = 0.317; partial vs hours excludes zero). Not validated: its **accuracy at the clinical cut-off**',
     'The blocker is quantified: **1** disordered-range respondent in 87 → need **~157 usable** at the 6.4 % base rate',
     'Adults, self-reported, cross-sectional — the deployment target is **adolescents, measured, over time**',
     'Voice trained on acted adult emotion (gap quantified: leakage 9 pts; missing domain data 32 PR-AUC pts); dual-STT fails our resource gate',
@@ -525,7 +525,7 @@ s = base('Final Results, Conclusion & Live Demo', 'Reproducibility and honesty a
     'deliberately data-first, not model-first — "the gap is data, not architecture."'))
 bullets(s, [
     '**Deployed** end-to-end system · 3 real-data-grounded models · every design choice ablated with CIs',
-    '**Externally validated**: ρ = 0.352 vs IGDS9-SF, beating the screen-time baseline — signal in **how**, not **how long**',
+    '**Externally validated**: ρ = 0.317 vs IGDS9-SF, leading the screen-time baseline (97 % of paired resamples) — signal in **how**, not **how long**',
     '**Built for India**: three-register chat, Devanagari keyboard, accent-fairness audited (0 false alerts / 9.6 h)',
     '**Reproducible**: every number on these slides is one script in the repo; 7 CI guards pin the paper to the data',
     'Future is data-first: per-child cohort (ethics-gated) → child-speech adaptation → per-family thresholds',

@@ -1,53 +1,53 @@
 {
   "csv": "responses.csv",
-  "n_raw": 112,
-  "n_usable": 87,
+  "n_raw": 134,
+  "n_usable": 104,
   "dropped": {
-    "eligibility": 17,
-    "attention": 8,
+    "eligibility": 20,
+    "attention": 10,
     "incomplete_igds": 0
   },
   "prevalence_36": {
     "k": 1,
-    "n": 87,
-    "rate": 0.0115,
+    "n": 104,
+    "rate": 0.0096,
     "ci95": [
-      0.0028,
-      0.0617
+      0.0023,
+      0.0519
     ]
   },
   "prevalence_32": {
     "k": 2,
-    "n": 87,
-    "rate": 0.023,
+    "n": 104,
+    "rate": 0.0192,
     "ci95": [
-      0.0071,
-      0.0797
+      0.0059,
+      0.0671
     ]
   },
   "hours_vs_igds": {
-    "rho": 0.138,
+    "rho": 0.132,
     "ci95": [
-      -0.078,
-      0.349
+      -0.067,
+      0.325
     ],
-    "n": 87
+    "n": 104
   },
   "construct_validity": {
-    "rho": 0.352,
+    "rho": 0.317,
     "ci95": [
-      0.158,
-      0.521
+      0.137,
+      0.478
     ],
-    "n": 86
+    "n": 103
   },
   "threshold_fit": {
     "RISK_T1": 0.51,
-    "RISK_T2": 0.95,
-    "kappa": 0.197,
+    "RISK_T2": 0.83,
+    "kappa": 0.177,
     "igds_band_counts": [
-      60,
-      24,
+      71,
+      30,
       2
     ]
   },

@@ -20,7 +20,7 @@ Everyone reads all of DEFENSE_NOTES once; each person *owns* their rows below co
 ## Kaustubh Agarwal — ML, validation, and the closing arguments
 **Slides:** 6 (behaviour), 7 (chat), 8 (voice), 11 (verification), **12 (validation)**, 16 (limitations), 17 (close)
 **Owns in DEFENSE_NOTES:** §2 behaviour · §3 chat · §4 voice · §6 evaluation · **§10 external validation (all 11 Q&As)** · §11 closing · the accent-fairness Q&A
-**Numbers to have cold:** 91.6 % (synthetic, say so) · PR-AUC 0.825, P 0.956 @ 0.95 · voice 0.574 speaker-independent (9-pt leakage story) · **ρ = 0.352 [0.158, 0.521], hours 0.155, Δρ = +0.195, partial 0.349** · pattern 0.358 vs volume 0.202 · genre p = 0.491 (36 % power) · 1 disordered respondent → ~157 usable needed · Svarah 0 false alerts / 9.6 h, WER 35 → 61 %
+**Numbers to have cold:** 91.6 % (synthetic, say so) · PR-AUC 0.825, P 0.956 @ 0.95 · voice 0.574 speaker-independent (9-pt leakage story) · **ρ = 0.317 [0.137, 0.478], hours 0.147, Δρ = +0.167 (CI grazes zero — lean on the partial), partial 0.303** · pattern 0.330 vs volume 0.128 · genre p = 0.598 (32 % power) · 1 disordered respondent → ~157 usable needed · late batch folded in per pre-stated rule (0.352 → 0.317: say it before they do) · Svarah 0 false alerts / 9.6 h, WER 35 → 61 %
 **Hardest questions you'll get:** "0.35 is weak" (lead with the baseline comparison) · "why no sensitivity/specificity" (one positive; guard written before the data) · "training data is synthetic" (yes — and here is where the score meets real labels) · "why keep the genre multiplier" (underpowered null; 34 % of bands flip)
 
 ## Khushee P Kiran — Android apps, capture, and anti-tamper
