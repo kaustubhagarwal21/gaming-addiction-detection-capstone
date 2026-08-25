@@ -20,23 +20,28 @@
 
 \begin{document}
 
-\title{Measuring \emph{How} Children Play, Not Just How Long:\\
-A Multimodal, Privacy-Conscious Screening System for Gaming Addiction with External Construct Validation}
+\title{Measuring \emph{How} People Play, Not Just How Long:\\
+A Multimodal, Privacy-Conscious Gaming-Risk Monitor for Guardians, with Construct-Validity Evidence}
 
+% Flip \anontrue for double-blind venues: strips names, affiliation and the repo URL.
+\newif\ifanon \anonfalse
+\ifanon
+\author{\IEEEauthorblockN{Anonymous submission}\IEEEauthorblockA{Code and data artefacts will be released on acceptance.}}
+\else
 \author{
 \IEEEauthorblockN{Kaustubh Agarwal, Khushee P Kiran, Kanak Goyal, Vidisha Murali}
 \IEEEauthorblockA{Department of Computer Science and Engineering, PES University, Bengaluru, India\\
-Guide: Prof.\ Shridevi Sawant \quad Team PW26\_SAS-03\\
 \texttt{github.com/kaustubhagarwal21/gaming-addiction-detection-capstone}}
 }
+\fi
 
 \maketitle
 
 \begin{abstract}
 Consumer parental-control tools report \emph{how long} a child played; they cannot
 distinguish three hours of healthy play from three hours of compulsive play. We present
-a deployed, three-tier screening system --- a passive-capture Android child app, a cloud
-ML backend, and a parent app --- that fuses three channels: ten \emph{measured}
+a deployed, three-tier gaming-risk monitor --- a passive-capture Android child app, a
+cloud ML backend, and a parent app --- that fuses three channels: ten \emph{measured}
 behavioural features (late-night ratio, rapid re-logins, binges, streaks), calibrated
 chat toxicity across English, romanised Hindi and Devanagari, and on-device
 speech-to-text plus acoustic emotion. All models are lightweight, calibrated and
@@ -46,11 +51,13 @@ held-out data with bootstrap confidence intervals and one-component ablations
 voice $0.574$ speaker-independent, exposing a 9-point leakage inflation in random splits).
 Critically, we then validate the served risk score \emph{externally}: in an anonymous
 adult IGDS9-SF survey ($134$ raw; $104$ usable, $103$ scoreable), the score correlates with the clinical
-instrument at Spearman $\rho{=}0.317$ ($95\%$ CI $[0.137,0.478]$), leads the
-self-reported screen-time baseline in $97.4\%$ of paired resamples
-($\Delta\rho{=}{+}0.167$), survives partialling that baseline out ($\rho{=}0.303$,
-CI excluding zero), and the signal is carried by \emph{pattern} features (composite
-$\rho{=}0.330$) rather than \emph{volume} ($0.128$, CI including zero) --- the design premise confirmed rather than
+instrument at Spearman $\rho{=}0.317$ ($95\%$ CI $[0.137,0.478]$; the
+pre-designated primary endpoint), leads the self-reported screen-time baseline in
+$97.4\%$ of paired resamples ($\Delta\rho{=}{+}0.167$, $95\%$ CI $[-0.002,+0.341]$
+--- suggestive, not established two-sided), survives partialling that baseline out
+($\rho{=}0.303$, CI excluding zero), and the signal is carried by \emph{pattern}
+features over \emph{volume} features by a formally tested margin (paired composite
+difference $+0.199$, $95\%$ CI $[+0.019,+0.380]$) --- the design premise confirmed rather than
 assumed. The same study returns two results against the system (an unsupported genre
 multiplier; four of five parent-facing proxy names failing to track their namesake
 items), which we report and act on. An accent-fairness audit on 6{,}656 Indian-English
@@ -72,11 +79,11 @@ ICD-11~\cite{icd11}: impaired control, escalating priority of gaming, continuati
 despite harm. Parents notice late and from the outside. The two families of existing
 tools each miss the pattern: self-report questionnaires require the child's honest
 cooperation --- and denial is itself a diagnostic criterion --- while screen-time
-counters measure volume, which is a weak correlate of severity. Prior computational
-work either models survey data~\cite{huang2024,strojny2024} or reviews family
-factors~\cite{ergin2025}; passive smartphone sensing of behaviour and mental state has
-precedent in student populations~\cite{studentlife2014}, but none of this work deploys a
-passive, multi-signal screen to a guardian.
+counters measure volume, which objective-telemetry studies find to be a weak
+correlate of well-being outcomes~\cite{johannes2021,vuorre2022}. Section~II situates
+this work; in brief, no prior system combines passive multi-signal capture, a
+guardian-facing risk channel, and an external validity check against a clinical IGD
+instrument.
 
 We built and deployed such a system and, distinctively, evaluated it the way a
 screening instrument should be: real data where it exists, stated limits where it
@@ -101,6 +108,30 @@ partly did --- fail. Contributions:
   ablations with bootstrap CIs, three transformer baselines, and continuous-integration
   guards that fail the build if the paper's numbers diverge from the committed data.
 \end{enumerate}
+
+% =====================================================================
+\section{Related Work}
+Passive smartphone sensing of behaviour and mental state has a decade of precedent:
+StudentLife inferred stress and academic outcomes from phone telemetry in a student
+cohort~\cite{studentlife2014}, and Shin and Dey detected \emph{problematic} smartphone
+use from passive usage features validated against a self-report scale~\cite{shin2013},
+with qualitative grounding in Lee et al.'s study of smartphone overuse~\cite{lee2014}.
+Our behavioural channel follows this tradition but targets gaming-specific pattern
+features and serves a guardian, not the user. On the outcome side, large
+objective-telemetry studies find raw play \emph{time} only weakly related to
+well-being~\cite{johannes2021,vuorre2022} --- the empirical basis for our
+pattern-over-volume design premise. IGD-specific computational work has modelled
+survey data~\cite{huang2024,strojny2024} or reviewed family factors~\cite{ergin2025}
+rather than deploying capture. Commercial guardian tools (screen-time dashboards;
+content monitors such as Bark) do deploy multi-signal capture, but report volume or
+keyword hits rather than a validated severity construct, and the HCI literature
+documents both their surveillance risks and children's own views of
+them~\cite{ghosh2018} --- concerns our consent, transparency and
+visibility-over-prevention design responds to (\S\ref{sec:ethics}). The specific gap
+this paper addresses is the conjunction: passive multimodal capture, a
+guardian-facing calibrated risk signal for IGD specifically, and an external
+construct-validity check of the served score against a clinical
+instrument~\cite{igds9sf}.
 
 % =====================================================================
 \section{System Architecture}
@@ -193,7 +224,8 @@ Hindi set (933 rows) the deployed pipeline reaches precision $0.968$ / recall $0
 (Devanagari) and $0.958$ / $0.366$ (romanised) at the unchanged $0.95$ threshold ---
 from near-zero coverage before adoption. Removing CONDA domain data collapses PR-AUC to
 $0.511$; removing char\_wb n-grams costs $0.031$; removing keyword fusion costs recall
-$0.491\!\rightarrow\!0.434$ at equal precision.
+at the alert threshold $0.363\!\rightarrow\!0.278$ (MCC $0.541\!\rightarrow\!0.472$)
+under the ablation protocol.
 
 \textbf{Voice.} Speaker-independent accuracy $0.574$, macro-F1 $0.568$ (chance
 $0.25$); random splits had reported $0.657$, a 9-point speaker-leakage inflation we
@@ -205,7 +237,11 @@ claim of this paper.
 \begin{table}[t]
 \centering\footnotesize
 \caption{Selected ablations (held-out; bootstrap 95\% CIs). One component removed
-per row from the deployed recipe.}
+per row, each row \emph{retrained from scratch} on its own fixed evaluation protocol
+--- voice rows use the ablation's un-augmented speaker-independent test set (1{,}880
+clips), so the full-recipe row ($0.562$) differs from the deployed training run's
+held-out figure ($0.574$); chat rows likewise differ slightly from the deployed
+artefact's serving metrics.}
 \label{tab:abl}
 \begin{tabular}{@{}llc@{}}
 \toprule
@@ -260,8 +296,8 @@ late batch of $22$ arrived 13--20 Aug. Per a rule fixed before any late data
 existed, all analyses use the final $134$ raw responses: $104$ usable (20 failed
 eligibility, 10 an attention check), $103$ scoreable. (The pre-batch snapshot read
 $\rho{=}0.352$ $[0.158,0.521]$; the late batch attenuated it, and the attenuated
-value is what we report.) IGDS totals averaged $17.6$ (SD $6.0$; range $9$--$37$);
-one respondent was in the disordered range. The model was fitted before the survey
+value is what we report.) The cohort is young ($79.6\%$ aged 18--24) and non-clinical: IGDS totals averaged
+$17.6$ (SD $6.0$; range $9$--$37$); one respondent was in the disordered range. The model was fitted before the survey
 existed and nothing was tuned on it.
 
 \begin{table}[t]
@@ -288,21 +324,29 @@ Excluding 9 straight-liners ($n{=}94$) & $0.292$ & $[0.104, 0.461]$ \\
 \begin{figure}[!htb]
 \centering
 \includegraphics[width=\linewidth]{survey_features.pdf}
-\caption{Per-feature $|\rho|$ against IGDS9-SF total. Every pattern feature out-ranks
-every volume feature, with no interleaving.}
+\caption{Per-feature $|\rho|$ against IGDS9-SF total ($n{=}103$; per-feature
+SEs ${\approx}0.10$, so individual rankings are descriptive). The formal test is the
+paired composite contrast: pattern $-$ volume $= +0.199$, $95\%$ CI $[+0.019,+0.380]$.}
 \label{fig:feat}
 \end{figure}
 
-\textbf{Results} (Table~\ref{tab:survey}, Fig.~\ref{fig:feat}). The served score
-tracks the instrument at $\rho{=}0.317$, CI excluding zero. The screen-time baseline
-every commercial tool ships reaches $0.147$ with a CI spanning zero; a paired
-bootstrap puts the model ahead in $97.4\%$ of resamples ($\Delta\rho{=}{+}0.167$),
-though the difference's interval now grazes zero ($[-0.002,+0.341]$; it excluded
-zero pre-batch), so the incremental claim rests on the partial correlation:
-partialling hours out barely moves the score's correlation ($0.303$, CI excluding
-zero) --- it is not screen time in another unit. All five pattern features out-rank
-all five volume features; the composites diverge ($0.330$ vs $0.128$, the latter's
-CI including zero). Self-reported toxic-chat involvement tracks severity at
+\textbf{Results} (Table~\ref{tab:survey}, Fig.~\ref{fig:feat}). The
+construct-validity correlation was the pre-designated primary endpoint (stated in
+the analysis script's documentation before data collection); the remaining results
+are secondary. The served score tracks the instrument at $\rho{=}0.317$, CI
+excluding zero. The screen-time baseline every commercial tool ships reaches
+$0.147$ with a CI spanning zero; a paired bootstrap puts the model ahead in
+$97.4\%$ of resamples ($\Delta\rho{=}{+}0.167$, one-sided $p{\approx}0.026$), but
+the two-sided interval grazes zero ($[-0.002,+0.341]$; it excluded zero pre-batch),
+so superiority over the baseline is suggestive, not established. The partial
+correlation establishes \emph{non-redundancy}: partialling hours out barely moves
+the score's correlation ($0.303$, CI excluding zero) --- the score is not screen
+time in another unit, though with a single-item, noisily measured covariate this
+under-controls for true screen time~\cite{westfall2016} and cannot itself
+establish superiority. The pattern-over-volume premise \emph{is} formally
+supported: a paired bootstrap on the composite difference gives
+$+0.199$ ($95\%$ CI $[+0.019,+0.380]$), and descriptively all five pattern
+features out-rank all five volume features ($0.330$ vs $0.128$ composites). Self-reported toxic-chat involvement tracks severity at
 $0.323$, replicating in this population the $r{=}{+}0.156$ premise borrowed
 from~\cite{igdslatam2024}.
 \textbf{Two results against the system.} The genre multiplier is unsupported
@@ -332,11 +376,14 @@ variance~\cite{podsakoff2003}. Three observations bound, without eliminating, th
 concern: the incremental effect over self-reported hours ($\Delta\rho{=}{+}0.167$,
 leading in $97.4\%$ of paired resamples) is a \emph{within-method} contrast, since
 hours are self-reported on the same form
-and share any method inflation; the pattern-vs-volume separation is a
-\emph{between-feature} contrast that shared method cannot manufacture; and the
+and share any method inflation --- though the score aggregates seven items while
+the baseline is a single item, so part of its advantage may be differential
+reliability rather than construct coverage~\cite{westfall2016}; the
+pattern-vs-volume separation is a \emph{between-feature} contrast that shared
+method cannot manufacture; and the
 predictor questions are behavioural frequencies, not attitudes, which typically
 attenuates rather than inflates method effects. The clean test remains a
-telemetry-linked cohort (\S V). On magnitude: $\rho{=}0.317$ ($\approx$$10\%$ shared
+telemetry-linked cohort (\S\ref{sec:ethics}). On magnitude: $\rho{=}0.317$ ($\approx$$10\%$ shared
 variance) is modest in absolute terms, with a wide interval at $n{=}103$; it sits
 inside the $0.3$--$0.5$ range that criterion-validity coefficients for brief
 behavioural screeners against full instruments typically
@@ -370,7 +417,7 @@ therefore ships default-off. A consented single-family pilot ran 23 days in prod
 (60 alerts across all eight types; the fail-closed consent rotation exercised live).
 
 % =====================================================================
-\section{Ethics and Limitations}
+\section{Ethics and Limitations}\label{sec:ethics}
 \textbf{Ethics statement.} The consented family pilot was an engineering pilot within
 the authors' own extended family and did not seek institutional review; no clinical
 conclusions are drawn from it. The IGDS9-SF survey was anonymous, adults ($18+$)
@@ -411,6 +458,12 @@ premise --- pattern over volume --- survives contact with real labels while two 
 components do not, and we publish both. The contribution is not a solved clinical
 instrument; it is a fully built, transparently measured screening pipeline in which every
 claim traces to a runnable script. The gap that remains is data, not architecture.
+
+\ifanon\else
+\section*{Acknowledgments}
+This work was carried out as PES University capstone project PW26\_SAS-03 under the
+guidance of Prof.\ Shridevi Sawant.
+\fi
 
 % =====================================================================
 \begin{thebibliography}{00}

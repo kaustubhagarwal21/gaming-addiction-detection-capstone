@@ -429,7 +429,7 @@ bullets(s, [
     f'Construct validity: **ρ = {SV["construct_validity"]["rho"]:.3f}** {ci(SV["construct_validity"]["ci95"])} vs the clinical instrument — CI excludes zero',
     f'**Leads the screen-time baseline it replaces** in {inc["p_model_better"]*100:.1f} % of paired resamples: hours ρ = {inc["rho_hours"]:.3f} (CI spans zero); Δρ = +{inc["delta_rho"]:.3f} {ci(inc["delta_ci"])} — **CI grazes zero; the partial carries the claim**',
     f'Not a screen-time proxy: partial ρ = **{inc["partial_rho"]:.3f}** with hours removed',
-    f'Signal is in **pattern** features ({comp["pattern"]["rho"]:.3f}) not **volume** ({comp["volume"]["rho"]:.3f}, CI includes zero)',
+    f'Signal is in **pattern** features ({comp["pattern"]["rho"]:.3f}) not **volume** ({comp["volume"]["rho"]:.3f}) — formal paired contrast **+{comp["pattern_minus_volume"]["diff"]:.3f} {ci(comp["pattern_minus_volume"]["ci"])}**, excludes zero',
     f'Two results **against** us: genre multiplier p = {SX["genre"]["p"]:.3f}; 4 of 5 proxy names track nothing → **labels renamed in the product**',
 ], w=Inches(7.4), h=Inches(2.7), size=12, gap=3)
 table(s, [

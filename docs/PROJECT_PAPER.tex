@@ -108,7 +108,8 @@ adult survey ($134$ raw, $104$ usable), the score the system would have served
 correlates with the clinically-validated IGDS9-SF instrument at Spearman
 $\rho = 0.317$ ($95\%$ CI $[0.137, 0.478]$), leads the self-reported
 screen-time baseline it is meant to replace in $97.4\%$ of paired resamples
-($\Delta\rho = +0.167$), and survives partialling that baseline out
+($\Delta\rho = +0.167$, $95\%$ CI $[-0.002, +0.341]$), and survives partialling
+that baseline out
 ($\rho = 0.303$, CI excluding zero), with the signal concentrated in the
 behavioural-pattern features rather than the volume ones --- the project's core premise, confirmed
 against real labels rather than assumed. Remaining limits are stated plainly ---
@@ -2193,15 +2194,22 @@ restricted to respondents the model can score, so both predictors are measured
 on identical rows; across all $104$ usable respondents the hours baseline reads
 $\rho = 0.132$ --- the same verdict.) A paired bootstrap on the
 \emph{difference} puts the model ahead by $\Delta\rho = +0.167$, leading in
-$97.4\%$ of resamples --- though the difference's interval now grazes zero
-($95\%$ CI $[-0.002, +0.341]$; at the pre-batch $n{=}86$ it excluded zero), so
-we do not rest the incremental-validity claim on the paired contrast alone. The
-stronger evidence is the partial correlation: partialling self-reported hours
-out of the model's correlation barely moves it ($\rho = 0.303$, $95\%$ CI
-$[0.110, 0.476]$, excluding zero). The score is therefore carrying severity
-information that volume does not, rather than re-expressing volume in another
-unit --- the project's core design premise, confirmed externally rather than
-assumed.
+$97.4\%$ of resamples (a one-sided bootstrap $p \approx 0.026$) --- though the
+two-sided interval now grazes zero ($95\%$ CI $[-0.002, +0.341]$; at the
+pre-batch $n{=}86$ it excluded zero), so superiority over the baseline is
+suggestive, not established, and we say so. (The construct-validity correlation
+of Result~1 was the pre-designated primary endpoint --- stated in the analysis
+script's documentation before data collection; the remaining results are
+secondary.) The partial correlation establishes \emph{non-redundancy}:
+partialling self-reported hours out of the model's correlation barely moves it
+($\rho = 0.303$, $95\%$ CI $[0.110, 0.476]$, excluding zero), so the score is
+not screen time re-expressed in another unit --- though because hours is a
+single, noisily measured item while the score aggregates seven, part of the
+model's edge may be differential reliability rather than construct coverage,
+and partialling an unreliable covariate under-controls for true screen
+time~\cite{westfall2016}. Non-redundancy plus the pattern-versus-volume
+contrast of Result~3 --- not the paired delta --- is what carries the design
+premise.
 
 \textbf{Result 3 --- pattern features carry it, volume features do not.}
 Correlating each objective feature against IGDS severity separates the two
@@ -2209,7 +2217,11 @@ groups cleanly (Table~\ref{tab:surveyfeat}). Every one of the five
 \emph{pattern} features out-ranks every one of the five \emph{volume} features,
 and the sign-corrected composites diverge: pattern $\rho = 0.330$ ($95\%$ CI
 $[0.154, 0.489]$) against volume $\rho = 0.128$ ($95\%$ CI $[-0.083, 0.328]$,
-which does not exclude zero). Two features carry almost nothing:
+which does not exclude zero). The contrast is tested formally, not eyeballed: a
+paired bootstrap on the composite difference gives $+0.199$ ($95\%$ CI
+$[+0.019, +0.380]$, excluding zero; pattern ahead in $98.5\%$ of resamples).
+Individual per-feature rankings carry standard errors of ${\approx}0.10$ at
+this $n$ and are descriptive only. Two features carry almost nothing:
 \texttt{daily\_play\_time\_hours} ($+0.052$) and
 \texttt{avg\_session\_duration\_min} ($+0.042$). This is the first
 \emph{external} evidence for the feature-engineering thesis of \S\ref{sec:features};
@@ -2220,9 +2232,10 @@ synthetic labels were generated from the same priors the features encode.
 \centering
 \footnotesize
 \caption{Per-feature Spearman correlation against IGDS9-SF total ($n{=}103$),
-ordered by magnitude. The five pattern features occupy the top five places; the
-volume composite's confidence interval includes zero. Composites are
-sign-corrected $z$-score sums with bootstrap CIs.}
+ordered by magnitude (per-feature SEs ${\approx}0.10$; individual rankings are
+descriptive). The formal test is the paired composite contrast: pattern $-$
+volume $= +0.199$, $95\%$ CI $[+0.019, +0.380]$. Composites are sign-corrected
+$z$-score sums with bootstrap CIs.}
 \label{tab:surveyfeat}
 \begin{tabular}{lcc}
 \toprule
@@ -2986,6 +2999,9 @@ Questionnaire-2: Validity of a two-item depression screener,'' \emph{Medical Car
 vol.~41, no.~11, pp.~1284--1292, 2003.
 \bibitem{cohen1988} J. Cohen, \emph{Statistical Power Analysis for the Behavioral Sciences},
 2nd ed. Hillsdale, NJ: Lawrence Erlbaum, 1988.
+\bibitem{westfall2016} J. Westfall and T. Yarkoni, ``Statistically controlling for
+confounding constructs is harder than you think,'' \emph{PLoS ONE}, vol.~11, no.~3,
+e0152719, 2016.
 \end{thebibliography}
 
 \end{document}

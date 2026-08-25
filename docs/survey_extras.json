@@ -54,6 +54,15 @@
           0.15447860012965858,
           0.4893613451084461
         ]
+      },
+      "pattern_minus_volume": {
+        "diff": 0.19945669761969612,
+        "ci": [
+          0.018820951215189202,
+          0.38015070582887983
+        ],
+        "p_pattern_better": 0.98475,
+        "note": "paired bootstrap over respondents; composite weights fixed at full-sample values"
       }
     }
   },

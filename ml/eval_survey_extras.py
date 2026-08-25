@@ -220,6 +220,27 @@ def main():
         lo, hi, _ = boot_ci(lambda i, c=c: spearmanr(c[i], total[i]).statistic, n)
         comps[label] = {'rho': rho, 'ci': [lo, hi]}
         print(f'   {label:7s} composite            {rho:+7.3f}  95% CI [{lo:+.3f}, {hi:+.3f}]')
+
+    # Formal contrast for the pattern-vs-volume claim: a PAIRED bootstrap on the
+    # difference of the two composite correlations (same respondents resampled for
+    # both, composite weights held fixed at their full-sample values), reported with
+    # a two-sided CI and a one-sided exceedance probability. Eyeballing "0.330 vs
+    # 0.128" is not a test; this is.
+    cv, cp = composite(VOLUME), composite(PATTERN)
+
+    def comp_diff(i):
+        a = spearmanr(cp[i], total[i]).statistic
+        b = spearmanr(cv[i], total[i]).statistic
+        return None if (np.isnan(a) or np.isnan(b)) else a - b
+
+    dlo2, dhi2, dvals2 = boot_ci(comp_diff, n)
+    comps['pattern_minus_volume'] = {
+        'diff': float(np.mean(dvals2)), 'ci': [dlo2, dhi2],
+        'p_pattern_better': float((dvals2 > 0).mean()),
+        'note': 'paired bootstrap over respondents; composite weights fixed at full-sample values',
+    }
+    print(f'   pattern - volume diff        {np.mean(dvals2):+7.3f}  95% CI [{dlo2:+.3f}, {dhi2:+.3f}]'
+          f'   P(pattern > volume) = {(dvals2 > 0).mean():.1%}')
     out['features'] = {'per_feature': per_feature, 'composites': comps}
 
     # ---- C. chat-channel premise --------------------------------------------
