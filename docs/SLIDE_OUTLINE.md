@@ -18,9 +18,7 @@ export to PNG for PowerPoint via any PDF viewer, or re-run `ml/make_figures.py`)
 - Multi-modal: behaviour + chat + voice
 - PW26_SAS-03 · <team member names + SRNs> · Guide: Prof. Shridevi Sawant
 
-**Notes:** One sentence: "We built and deployed a complete parent-facing screening
-system — two Android apps and a cloud ML backend — and evaluated it the way ML
-should be evaluated: real data where it exists, honest numbers where it doesn't."
+**Notes:** One sentence, identical from all four of us: "a deployed, multimodal screening system for parents that measures how a child plays, not just how long — externally validated against a clinical instrument, with its limitations named before you ask."
 
 ---
 

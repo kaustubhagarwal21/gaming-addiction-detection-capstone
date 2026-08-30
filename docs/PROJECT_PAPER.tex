@@ -776,8 +776,8 @@ the winner was adopted (\S\ref{sec:chatresults} reports the deployed pipeline's 
 numbers, which also include the keyword fusion). A \emph{deep} reference point was
 also measured: the off-the-shelf Jigsaw-trained toxic-BERT
 (\texttt{unitaryai/detoxify}~\cite{detoxify2020}, $\sim$110M parameters) reads PR-AUC $\mathbf{0.709}$
-on this same held-out CONDA split --- \textbf{12 points below the deployed
-classical pipeline} ($0.821$) --- and at a $\geq$$0.95$-precision operating point
+on this same held-out CONDA split --- \textbf{12 points below the
+classical pipeline} ($0.825$ under the ablation protocol; $0.821$ as served) --- and at a $\geq$$0.95$-precision operating point
 its recall is $0.12$ vs.\ the classical $0.42$. The comparison is deliberately
 asymmetric (general-purpose transformer vs.\ domain-trained classical model),
 because that asymmetry \emph{is} the design question this system faced: under a
@@ -1260,7 +1260,7 @@ audited below.)
 \textbf{Evaluation set} & \textbf{Precision (toxic)} & \textbf{Recall (toxic)} & \textbf{Note} \\
 \midrule
 Balanced held-out & 0.897 & 0.956 & optimistic view; PR-AUC 0.940 \\
-General realistic stream @0.50 & 0.241 & 0.958 & 3.5\% toxic base rate \\
+General realistic stream @0.50 & 0.235 & 0.956 & 3.5\% toxic base rate \\
 General realistic stream @0.95 (alert) & 0.433 & 0.398 & out-of-domain view \\
 \bottomrule
 \end{tabular}

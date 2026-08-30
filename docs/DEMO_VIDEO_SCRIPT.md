@@ -76,7 +76,7 @@ Timings are what to aim for, not a metronome. **Bold** = what to say. *Italic* =
 
 *Close Roblox. Wait ~25 s (trim) for the session-end notification with the risk band.*
 
-> **"Leave the game, and about twenty seconds later the session closes itself and is scored."**
+> **"Leave the game, and about twenty-five seconds later the session closes itself and is scored."**
 
 *Cut to ParentApp → pull to refresh → the new session appears.*
 
@@ -114,7 +114,7 @@ Timings are what to aim for, not a metronome. **Bold** = what to say. *Italic* =
 
 ## Editing notes
 - Total spoken words ≈ 620 → ~4½ min at a calm pace. If over 5 min, cut Part 0's second sentence and the optional watchdog beat first.
-- Trim every wait (session start ~5 s, nudge ~12 s, session end ~25 s) with a hard cut, not a speed-up — speed-ups look like something's being hidden.
+- Trim every wait (session start ~10 s, nudge ~12 s, session end ~25 s) with a hard cut, not a speed-up — speed-ups look like something's being hidden.
 - Never show the parent PIN being typed. Mask or cut.
 - Keep the "What we can and can't see" screen and the wrong-PIN moment — panels remember the honesty beats more than the feature beats.
 - Export at 1080p; put the file next to the deck (`docs/`) **but do not commit it** — link it from the release notes if you want it public.

@@ -24,9 +24,19 @@ our contribution is the sensing + fusion pipeline, honestly evaluated.
 
 **Q: Why three channels (behaviour, chat, voice) instead of one good model?**
 Because they fail independently. Behaviour needs days of telemetry; chat only exists
-when the child types; voice only when they speak. The fusion (§6 below) treats each as
+when the child types; voice only when they speak. The fusion (§5 below) treats each as
 an optional witness — any subset degrades gracefully to the channels present. The
 ablation tables show each channel's marginal value is measurable, not decorative.
+
+**Q: Why only children? Why not adults, who are also affected?**
+Because of who holds the duty of care. Screening someone who has not asked to be
+screened is only proportionate when a guardian is responsible for them — that is what
+makes passive capture on a child's phone defensible, and it is bounded by consent that
+fails closed, export/delete symmetry and the transparency screen. Point the same system
+at an adult and it becomes one of two things: a self-help journal (fine — but then the
+person can simply answer the IGDS9-SF themselves) or spyware. An adult self-monitoring
+variant would be a different product with a different consent model, not this one with
+the age gate removed; the paper's ethics section says exactly this.
 
 ---
 
@@ -397,7 +407,7 @@ premise, and it's now measured rather than argued.
 **Q: Which features actually carried it?**
 All five *pattern* features out-rank all five *volume* features — no interleaving.
 Formally tested, not eyeballed: the paired composite difference is **+0.199 [+0.019, +0.380]**, excluding zero (pattern ahead in 98.5% of resamples). Composites: pattern ρ = 0.330 [0.154, 0.489], volume ρ = 0.128 [−0.083, 0.328] (CI
-includes zero). Two volume features are inert: `daily_play_time_hours` (+0.066) and
+includes zero). Two volume features are inert: `daily_play_time_hours` (+0.052) and
 `avg_session_duration_min` (+0.042). This is the first *external* evidence for the
 feature engineering; the ablations couldn't produce it because synthetic labels were
 generated from the same priors the features encode.
@@ -452,7 +462,7 @@ rather report evidence against our own naming than have the panel find it.
 
 **Q: The threshold search found better cut-offs. Why didn't you apply them?**
 The grid search returns T1 = 0.51, T2 = 0.83 (quadratic-weighted κ = 0.177) vs the
-deployed 0.33/0.67. We declined. T2 sits at 0.95 precisely *because* the sample has
+deployed 0.33/0.67. We declined. T2 sits at 0.83 — far above the deployed 0.67 — precisely *because* the sample has
 almost no disordered-range respondents — the fitted value encodes the sample's missing
 tail, not a clinical boundary (the pre-batch fit read T2 = 0.95 — one late batch of
 22 moved it by 0.12, which is the demonstration) — and κ = 0.177 is fair agreement

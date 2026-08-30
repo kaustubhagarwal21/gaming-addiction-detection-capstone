@@ -74,7 +74,7 @@ def test_documents_quote_the_committed_numbers(agg):
                 f'{inc["delta_rho"]:.3f}', f'{inc["partial_rho"]:.3f}',
                 f'{comps["pattern"]["rho"]:.3f}', f'{comps["volume"]["rho"]:.3f}',
                 f'{x["genre"]["p"]:.3f}']
-    for doc in ('PROJECT_PAPER.tex', 'DEFENSE_NOTES.md', 'VALIDATION_PLAN.md'):
+    for doc in ('PROJECT_PAPER.tex', 'IEEE_PAPER.tex', 'DEFENSE_NOTES.md', 'VALIDATION_PLAN.md'):
         text = _read(doc)
         missing = [n for n in headline if n not in text]
         assert not missing, f'{doc} is missing / has stale: {missing}'
@@ -85,7 +85,7 @@ def test_caseness_metrics_stay_withheld(agg):
     v, _ = agg
     if v['caseness_auc'].get('withheld'):
         assert v['caseness_auc']['positives'] < 10
-        for doc in ('PROJECT_PAPER.tex', 'DEFENSE_NOTES.md'):
+        for doc in ('PROJECT_PAPER.tex', 'IEEE_PAPER.tex', 'DEFENSE_NOTES.md'):
             text = _read(doc).lower()
             # the documents must say so rather than quietly omitting it
             assert 'caseness' in text, f'{doc} does not disclose the withheld metrics'

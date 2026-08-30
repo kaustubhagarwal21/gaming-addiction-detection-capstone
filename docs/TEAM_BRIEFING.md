@@ -19,19 +19,19 @@ Everyone reads all of DEFENSE_NOTES once; each person *owns* their rows below co
 
 ## Kaustubh Agarwal — ML, validation, and the closing arguments
 **Slides:** 6 (behaviour), 7 (chat), 8 (voice), 11 (verification), **12 (validation)**, 16 (limitations), 17 (close)
-**Owns in DEFENSE_NOTES:** §2 behaviour · §3 chat · §4 voice · §6 evaluation · **§10 external validation (all 13 Q&As)** · §11 closing · the accent-fairness Q&A
+**Owns in DEFENSE_NOTES:** §2 behaviour · §3 chat · §4 voice · §6 evaluation · **§10 external validation (12 of its 13 Q&As — the survey-permission Q&A is Vidisha's)** · §11 closing · the accent-fairness Q&A · (serving/API questions → hand to Kanak by name)
 **Numbers to have cold:** 91.6 % (synthetic, say so) · PR-AUC 0.825, P 0.956 @ 0.95 · voice 0.574 speaker-independent (8.3-pt leakage story) · **ρ = 0.317 [0.137, 0.478], hours 0.147, Δρ = +0.167 (CI grazes zero — lean on the partial), partial 0.303** · pattern 0.330 vs volume 0.128, **formally tested: pattern − volume = +0.199 [+0.019, +0.380], excludes zero** (this is the strongest single number — use it whenever the paired Δρ gets attacked) · genre p = 0.598 (32 % power) · 1 disordered respondent → ~157 usable needed · late batch folded in per pre-stated rule (0.352 → 0.317: say it before they do) · Svarah 0 false alerts / 9.6 h, WER 35 → 61 %
 **Hardest questions you'll get:** "0.32 is weak" (lead with the baseline comparison) · "why no sensitivity/specificity" (one positive; guard written before the data) · "training data is synthetic" (yes — and here is where the score meets real labels) · "why keep the genre multiplier" (underpowered null; 34 % of bands flip)
 
 ## Khushee P Kiran — ChildApp, capture, and anti-tamper
 **Slides:** 4 (system overview & deployment), 10 (Built for India — keyboard/capture half), 14 (system testing — device half)
-**Owns in DEFENSE_NOTES:** §8 engineering (Android side) · §9 sensing-blindspots Q&A · §9 cold-start rebuttal · the battery/latency Q&A · Hindi keyboard/capture parts of the Hindi Q&A
+**Owns in DEFENSE_NOTES:** §8 engineering (Android side) · §9 sensing-blindspots Q&A · §9 clear-app-data / observation-mode Q&A · the battery/latency Q&A · Hindi keyboard/capture parts of the Hindi Q&A
 **Numbers to have cold:** ChildApp default path **14 % of one core, 288 / 301 MB**; dual-STT **51–72 %, 399 / 419 MB → fails our gate, hence default OFF** · session auto-start ~10 s, auto-end ~25 s, nudge ~12 s · Galaxy M52, 2 × 15-min Roblox, 2026-08-18 · v2.4.0 signed release, cert unchanged since day one
 **Hardest questions you'll get:** "can a child evade it" (yes — browser/webview games; boundary is *installed apps, not games*; closing it needs screen/URL surveillance we refuse) · "keyboard switching" (detected: heartbeat capture bits, parent alert, child self-heal prompt) · "clear app data to reset observation mode" (server-side counter; heartbeat dies → offline alert) · "does adb beat the uninstall block" (no — we tried, `DELETE_FAILED_DEVICE_POLICY_MANAGER`)
 
 ## Kanak Goyal — backend, deployment, fusion, and datasets
 **Slides:** 5 (why three channels), 9 (fusion & alerting — you own the serving, renormalisation, thresholds and alert path; the weight *design* is Kaustubh's, hand it over by name), 13 (dataset audit), 14 (system testing — backend/CI half)
-**Owns in DEFENSE_NOTES:** §1 problem framing · §5 fusion & alerting · §7 datasets · §8 engineering (server side) · the feedback-tuner-drift rebuttal
+**Owns in DEFENSE_NOTES:** §1 problem framing · §5 fusion & alerting · §7 datasets · §8 engineering (server side) · the feedback-tuner-drift rebuttal · the MobSF / security-audit Q&A (after §11)
 **Numbers to have cold:** 40/30/30 renormalised over present channels · max-not-mean chat · operating points 0.85 → P 0.800 / R 0.703, 0.90 → 0.888 / 0.623, **0.95 → 0.956 / 0.428** · tuner cap ±0.05, human-applied · 181 backend tests on SQLite **and** Postgres 16, 288 concurrent requests 0 errors p50 66 ms · 11 adopted corpora + 2 rejected with evidence + StudentLife reality check
 **Hardest questions you'll get:** "why threshold 0.95 not best-F1" (false alarms cost trust; ~1 in 23 wrong vs 1 in 5) · "can an anxious parent drag thresholds down" (capped, floored, human-applied — no automatic loop) · "why RF/LogReg not BERT" (measured: toxic-BERT 0.709 vs 0.825; 512 MB serving budget) · "why did you reject those Kaggle sets" (downloaded and inspected: synthetic provenance, engagement ≠ addiction)
 
@@ -51,7 +51,7 @@ Everyone reads all of DEFENSE_NOTES once; each person *owns* their rows below co
 5. **Vidisha + Khushee**: slide 10 (India: chat/fairness, then keyboard/capture) — ~1½ min
 6. **Kaustubh**: slides 11–12 (verification, **validation**) — ~3 min — *protect this time*
 7. **Kanak**: slide 13 (datasets) — ~45 s
-8. **Khushee**: slide 14 (testing + device numbers) — ~1 min
+8. **Kanak + Khushee**: slide 14 (tests/CI, then device numbers) — ~1 min
 9. **Vidisha**: slide 15 (privacy & ethics) — ~1 min
 10. **Kaustubh**: slides 16–17 (limitations, close) → **demo** (Khushee drives the phones; DEMO_RUNBOOK §3; video is the fallback)
 
