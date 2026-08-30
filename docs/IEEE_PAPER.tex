@@ -1,4 +1,4 @@
-% IEEE conference-format distillation of docs/PROJECT_PAPER.tex (the 47-page report).
+% IEEE conference-format distillation of docs/PROJECT_PAPER.tex (the 48-page report).
 % Every number here is the same number as in the report and the committed JSONs
 % (docs/survey_validation.json, survey_extras.json, ablation_results.json,
 % asr_fairness.json, backend/models/model_metadata.json). Build: latexmk -pdf IEEE_PAPER.tex
@@ -48,7 +48,7 @@ speech-to-text plus acoustic emotion. All models are lightweight, calibrated and
 SHAP-explainable; raw audio is never retained. Each channel is evaluated on real
 held-out data with bootstrap confidence intervals and one-component ablations
 (chat PR-AUC $0.825$ in-domain, $\geq$$0.95$ alert precision on every register;
-voice $0.574$ speaker-independent, exposing a 9-point leakage inflation in random splits).
+voice $0.574$ speaker-independent, exposing an 8.3-point leakage inflation in random splits).
 Critically, we then validate the served risk score \emph{externally}: in an anonymous
 adult IGDS9-SF survey ($134$ raw; $104$ usable, $103$ scoreable), the score correlates with the clinical
 instrument at Spearman $\rho{=}0.317$ ($95\%$ CI $[0.137,0.478]$; the
@@ -223,12 +223,12 @@ toxic-BERT~\cite{detoxify2020} scores $0.709$ on the same split. On the HASOC he
 Hindi set (933 rows) the deployed pipeline reaches precision $0.968$ / recall $0.425$
 (Devanagari) and $0.958$ / $0.366$ (romanised) at the unchanged $0.95$ threshold ---
 from near-zero coverage before adoption. Removing CONDA domain data collapses PR-AUC to
-$0.511$; removing char\_wb n-grams costs $0.031$; removing keyword fusion costs recall
+$0.511$; removing char\_wb n-grams costs $0.030$; removing keyword fusion costs recall
 at the alert threshold $0.363\!\rightarrow\!0.278$ (MCC $0.541\!\rightarrow\!0.472$)
 under the ablation protocol.
 
 \textbf{Voice.} Speaker-independent accuracy $0.574$, macro-F1 $0.568$ (chance
-$0.25$); random splits had reported $0.657$, a 9-point speaker-leakage inflation we
+$0.25$); random splits had reported $0.657$, an 8.3-point speaker-leakage inflation we
 corrected. The channel is deliberately tied-lowest in the fusion prior (0.3, with chat) and an optional
 witness in fusion; frozen wav2vec~2.0 embeddings reach $0.776$ on the identical
 split, so a distilled on-device encoder is the identified next step rather than a
@@ -404,7 +404,7 @@ equity issue is a recall gap on Northeast-Indian accents, named as the highest-l
 STT improvement.
 
 \subsection{System testing and on-device cost}
-290 automated tests run in CI (180 backend on SQLite \emph{and} Postgres~16; 110
+291 automated tests run in CI (181 backend on SQLite \emph{and} Postgres~16; 110
 Android JVM; 7 research-integrity guards pinning the paper's numbers to the committed
 JSONs). A concurrency smoke of 288 mixed requests over 24 threads produced zero errors
 (p50 66~ms); the API was property-fuzzed, CVE-audited, and both signed APKs passed a
@@ -426,7 +426,7 @@ statement before the first item, and was voluntary; the supervising faculty memb
 was notified in writing (official institutional e-mail of 14~August~2026, copied to
 the other authors, disclosing the design and requesting direction should additional
 approval be required), sent while the form was open --- after the main wave, before
-close-out and analysis. That is documented faculty
+close-out and before analysis of the final sample. That is documented faculty
 notification, \emph{not} an ethics-committee or IRB determination, and we do not
 describe it as one; any cohort involving minors is gated on institutional review,
 guardian consent and age-appropriate assent. Row-level responses are not released

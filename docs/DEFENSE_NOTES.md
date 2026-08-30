@@ -76,7 +76,7 @@ feature importances is unchanged.
 
 **Q: Why logistic regression + TF-IDF and not BERT?**
 Measured, not assumed. The deployed recipe (word 1–2 gram + char_wb 3–5 gram TF-IDF
-union → LogReg → isotonic) reaches PR-AUC 0.825 [0.807, 0.841] on CONDA in-game chat. Measured against a real transformer (2026-08-04): off-the-shelf Jigsaw toxic-BERT (detoxify, ~110M params) reads PR-AUC 0.709 on the same split — 12 points BELOW the domain-trained classical pipeline; at >=0.95 precision its recall is 0.12; the deployed pipeline reads 0.29 at an even higher 0.97 precision. Domain data beats model capacity, measured.
+union → LogReg → isotonic) reaches PR-AUC 0.825 [0.807, 0.841] on CONDA in-game chat. Measured against a real transformer (2026-08-04): off-the-shelf Jigsaw toxic-BERT (detoxify, ~110M params) reads PR-AUC 0.709 on the same split — 12 points BELOW the domain-trained classical pipeline; at >=0.95 precision its recall is 0.12; the deployed pipeline reads 0.428 at 0.956 precision. Domain data beats model capacity, measured.
 A transformer needs GPU or slow CPU inference; we serve on a 512 MB free-tier instance
 scoring every chat message in real time. The char_wb n-grams are the cheap trick that
 buys robustness to gamer spelling ("noooob", "f4ggot") — removing them drops PR-AUC to
@@ -89,7 +89,7 @@ Both — and the gap is the most important number in the chat section. At the re
 0.95 (dual-script HASOC + clean-Hindi-wiki retrain; was 0.90 on the old calibration), where in-domain precision is 0.956 at recall 0.428 — and EVERY register (English, Devanagari, romanised Hinglish) clears 0.95 precision at one shared threshold
 (`chat_metrics_gaming.at_alert_threshold`). We chose to miss most single toxic messages
 rather than train parents to ignore alerts (the session streak alert recovers coverage:
-per-message recall 0.87 at its 0.6 bar). The threshold is env-tunable
+per-message recall 0.82 at its 0.6 bar, precision 0.63). The threshold is env-tunable
 (`CHAT_ALERT_T`) and `ml/tune_from_feedback.py` adjusts it from real parent feedback
 using a Beta posterior.
 
@@ -109,15 +109,15 @@ CONDA_valid was never in training, so that eval had no leakage. Older-draft nuan
 **Q: Why fuse a keyword lexicon with an ML model? Isn't that admitting the model is weak?**
 It's a noisy-OR of two imperfect detectors: `1-(1-kw)(1-ml)`. The lexicon catches
 Hinglish and Devanagari abuse (bsdk, chutya, मादरचोद) that no English-trained corpus
-covers; the ML generalises beyond any list. Ablation: removing fusion drops
-recall-at-alert from 0.491 to 0.434 and MCC from 0.633 to 0.591 at essentially the
+covers; the ML generalises beyond any list. Ablation (0.95 threshold, retrain-from-scratch protocol): removing fusion drops
+recall-at-alert from 0.363 to 0.278 and MCC from 0.541 to 0.472 at essentially the
 same precision. For an Indian deployment context, the lexicon is load-bearing, not
 decorative.
 
 **Q: What was the single biggest chat improvement?**
-Domain data. Removing CONDA (in-game chat) from training collapses PR-AUC from 0.834
-to 0.513 — worse than every architecture choice combined. The original general-corpus,
-word-only model scored 0.557. Lesson we state in the paper: data > architecture.
+Domain data. Removing CONDA (in-game chat) from training collapses PR-AUC from 0.825
+to 0.511 — worse than every architecture choice combined. The original general-corpus,
+word-only model scored 0.516. Lesson we state in the paper: data > architecture.
 
 ---
 
@@ -126,7 +126,7 @@ word-only model scored 0.557. Lesson we state in the paper: data > architecture.
 **Q: Does the voice channel transcribe speech or classify emotion?**
 Both, as two separate paths. (1) On-device Vosk (Indian-English `en-in` model)
 transcribes speech locally; transcripts enter the *chat* pipeline tagged
-`voice_stt`, so spoken abuse is caught by the same toxicity model. (2) 15-second
+`voice_stt`, so spoken abuse is caught by the same toxicity model. (2) 10-second
 audio segments are uploaded, the server extracts 36 acoustic features
 (`backend/audio_features.py`), and HistGradientBoosting classifies emotion
 (angry/excited/frustrated/neutral). Raw audio is deleted after feature extraction
@@ -136,7 +136,7 @@ audio segments are uploaded, the server extracts 36 acoustic features
 Because it's the *honest* number and we know exactly why it's not higher. Chance on
 4 classes is 25%, so 0.574 / macro-F1 0.568 is meaningfully above chance but far from
 production-grade — and we say so. The instructive part: with naive random splits the
-same model scores ~0.657. That ~9-point gap is **speaker leakage** — the model
+same model scores ~0.657. That 8.3-point gap is **speaker leakage** — the model
 memorising voices, not emotions. We switched to speaker-independent evaluation
 (GroupShuffleSplit; no speaker in both train and test), reported the lower number,
 and the paper documents that the split choice *reversed the model-selection verdict*
@@ -234,8 +234,8 @@ evidence is in the paper.
 **Q: Can a Flask + SQLite backend on a 512 MB free tier actually handle this?**
 Measured: the concurrency smoke (`backend/scripts/concurrency_smoke.py`, 288 mixed
 requests across 24 threads against a real threaded server, including per-message chat
-scoring and live predictions) passes with **zero 5xx errors** — p50 80 ms, p95 609 ms,
-175 req/s on the dev machine (re-run 2026-07-30 with the current heavier chat
+scoring and live predictions) passes with **zero 5xx errors** — p50 66 ms, p95 684 ms
+on the dev machine (last re-run 2026-08-04, post-retrain, with the current heavier chat
 vectorizer). The script is permanent and re-runnable; the same check against the
 deployed Render instance is the remaining step after each deploy. The DB layer is
 dual-dialect (SQLite/Postgres) so outgrowing SQLite is a config change, not a rewrite.
@@ -245,7 +245,7 @@ Signed HMAC bearer tokens (itsdangerous), role-separated: parent-only routes cal
 `deny_non_parent()`, per-user access calls `guard(user_id)`. `AUTH_ENFORCE` supports
 a shadow mode (log violations without breaking clients) → enforce rollout. Rate
 limiting via Flask-Limiter; tokens of deleted accounts are rejected by an existence
-check. 180 backend tests — run in CI against both SQLite and Postgres 16, the
+check. 181 backend tests — run in CI against both SQLite and Postgres 16, the
 production dialect — cover the authz matrix, including regression tests for the
 alert-ownership gap we found and fixed; 110 Android JVM unit tests guard the
 offline-session/capture-health logic, profile validation, risk presentation,
@@ -382,7 +382,7 @@ model's 10 objective features and pushed through the **deployed serving path** �
 — so what we correlate is the score a parent would actually have seen. Result:
 **Spearman ρ = 0.317, 95% CI [0.137, 0.478]**. The interval excludes zero.
 
-**Q: 0.35 is a weak correlation. Why should that impress us?**
+**Q: 0.32 is a weak correlation. Why should that impress us?**
 Two reasons, and we don't oversell it. First, the comparison that matters is not
 against 1.0 — it's against the baseline this product exists to replace. Self-reported
 hours/week reaches only ρ = 0.147 on the same respondents, CI spanning zero. A paired
@@ -534,7 +534,7 @@ baseline in 97.4% of paired resamples with the partial correlation excluding zer
 (§10). The remaining gap is specific and nameable — no caseness metrics,
 because the sample held one disordered-range respondent; adults rather than the
 adolescent target; cross-sectional rather than longitudinal. We quantified what each
-proxy costs where we could (speaker leakage: 9 points; missing domain data: 32 PR-AUC
+proxy costs where we could (speaker leakage: 8.3 points; missing domain data: 31 PR-AUC
 points), and `docs/VALIDATION_PLAN.md` is the scripted path onward. The contribution is
 not a solved clinical instrument — it's a fully-built, honestly-measured screening
 pipeline where every claim traces to a runnable script, including the two claims the

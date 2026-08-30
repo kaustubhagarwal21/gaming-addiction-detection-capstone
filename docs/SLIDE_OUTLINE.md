@@ -2,7 +2,7 @@
 
 Paste-ready content for the PES capstone template. Each slide: the **on-slide
 bullets** (keep them this short — the notes carry the words), any **figure/table**
-to place, and **speaker notes** (~60 s each; 15 slides ≈ 16 min). Every number is
+to place, and **speaker notes** (~60 s each; 17 slides ≈ 16 min). Every number is
 from `backend/models/model_metadata.json`, `docs/ablation_results.json`, or
 `docs/survey_extras.json`; the matching Q&A prep is `docs/DEFENSE_NOTES.md`
 (section refs given per slide).
@@ -103,7 +103,7 @@ them makes SHAP circular. Ablation: 0.9191 vs 0.9160, CIs overlap — free hones
 ~3.5% toxic base rate, threshold 0.5 gives precision 0.235 — a parent gets ~3
 false alarms per real one and stops reading alerts. At the deployed 0.95, precision is 0.956 at
 recall 0.428: we consciously trade recall to keep alerts credible (the session-level
-streak alert recovers coverage; per-message recall 0.87 at its 0.6 bar).
+streak alert recovers coverage; per-message recall 0.82 at its 0.6 bar).
 Threshold is env-tunable and a Beta-posterior tuner adjusts it from parent
 feedback. Why no BERT: 512 MB serving budget, real-time per-message scoring, and
 the data ablation (slide 9) shows domain data mattered far more than architecture.
@@ -116,13 +116,13 @@ the data ablation (slide 9) shows domain data mattered far more than architectur
 - Path 1: **on-device** Vosk STT (Indian English) → transcript → chat toxicity model
 - Path 2: 36 acoustic features → HistGB emotion (real corpora: RAVDESS, CREMA-D, EMO-DB, URDU)
 - Speaker-independent accuracy **0.574** (chance = 0.25)
-- Random splits said 0.657 → **9 pts was speaker leakage** — we report the honest number
+- Random splits said 0.657 → **8.3 pts was speaker leakage** — we report the honest number
 - Headroom measured: frozen w2v2 embeddings + same classifier → **0.776** (vs 0.553 on the same split) — quantifies the ceiling a deployable distillation (Wav2Small, 72K) could reach
 
 **Figure:** cm_voice.pdf (confusion matrix)
 
 **Notes:** Pre-empt "57% is weak": chance on 4 classes is 25%; the interesting part
-is the 9-point gap — with random splits the model memorised *voices*, not emotions,
+is the 8.3-point gap — with random splits the model memorised *voices*, not emotions,
 and the split choice even flipped which model won the bake-off (SVM → HistGB). An
 honest 0.574 beats an inflated 0.657 in front of any examiner. Also: transcription
 happens on-device; its text and a short WAV segment are sent via HTTPS, and the raw
@@ -196,12 +196,12 @@ augmentation was measured and found neutral — we say so instead of hiding it.
 
 ## Slide 9b — External Validation: does the score actually mean anything?
 **On slide:**
-- Anonymous adult IGDS9-SF survey — **112 raw → 87 usable**, scored through the *deployed* pipeline
-- **ρ = 0.352** [0.158, 0.521] vs the clinical instrument — CI excludes zero
-- **Beats the screen-time baseline it replaces**: hours ρ = 0.155 (CI spans zero); paired **Δρ = +0.195** [+0.026, +0.372]
-- Not a screen-time proxy: partial ρ = **0.349** with hours removed
-- Signal is in **pattern** features (0.358) not **volume** (0.202, CI includes zero)
-- Two results *against* us: genre multiplier **p = 0.491**; 3 of 5 proxy names track nothing
+- Anonymous adult IGDS9-SF survey — **134 raw → 104 usable**, scored through the *deployed* pipeline
+- **ρ = 0.317** [0.137, 0.478] vs the clinical instrument — CI excludes zero
+- **Leads the screen-time baseline it replaces**: hours ρ = 0.147 (CI spans zero); paired **Δρ = +0.167** [−0.002, +0.341], ahead in 97.4 % of resamples — the CI grazes zero, so the partial carries the claim
+- Not a screen-time proxy: partial ρ = **0.303** [0.110, 0.476] with hours removed
+- Signal is in **pattern** features (0.330) not **volume** (0.128) — formal paired contrast **+0.199 [+0.019, +0.380]**, excludes zero
+- Two results *against* us: genre multiplier **p = 0.598**; 4 of 5 proxy names track nothing
 
 **Table:** the 4-row summary (construct validity / hours baseline / paired delta /
 partial) — pull from `docs/survey_extras.json`. If you have room for a second visual,
@@ -211,14 +211,14 @@ all five pattern features above all five volume features, no interleaving.
 **Notes:** This is the slide the whole project builds toward, so protect its time.
 Every other number in the deck is measured *inside* our own training distribution;
 this one is measured outside it, against an instrument we didn't design, on people
-who never touched the app. Lead with the comparison, not the magnitude — 0.35 sounds
+who never touched the app. Lead with the comparison, not the magnitude — 0.32 sounds
 modest until you say the baseline every commercial parental-control tool ships reaches
-0.155 with a confidence interval spanning zero, and that our lead over it is itself
-significant. Then pre-empt the two questions that always follow. *Why no
+0.147 with a confidence interval spanning zero, and that the score keeps its correlation
+when hours is partialled out (0.303, CI excluding zero). Then pre-empt the two questions that always follow. *Why no
 sensitivity/specificity?* One respondent scored in the disordered range; the script
 refuses to print caseness metrics below ten positives, and that guard was written
 before we saw the data. *Why did you keep the genre multiplier if it failed?* Because
-the null is underpowered (36%), not decisive, and removing it flips 34% of served
+the null is underpowered (32%), not decisive, and removing it flips 34% of served
 bands — so it stays flagged and env-tunable rather than defended. Close on the two
 negative results: volunteer them. A validation study that only confirms isn't one.
 (DEFENSE_NOTES §10)
@@ -241,8 +241,8 @@ with-reasons more than adopted-without-reasons. (DEFENSE_NOTES §7)
 
 ## Slide 11 — Engineering Quality
 **On slide:**
-- **290 automated tests in CI**: 180 backend (run on BOTH SQLite & Postgres 16) + 110 Android JVM
-- Load-verified: 288 concurrent requests, **0 errors**, p50 80 ms
+- **291 automated tests + 7 research-integrity guards in CI**: 181 backend (run on BOTH SQLite & Postgres 16) + 110 Android JVM
+- Load-verified: 288 concurrent requests, **0 errors**, p50 66 ms
 - Weekly drift monitor vs production DB (PSI/KS) — live, verified against Neon
 - Signed-token auth, rate limiting, authz regression tests
 
@@ -271,9 +271,9 @@ audio deletion, speech-gated capture. (DEFENSE_NOTES §9)
 **On slide:**
 - Training labels still **synthetic** — the 91.6% is a synthetic-distribution number, and the survey does **not** upgrade it
 - Validated: the score's **meaning** (§9b). Not validated: its **accuracy at the clinical cut-off**
-- Blocker is named and quantified: 1 disordered-range respondent in 87 → need **~157 usable** at the 6.4% base rate
+- Blocker is named and quantified: 1 disordered-range respondent in 104 usable → need **~157 usable** at the 6.4% base rate
 - Adults, self-reported, cross-sectional — the deployment target is adolescents, measured, over time
-- Voice trained on acted adult emotion; gap quantified (leakage 9 pts; missing domain data 32 PR-AUC pts)
+- Voice trained on acted adult emotion; gap quantified (leakage 8.3 pts; missing domain data 31 PR-AUC pts)
 - One remaining tier: **per-child cohort** (guardian IGDS9-SF + telemetry) — needs ethics approval
 
 **Notes:** The framing shifted this year and the slide should show it: the weakest
@@ -290,7 +290,7 @@ own validation study refused to support." (DEFENSE_NOTES §10, §11)
 ## Slide 14 — Conclusion + Demo
 **On slide:**
 - Deployed end-to-end system · 3 real-data-grounded models · every choice ablated
-- **Externally validated**: ρ = 0.352 vs IGDS9-SF, beating the screen-time baseline
+- **Externally validated**: ρ = 0.317 vs IGDS9-SF, leading the screen-time baseline in 97 % of paired resamples
 - Reproducible: every number on these slides = one script in the repo
 - Future: per-child cohort (ethics-gated) → child-speech adaptation → per-family thresholds
 - **Live demo** (backup video ready)
@@ -305,7 +305,7 @@ data, not architecture."
 ---
 
 ## Timing & Q&A prep
-- 15 slides ≈ 16 min (slides 5–9b are the core — protect their time; **9b is the
+- 17 slides in the built deck ≈ 16 min (slides 5–9b are the core — protect their time; **9b is the
   single highest-value slide in the deck**, it is the only externally-anchored evidence).
-- If forced to cut: merge 3+4, and 11+12. Do **not** cut 9b.
+- If forced to cut: merge 4+5, and 13 into 14 (built-deck numbering). Do **not** cut 9b (deck slide 12).
 - Q&A: `docs/DEFENSE_NOTES.md` — read it the night before; it maps 1:1 to these slides.

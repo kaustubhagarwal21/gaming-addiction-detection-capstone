@@ -10,7 +10,7 @@ cloud check, and an on-device manual checklist. Run the automated layers any tim
 
 | Command | What it proves | Expected |
 |---|---|---|
-| `python -m pytest tests/ -q` | 180-test suite: API/OpenAPI contracts, dashboards and canonical risk roll-ups, credential-version revocation, parent/child authorization, strict request validation, consent, session finalization/backfill races, notifications/FCM identity and stale-token pruning, feedback/export/deletion privacy (incl. verdicts on risk-revision and toxicity-streak alerts), SQLite/Postgres compatibility, PDF generation, and ML/audio/text helper regressions — isolated throwaway DB | `180 passed` |
+| `python -m pytest tests/ -q` | 181-test suite: API/OpenAPI contracts, dashboards and canonical risk roll-ups, credential-version revocation, parent/child authorization, strict request validation, consent, session finalization/backfill races, notifications/FCM identity and stale-token pruning, feedback/export/deletion privacy (incl. verdicts on risk-revision and toxicity-streak alerts), SQLite/Postgres compatibility, PDF generation, and ML/audio/text helper regressions — isolated throwaway DB | `181 passed` |
 | `python scripts/functional_sweep.py` | **82 checks in production mode** (`AUTH_ENFORCE=1`, real tokens): registration/family joins, role guards, Family-PIN-authorized current-version consent, session lifecycle + observation mode + idempotent re-end, chat de-dupe/toxicity/nudges, WAV voice upload and late re-score, stale-session healing, heartbeat/tamper/permission alerts, feedback re-rating, dashboards/PDF, and parent-controlled deletion | `82/82 checks passed` |
 | `python scripts/cloud_e2e.py` | **25 checks against the LIVE Render deployment**: every screen's endpoint with real parent/child tokens, PDF bytes, cross-user 403 / no-token 401 guards | `25/25 passed` |
 | `python scripts/concurrency_smoke.py` | 288 mixed requests / 24 threads against a real threaded server (chat scoring + live predictions included) — re-run after any change to per-request cost | `zero server errors` (last: p50 66 ms, p95 684 ms) |
@@ -20,7 +20,7 @@ cloud check, and an on-device manual checklist. Run the automated layers any tim
 | `python -m pip_audit -r backend/requirements.txt` | Dependency CVE audit against the PyPI advisory DB | only the accepted dev-only `pytest` advisory |
 | `python -m bandit -r backend/ ml/ -ll` | **Python security static analysis** (the backend counterpart to MobSF on the apps) | 43 findings, all verified false positives — see docs/API_FUZZ_REPORT.md before "fixing" any SQL warning |
 | `python -m detect_secrets scan --all-files` | Committed-credential scan (this repo is public) | no tracked private key / keystore / server secret |
-| `python -m pytest tests/ -q --cov=. --cov-report=term-missing` | Statement coverage of the 180-test suite | **75%** overall, 80% of served code |
+| `python -m pytest tests/ -q --cov=. --cov-report=term-missing` | Statement coverage of the 181-test suite | **75%** overall, 80% of served code |
 
 Notes
 - **Research-integrity guards** (run from the repo root): `python -m pytest ml/tests/ -q`

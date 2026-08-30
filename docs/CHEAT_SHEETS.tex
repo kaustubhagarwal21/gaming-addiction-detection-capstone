@@ -61,7 +61,7 @@
 
 \newpage
 % ===================================================================
-\person{Khushee P Kiran}{Android apps, passive capture, anti-tamper, device cost}{slides 4, 10 (capture half), 14 --- and you drive the demo}
+\person{Khushee P Kiran}{ChildApp, passive capture, anti-tamper, device cost}{slides 4, 10 (capture half), 14 --- and you drive the demo}
 
 \sect{Numbers cold}
 \begin{itemize}[leftmargin=4mm,itemsep=0.5mm,topsep=0mm]\small
@@ -86,7 +86,7 @@
 
 \newpage
 % ===================================================================
-\person{Kanak Goyal}{Backend, deployment, fusion \& alerting, dataset provenance}{slides 5, 9, 13, 14 (backend half)}
+\person{Kanak Goyal}{Backend, deployment, alerting \& fusion serving, dataset provenance}{slides 5, 9, 13, 14 (backend half)}
 
 \sect{Numbers cold}
 \begin{itemize}[leftmargin=4mm,itemsep=0.5mm,topsep=0mm]\small
@@ -94,7 +94,7 @@
 \item Chat aggregation is \textbf{max, not mean} --- one severe message must not be averaged away
 \item Operating points: 0.85 $\to$ P 0.800/R 0.703 $\cdot$ 0.90 $\to$ 0.888/0.623 $\cdot$ \textbf{0.95 $\to$ 0.956/0.428 (deployed)}
 \item Feedback tuner: capped at \textbf{$\pm$0.05}, floored, and \textbf{human-applied} --- there is no automatic loop
-\item \textbf{180 backend tests} on SQLite \emph{and} Postgres 16, + 110 JVM + 7 research-integrity guards
+\item \textbf{181 backend tests} on SQLite \emph{and} Postgres 16, + 110 JVM + 7 research-integrity guards --- all in CI
 \item Load: \textbf{288 concurrent requests, 0 errors, p50 66\,ms} $\cdot$ 512\,MB serving budget
 \item Datasets: \textbf{11 adopted, 2 rejected with written evidence}, + StudentLife as a reality check
 \end{itemize}
@@ -107,17 +107,18 @@
 \qa{"Where are the fusion weights validated?"}{Straight answer: they are clinically-motivated priors, and the sensitivity analysis is in the paper --- we show how much the served bands move as they change. A validated weighting needs the telemetry-linked cohort, which is stage two.}
 
 \vfill
-{\color{greyt}\footnotesize \textbf{Hand-offs:} validation statistics $\to$ Kaustubh $\cdot$ on-device cost $\to$ Khushee $\cdot$ consent/privacy $\to$ Vidisha.}
+{\color{greyt}\footnotesize \textbf{Hand-offs:} validation statistics and fusion-weight \emph{design} $\to$ Kaustubh $\cdot$ on-device cost $\to$ Khushee $\cdot$ consent/privacy $\to$ Vidisha.}
 
 \newpage
 % ===================================================================
-\person{Vidisha Murali}{Ethics, privacy, scope, the India story --- and you open}{slides 2--3, 10 (chat/fairness half), 15}
+\person{Vidisha Murali}{ParentApp, ethics, privacy, scope, the India story --- and you open}{slides 2--3, 10 (chat/fairness half), 15}
 
 \sect{Numbers cold}
 \begin{itemize}[leftmargin=4mm,itemsep=0.5mm,topsep=0mm]\small
 \item Export scope \textbf{=} deletion scope, 15 tables, credentials excluded
 \item Consent is \textbf{versioned and fails closed} --- 403 until re-consent
 \item \textbf{Raw audio is never retained}: STT on-device, features extracted, audio deleted
+\item \textbf{ParentApp is yours}: SHAP top-3 reasons on every score, observation mode (no top band before 3 scored sessions), transparency screen, weekly PDF --- narrate these while Khushee drives the demo
 \item Hindi $\geq$ \textbf{0.95 precision} on all three registers (Devanagari, romanised, mixed)
 \item Survey: \textbf{adults 18+, anonymous}, no names/emails/identifiers, consent before the first question
 \item \textbf{Guide notified in writing 14 Aug 2026} --- official PES account, all four of us on the mail, design disclosed, explicit "does the department need more approval?"
@@ -127,6 +128,7 @@
 \qa{"Did you take permission for the survey? Where is the ethics approval?"}{\emph{Learn this one verbatim --- §10 of the notes.} There is a written record: 14 Aug 2026, official PES account, guide plus all teammates, full design disclosed, explicit approval query. That is faculty notification, \textbf{not} an ethics-committee determination, and no paper of ours says otherwise. \textbf{Concede the timing before they ask:} it went out while the form was still open --- after the main wave. Notification should have preceded the first response; it did not, and we corrected course mid-window. \textbf{If asked "did she reply?"} --- state only what the record documents and stop. We claim no reply, no approval, and no absence-of-objection.}
 \qa{"You alert on swear words but stay silent on self-harm."}{Name the asymmetry first --- it is real and we published it. It is a refusal to hard-code a contested clinical judgement into an automatic escalation. The tiered wellbeing-check is documented as a proposal and deliberately not shipped.}
 \qa{"Why only children? Why not adults?"}{A guardian with a duty of care is what makes screening someone who has not asked for it both possible and proportionate. The same system pointed at an adult is either a self-help journal or spyware.}
+\qa{"What does the parent actually see --- and can they misread it?"}{Bands with plain-language reasons (SHAP top-3), never a diagnosis. Observation mode refuses the top band until three scored sessions exist; the transparency screen lists exactly what is captured and when; the weekly PDF is the same numbers, not a new verdict.}
 \qa{"You are recording a child's microphone."}{Layered, and every layer is checkable: consent $\to$ on-device STT $\to$ server-side deletion $\to$ VAD gate $\to$ export and delete rights that share one scope.}
 
 \vfill

@@ -67,7 +67,7 @@
 >   (eval + retrain), `ml/ablation_studies.py`.
 > - **Voice**: trained on **RAVDESS + CREMA-D + EMO-DB + URDU** (9,817 clips, 154 speakers,
 >   3 languages) through the serving extractor; **speaker-independent** held-out accuracy
->   0.574 (the honest protocol — random splits inflated it by ~9 points). Script:
+>   0.574 (the honest protocol — random splits inflated it by 8.3 points). Script:
 >   `ml/train_voice_real.py`. TESS was assessed and skipped (2 elderly speakers,
 >   credential-walled mirrors).
 > - **Label-side stepping stone**: the open **IGDS9-SF Latin-America dataset (n=11,191)**
@@ -93,7 +93,7 @@ hours spread over a week.
 |---|---|
 | **Day 0** | Build the Google Form by pasting `SURVEY_IGDS9SF.md` verbatim — consent header, Q1–Q11 (incl. Q2b eligibility, the six gaming-pattern questions + attention check), IGDS9-SF grid. Link it to a Sheet. (~45 min) |
 | **Day 0** | **Before sharing the link**, submit 2–3 test responses yourself, export the CSV, and run `python ml/eval_behavior_survey.py <that.csv>`. It must report `N raw -> N usable`. If it reports `0 usable`, a question was reworded and the keyword matcher lost it — fix the wording *now*, because you cannot re-collect responses later. (`python -m pytest ml/tests/test_survey_parsing.py -q` guards the documented wordings.) (~10 min) |
-| **Day 0** | One-line email to the project guide: "anonymous 18+ survey on gaming habits for the capstone, no personal data — flagging for your records." (~5 min) |
+| **Day 0** | One-line email to the project guide: "anonymous 18+ survey on gaming habits for the capstone, no personal data — flagging it for your records." (~5 min) — *as planned; the mail actually went out 14 Aug, mid-window (item 2 under sequencing)* |
 | **Day 0–1** | Blast the link: class/section groups, hostel groups, college gaming groups (BGMI/Valorant squads are the highest-yield audience), club Discords, plus 5 friends asked to forward to *their* groups. Personal follow-ups roughly double completion. (~30 min) |
 | **Day 3–4** | One reminder ping in the same groups. Target **75–100 raw responses** so that after dropping non-gamers and attention-check failures you keep ≥50. (~10 min) |
 | **Day 6–7** | Sheet → File → Download → CSV → save as `data/survey/responses.csv` → run `python ml/eval_behavior_survey.py`. It prints + writes JSON: local prevalence (with CI), hours↔severity check, **behaviour-model score ↔ IGDS9-SF correlation (the construct-validity headline)**, and data-driven RISK_T1/T2 suggestions. Paste the numbers into the paper/model card. (~30 min) |
@@ -279,7 +279,7 @@ synthetic data — this is the actual ~9.5 move.
 
 ## Suggested sequencing (updated)
 1. ~~Public-dataset tier~~ — **done** (see status block above).
-2. ~~Ethics check + build the Google Form~~ — **done**; form floated 2026-08-07;
+2. ~~Guide notification + build the Google Form~~ — **done** (a notification, not an ethics clearance); form floated 2026-08-07;
    guide notified in writing 2026-08-14 (official PES account, design disclosed,
    approval query on record) while the form was open — after the main wave, before
    close-out and before analysis of the final sample. Papers state this timing exactly.

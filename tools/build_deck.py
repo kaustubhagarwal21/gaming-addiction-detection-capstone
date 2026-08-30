@@ -37,6 +37,29 @@ comp = SX['features']['composites']
 chat_ab = {r['config']: r for r in AB['chat']}
 fam = AF['by_language_family']
 
+
+def _paper_stats(name, fallback_pages):
+    """(pages, refs) read from the LaTeX log and source, so a slide can never quote a
+    stale page or reference count. Falls back to the last known page count if the log
+    is absent (fresh clone)."""
+    import re as _re
+    pages = fallback_pages
+    log = os.path.join(DOCS, name + '.log')
+    if os.path.exists(log):
+        with open(log, encoding='utf-8', errors='ignore') as f:
+            m = _re.search(r'Output written on ' + _re.escape(name) + r'\.pdf \((\d+) pages', f.read())
+        if m:
+            pages = int(m.group(1))
+    src = 'ieee_refs.tex' if name == 'IEEE_PAPER' else name + '.tex'
+    with open(os.path.join(DOCS, src), encoding='utf-8') as f:
+        refs = f.read().count('\\bibitem{')
+    return pages, refs
+
+
+REPORT_PP, REPORT_REFS = _paper_stats('PROJECT_PAPER', 48)
+IEEE_PP, IEEE_REFS = _paper_stats('IEEE_PAPER', 6)
+GENRE_POWER = SX['genre']['power_curve'][str(SV['construct_validity']['n'])] * 100
+
 # ---------- palette ----------
 NAVY = RGBColor(0x14, 0x22, 0x3C)
 TEAL = RGBColor(0x0E, 0x7C, 0x86)
@@ -197,23 +220,23 @@ _tb(s, Inches(0.9), Inches(4.7), Inches(11.5), Inches(1.2),
 _tb(s, Inches(0.9), Inches(5.9), Inches(11.5), Inches(0.5),
     'Guide: Prof. Shridevi Sawant   ·   Team PW26_SAS-03   ·   PES University, 2026', 15, False, PALE)
 s.notes_slide.notes_text_frame.text = (
-    'One sentence: "We built and deployed a complete parent-facing screening system — two Android apps and a '
-    'cloud ML backend — and evaluated it the way ML should be evaluated: real data where it exists, honest '
-    'numbers where it doesn\'t, and an external validation study that returned two results we did not want."')
+    'One sentence, identical from all four of us: "a deployed, multimodal screening system for parents that '
+    'measures how a child plays, not just how long — externally validated against a clinical instrument, with its '
+    'limitations named before you ask." If there is room: the study returned two results we did not want; we report both.')
 
 # =============== 1b. Phase III at a glance ===============
 s = base('Phase III — where each expectation is evidenced', 'System testing · V&V · deployment · final results · performance analysis · research paper', notes=(
     'Use this as the map for the panel: every Phase III expectation has a slide, a repo artefact and a number behind it. '
-    'If time is short, this slide plus slides 11 and 13 carry the grade. Point at the artefact column — everything is '
+    'If time is short, this slide plus slides 12 and 14 carry the grade. Point at the artefact column — everything is '
     'reproducible from the public repository, and 7 CI tests fail the build if the paper and the data disagree.'))
 table(s, [
     ['Phase III expectation', 'What we did', 'Evidence'],
-    ['**System testing**', '290 automated tests in CI (backend on SQLite + Postgres, Android JVM); load smoke, API fuzz, CVE + MobSF audits; on-device resource drill on real hardware', 'slide 14 · TESTING.md · ci.yml'],
+    ['**System testing**', '291 automated tests + 7 research-integrity guards in CI (backend on SQLite + Postgres, Android JVM, paper↔data guards); load smoke, API fuzz, CVE + MobSF audits; on-device resource drill on real hardware', 'slide 14 · TESTING.md · ci.yml'],
     ['**Validation & verification**', f'Held-out / speaker-independent / in-domain evaluation; ablations with 95 % CIs; **external construct validation** vs IGDS9-SF (n = {SV["construct_validity"]["n"]}); accent-fairness audit; 7 research-integrity guards', 'slides 10–12 · docs/*.json · ml/tests/'],
     ['**Deployment**', 'Live cloud backend (Render + Neon Postgres, HTTPS, tokens); signed APKs v2.4.0 on GitHub, validated on device; consented family pilot ran 23 days', 'slide 4 · DEPLOY.md · GitHub Releases'],
     ['**Final experimental results**', 'Behaviour 91.6 % (synthetic); chat PR-AUC 0.825 in-domain, ≥ 0.95 precision on 3 registers; voice 0.574 speaker-independent; **ρ = 0.317 vs clinical instrument**, leads hours baseline (97% of paired resamples; partial excludes zero)', 'slides 6–12 · model_metadata.json'],
     ['**Performance analysis (tables & graphs)**', 'PR curve · confusion matrices · reliability diagrams · ablation tables · survey correlation table + feature chart · device resource table · fairness-by-accent table', 'slides 6–14 · docs/figures/'],
-    ['**Complete research paper draft**', '47-page paper: architecture, methodology, 11-dataset audit, results, ablations, external validation, fairness audit, ethics & limitations, 44 references — numbers pinned to the data by CI', 'docs/PROJECT_PAPER.pdf'],
+    ['**Complete research paper draft**', f'{REPORT_PP}-page paper: architecture, methodology, 11-dataset audit, results, ablations, external validation, fairness audit, ethics & limitations, {REPORT_REFS} references — numbers pinned to the data by CI', 'docs/PROJECT_PAPER.pdf'],
 ], Inches(0.6), Inches(1.45), Inches(12.1), col_w=[Inches(2.7), Inches(6.5), Inches(2.9)], size=13)
 callout(s, 'Everything on this slide is reproducible from the public repository — and 7 CI tests fail the build if the paper and the data disagree.',
         Inches(0.6), Inches(6.0), Inches(12.1), Inches(0.75), TEAL, 14)
@@ -271,7 +294,7 @@ bullets(s, [
 s = base('Why Three Channels', 'They fail independently — fusion treats each as an optional witness', notes=(
     'A missing channel contributes nothing rather than a fake neutral score — an earlier version imputed missing '
     'modalities and diluted real signal. Behaviour dominates because it is always eventually present and best '
-    'measured. Say now: "the voice weight is lowest because we MEASURED it as the weakest channel — slide 7 shows '
+    'measured. Say now: "the voice weight is lowest because we MEASURED it as the weakest channel — slide 8 shows '
     'that number honestly." (DEFENSE_NOTES §1, §5)'))
 bullets(s, [
     '**Behaviour** needs days of telemetry; **chat** exists only when the child types; **voice** only when they speak',
@@ -293,7 +316,7 @@ s = base('Behaviour Model', 'Random Forest on ten measured features — calibrat
     'device telemetry with addiction labels — we audited candidates (slide 13). Grounding: IGDS9-SF Latin-America '
     '(11,191 real MOBA players) fixes severity base rates; Gamers & Anxiety (13,464) grounds behaviour–severity '
     'relations. The 20→10 feature cut: the 10 derived proxies are functions of the first 10; keeping them makes SHAP '
-    'circular — ablation 0.9191 vs 0.9160, CIs overlap. Say plainly: 91.6% is a synthetic-distribution number; slide 11 '
+    'circular — ablation 0.9191 vs 0.9160, CIs overlap. Say plainly: 91.6% is a synthetic-distribution number; slide 12 '
     'is where the score meets real labels. (DEFENSE_NOTES §2)'))
 bullets(s, [
     'Random Forest (200 trees × depth 6) on **10 objective features** — the model never sees the 10 derived proxies',
@@ -333,15 +356,15 @@ table(s, [
 
 # =============== 7. Voice ===============
 s = base('Voice Channel — two paths', 'On-device speech-to-text, and acoustic emotion trained on real speech', notes=(
-    'Pre-empt "57% is weak": chance on 4 classes is 25%; the interesting part is the 9-point gap — with random splits '
+    'Pre-empt "57% is weak": chance on 4 classes is 25%; the interesting part is the 8.3-point gap — with random splits '
     'the model memorised VOICES, not emotions, and the split choice even flipped which model won the bake-off. An honest '
     '0.574 beats an inflated 0.657 in front of any examiner. Transcription happens on-device; a short WAV goes up over '
-    'HTTPS and raw audio is deleted server-side after feature extraction. Measured on hardware (slide 13): the default '
-    'voice path costs ~14% of one core. Known gap (slide 15): acted adult emotion ≠ child gaming speech. (DEFENSE_NOTES §4)'))
+    'HTTPS and raw audio is deleted server-side after feature extraction. Measured on hardware (slide 14): the default '
+    'voice path costs ~14% of one core. Known gap (slide 16): acted adult emotion ≠ child gaming speech. (DEFENSE_NOTES §4)'))
 bullets(s, [
     'Path 1: **on-device** Vosk STT (Indian English) → transcript → the same chat toxicity model',
     'Path 2: 36 acoustic features → HistGB emotion, trained on **real** corpora (RAVDESS, CREMA-D, EMO-DB, URDU)',
-    'Speaker-independent accuracy **0.574** (chance 0.25) — random splits said 0.657: **9 points was speaker leakage**',
+    'Speaker-independent accuracy **0.574** (chance 0.25) — random splits said 0.657: **8.3 points was speaker leakage**',
     'Headroom measured: frozen w2v2 embeddings + same classifier → 0.776 — the ceiling a deployable distillation could reach',
 ], w=Inches(7.3), size=15)
 fig(s, 'cm_voice.png', Inches(8.2), Inches(1.5), w=Inches(4.6))
@@ -399,7 +422,7 @@ s = base('Verification — evaluation methodology', 'Every design choice has a m
     'Headline lesson: data > architecture — losing domain data costs 31 PR-AUC points, more than every architecture choice '
     'combined — and three transformer benchmarks (Detoxify on chat, w2v2 on voice, MuRIL on Hindi) confirm it: capacity helps '
     'in-distribution, domain and register fit decide. Mention the reported NEGATIVE result: voice augmentation was measured and '
-    'found neutral — we say so instead of hiding it. And now (slide 11) the pipeline output is anchored OUTSIDE its own '
+    'found neutral — we say so instead of hiding it. And now (slide 12) the pipeline output is anchored OUTSIDE its own '
     'training distribution. (DEFENSE_NOTES §6)'))
 bullets(s, [
     'Held-out only, seeds recorded; **voice = speaker-independent**; **chat = in-domain** (real game chat), not general-corpus',
@@ -418,11 +441,11 @@ callout(s, '7 research-integrity tests in CI pin the paper\'s numbers to the com
 s = base('Validation — does the score mean anything?', 'An IGDS9-SF survey, scored through the deployed pipeline, against real labels', notes=(
     'This is the slide the whole project builds toward — protect its time. Every other number in the deck is measured INSIDE '
     'our own training distribution; this one is measured outside it, against an instrument we did not design, on people who '
-    'never touched the app. Lead with the comparison, not the magnitude — 0.35 sounds modest until you say the baseline every '
+    'never touched the app. Lead with the comparison, not the magnitude — 0.32 sounds modest until you say the baseline every '
     'commercial parental-control tool ships reaches 0.147 with a CI spanning zero — and volunteer that the paired delta grazes zero after the late batch, so the partial correlation (0.303, CI excluding zero) carries the incremental claim. '
     'Pre-empt the two follow-ups: WHY NO SENSITIVITY/SPECIFICITY — one respondent scored in the disordered range; the script '
     'refuses caseness metrics below ten positives, a guard written before we saw the data. WHY KEEP THE GENRE MULTIPLIER — the '
-    'null is underpowered (36%), not decisive, and removing it flips 34% of served bands; it stays flagged and env-tunable. '
+    f'null is underpowered ({GENRE_POWER:.0f}%), not decisive, and removing it flips 34% of served bands; it stays flagged and env-tunable. '
     'Close on the two negative results: volunteer them. A validation study that only confirms is not one. (DEFENSE_NOTES §10)'))
 bullets(s, [
     f'Anonymous adult IGDS9-SF survey — **{SV["n_raw"]} raw → {SV["n_usable"]} usable**; pattern answers scored through the **deployed** serving path',
@@ -468,7 +491,7 @@ s = base('System Testing & Engineering Quality', 'Tested, load-verified, watched
     'is worth more than one that flattered it. Also on record: adb could not uninstall the app past the Device Admin block — the '
     'anti-tamper working against a developer with USB access. (DEFENSE_NOTES §8 + battery Q&A)'))
 bullets(s, [
-    '**290 automated tests in CI**: 180 backend (run on **both** SQLite & Postgres 16) + 110 Android JVM + 7 research-integrity guards',
+    '**291 automated tests + 7 research-integrity guards, all in CI**: 181 backend (run on **both** SQLite & Postgres 16) + 110 Android JVM; the guards fail the build if paper and data disagree',
     'Load-verified: 288 concurrent requests, **0 errors**, p50 66 ms; API fuzzed (schemathesis), CVE-audited, MobSF static audit clean',
     'Weekly **drift monitor** vs the production DB (PSI/KS); signed-token auth, rate limiting, authz regression tests',
     'Anti-tamper on record: even **adb could not uninstall** the app past the Device-Admin block without the parent PIN',
@@ -511,9 +534,9 @@ s = base('Limitations & What Is Still Open', 'Partial in a specific, nameable wa
 bullets(s, [
     'Training labels still **synthetic** — the 91.6 % is a synthetic-distribution number, and the survey does **not** upgrade it',
     'Validated: the score\'s **meaning** (ρ = 0.317; partial vs hours excludes zero). Not validated: its **accuracy at the clinical cut-off**',
-    'The blocker is quantified: **1** disordered-range respondent in 87 → need **~157 usable** at the 6.4 % base rate',
+    f'The blocker is quantified: **1** disordered-range respondent in {SV["n_usable"]} usable → need **~157 usable** at the 6.4 % base rate',
     'Adults, self-reported, cross-sectional — the deployment target is **adolescents, measured, over time**',
-    'Voice trained on acted adult emotion (gap quantified: leakage 9 pts; missing domain data 32 PR-AUC pts); dual-STT fails our resource gate',
+    'Voice trained on acted adult emotion (gap quantified: leakage 8.3 pts; missing domain data 31 PR-AUC pts); dual-STT fails our resource gate',
     'One remaining tier: a **per-child cohort** (guardian IGDS9-SF + telemetry) — needs ethics approval; the submission is the next artefact',
 ], size=15)
 

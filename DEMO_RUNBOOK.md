@@ -97,9 +97,9 @@ Then switch to the pre-seeded family for the data-rich story:
    wrong PIN refused) — the child can't quietly stop monitoring.
 
 ### C. Live capture (the impressive part — optional)
-1. Open **Roblox** → within ~5s a session auto-starts (no tapping).
+1. Open **Roblox** → within ~10 s a session auto-starts (no tapping).
 2. Type a chat message in-game, speak a sentence.
-3. Close Roblox → ~20s later the session auto-ends with a risk notification.
+3. Close Roblox → ~25 s later the session auto-ends with a risk notification.
 4. Back in ParentApp dashboard → pull to refresh → the new session appears (during
    play, the header strip showed "🎮 Playing Roblox now · N min" live).
 5. (Behind the scenes) `python verify_captures.py --limit 0` shows the captured
@@ -146,7 +146,7 @@ as a tamper event, not just a passive badge.
   word+char_wb TF-IDF, trained on real gaming-domain corpora — CONDA + Davidson —
   with **0.95 alert precision on held-out real gaming chat**), and voice emotion
   (HistGradientBoosting on 36 acoustic features, trained on 4 real speech corpora /
-  163 speakers / 3 languages, **speaker-independent** evaluation; fused with lexical
+  154 speakers / 3 languages, **speaker-independent** evaluation; fused with lexical
   valence from on-device Vosk transcription).
 - **Ensemble weighting (40/30/30):** a clinically-motivated *prior* — behavior dominant
   per DSM-5 IGD / ICD-11 Gaming Disorder; weights re-normalize by data availability.
@@ -165,7 +165,7 @@ as a tamper event, not just a passive badge.
   labels* are still synthetic screening priors, so the 91.6% accuracy is a
   synthetic-distribution number and the survey does not upgrade it — what the survey
   validates is that the score *means* something, not how accurate it is at a clinical
-  cut-off (uncomputable here: one disordered-range respondent in 87). The voice corpora
+  cut-off (uncomputable here: one disordered-range respondent in 104 usable). The voice corpora
   are acted adult speech, a proxy for child gaming speech; the ensemble weights are
   priors, not fitted; and the genre multiplier failed to reach significance in that
   same survey (p=0.598) and is retained-but-flagged. The feedback loop + drift monitor

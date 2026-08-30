@@ -51,6 +51,29 @@ chat_ab = {r['config']: r for r in AB['chat']}
 fam = AF['by_language_family']
 
 
+def _paper_stats(name, fallback_pages):
+    """(pages, refs) read from the LaTeX log and source, so a slide can never quote a
+    stale page or reference count. Falls back to the last known page count if the log
+    is absent (fresh clone)."""
+    import re as _re
+    pages = fallback_pages
+    log = os.path.join(DOCS, name + '.log')
+    if os.path.exists(log):
+        with open(log, encoding='utf-8', errors='ignore') as f:
+            m = _re.search(r'Output written on ' + _re.escape(name) + r'\.pdf \((\d+) pages', f.read())
+        if m:
+            pages = int(m.group(1))
+    src = 'ieee_refs.tex' if name == 'IEEE_PAPER' else name + '.tex'
+    with open(os.path.join(DOCS, src), encoding='utf-8') as f:
+        refs = f.read().count('\\bibitem{')
+    return pages, refs
+
+
+REPORT_PP, REPORT_REFS = _paper_stats('PROJECT_PAPER', 48)
+IEEE_PP, IEEE_REFS = _paper_stats('IEEE_PAPER', 6)
+GENRE_POWER = SX['genre']['power_curve'][str(SV['construct_validity']['n'])] * 100
+
+
 def loc(paths, exts=('.py', '.kt', '.java', '.xml', '.tex', '.md', '.yml')):
     files = subprocess.run(['git', 'ls-files', *paths], cwd=ROOT, capture_output=True, text=True).stdout.split()
     n = 0
@@ -218,7 +241,8 @@ band.fill.solid(); band.fill.fore_color.rgb = RUST; band.line.fill.background()
 thin = s.shapes.add_shape(MSO_SHAPE.RECTANGLE, 0, H - Inches(0.48), W, Inches(0.06))
 thin.fill.solid(); thin.fill.fore_color.rgb = ORANGE; thin.line.fill.background()
 s.notes_slide.notes_text_frame.text = ('One sentence: a deployed, multimodal screening system for parents that measures HOW a '
-                                        'child plays, not just how long — externally validated against a clinical instrument.')
+                                        'child plays, not just how long — externally validated against a clinical instrument, '
+                                        'with its limitations named before you ask.')
 
 # =============== 2. Outline (template p2) ===============
 s = slide('Outline')
@@ -256,9 +280,9 @@ table(s, [
     ['Phase', 'What was proposed / done', 'Suggestion or finding → improvement made'],
     ['**Phase 1** (approval)', 'AI-driven prediction app: playtime + chat sentiment + speech emotion; Casual / At-risk / Addicted; parental dashboard; Flutter/React Native + Firebase; Android + iOS; camera for facial expression; screen-recording OCR; Kaggle datasets',
      'Narrowed to what is **capturable, consentable and validatable**: native Android only (iOS has no capture API); camera **dropped** (no proportionate consent story); OCR **dropped** (privacy regression); Kaggle behaviour sets **audited and rejected** (synthetic provenance)'],
-    ['**Phase 2** (build + evaluate)', 'Both apps + Flask backend built and deployed; 3-model ensemble with calibration + SHAP; 11 real open datasets adopted by measured trial; ablations with CIs; family pilot; 266 tests in CI',
-     'Review feedback: "labels are synthetic" → grounded on 2 real surveys and stated on every slide; "voice number looks inflated" → speaker-independent split (–9 pts, honest); "no Hindi" → dual-script HASOC path + Devanagari keyboard'],
-    ['**Phase 3** (this review)', 'External validation survey; accent-fairness audit; on-device resource drill; v2.4.0 released; 47-page report + 5-page IEEE paper',
+    ['**Phase 2** (build + evaluate)', 'Both apps + Flask backend built and deployed; 3-model ensemble with calibration + SHAP; 11 real open datasets adopted by measured trial; ablations with CIs; family pilot; 266 tests in CI at Phase-2 close (291 now)',
+     'Review feedback: "labels are synthetic" → grounded on 2 real surveys and stated on every slide; "voice number looks inflated" → speaker-independent split (–8.3 pts, honest); "no Hindi" → dual-script HASOC path + Devanagari keyboard'],
+    ['**Phase 3** (this review)', f'External validation survey; accent-fairness audit; on-device resource drill; v2.4.0 released; {REPORT_PP}-page report + {IEEE_PP}-page IEEE paper',
      '"Does the score mean anything?" → **ρ = 0.317 vs IGDS9-SF, leads screen time in 97% of resamples**; "is it fair across accents?" → **0 false alerts / 9.6 h**, WER gap named; "battery?" → **measured**, dual-STT fails our gate → default OFF'],
 ], Inches(0.6), Inches(1.5), Inches(12.1), col_w=[Inches(1.7), Inches(5.0), Inches(5.4)], size=11)
 
@@ -271,7 +295,7 @@ s = slide('Inferences Drawn from Literature Survey', notes=(
 table(s, [
     ['Source', 'Inference', 'How it shaped our design'],
     ['You et al. 2025; Coșa et al. 2025; Ergin & Essau 2025 (family & IGD)', 'Parent–child relationship and behavioural patterns predict IGD better than raw exposure; interventions work through the family', 'Guardian-in-the-loop screening; **pattern** features (late-night, re-logins, binges) as first-class inputs; nudges, not blocks'],
-    ['Pontes & Griffiths 2015 (IGDS9-SF); LatAm IGDS9-SF dataset, n = 11,191', 'A validated 9-item DSM-5 instrument exists; disordered-range base rate ≈ 6.4 %; toxic-chat involvement tracks severity (r = +0.156)', 'IGDS9-SF as the **external validation anchor**; base rate grounds thresholds; chat channel justified — and replicated locally (ρ = 0.315)'],
+    ['Pontes & Griffiths 2015 (IGDS9-SF); LatAm IGDS9-SF dataset, n = 11,191', 'A validated 9-item DSM-5 instrument exists; disordered-range base rate ≈ 6.4 %; toxic-chat involvement tracks severity (r = +0.156)', f'IGDS9-SF as the **external validation anchor**; base rate grounds thresholds; chat channel justified — and replicated locally (ρ = {SX["chat_premise"]["rho"]:.3f})'],
     ['Huang et al. 2024; Jiang 2024 (ML for gaming disorder)', 'Prior ML work models survey data or single signals; none deploys passive multi-signal capture to a guardian', 'The gap we fill: deployed, multimodal, explainable, calibrated'],
     ['Weld et al. 2021 (CONDA); Mandl et al. 2019 (HASOC); Javed et al. 2023 (Svarah)', 'In-game chat and code-mixed Hindi are their own registers; Indian-accent ASR error is uneven', 'Domain corpora over model capacity (toxic-BERT loses to our LogReg by 12 pts); dual-script Hindi; **accent-fairness audit**'],
     ['**Our own survey (n = 104 usable)**', 'Every pattern feature out-ranks every volume feature against IGDS9-SF', 'The design premise — measure *how*, not *how long* — confirmed against real labels'],
@@ -354,17 +378,17 @@ full = chat_ab['full recipe (deployed)']
 no_conda = chat_ab['- CONDA corpus (domain data)']
 s = slide('Demonstration and Testing of the Modules Completed', notes=(
     'Demo per DEMO_RUNBOOK §3 (parent dashboard → alerts + verdict → nudge → chat/emotion → live capture in Roblox → '
-    'tamper). Backup video ready. Testing: 290 automated tests in CI on both DB dialects; load, fuzz, CVE, MobSF; '
+    'tamper). Backup video ready. Testing: 291 automated tests + 7 research-integrity guards in CI on both DB dialects; load, fuzz, CVE, MobSF; '
     'on-device drill numbers here are MEASURED (Galaxy M52, 2026-08-18). Results table: every number is from the '
     'committed JSONs; 7 CI guards fail the build if the paper and data disagree.'))
 table(s, [
     ['Module', 'Result (held-out, real data unless stated)', 'Testing'],
     ['Behaviour model', '91.6 % acc · macro-F1 0.918 · CV 0.921 ± 0.002 (**synthetic labels**, grounded on 2 real surveys); ECE 0.062 → 0.015', 'Ablations w/ CIs; hours-only baseline 0.702; pattern-5 0.902 vs volume-5 0.871'],
     ['Chat model', f'In-domain PR-AUC **{full["pr_auc"]:.3f}** {ci(full["pr_auc_ci95"])}; P 0.956 / R 0.428 @ 0.95; Hindi P 0.968 (Devanagari) / 0.958 (romanised)', f'Ablation: − CONDA → {no_conda["pr_auc"]:.3f}; toxic-BERT baseline 0.709; HASOC held-out 933 rows'],
-    ['Voice model', '0.574 acc speaker-independent (chance 0.25); random split 0.657 → 9-pt leakage exposed', 'Speaker-independent CV; w2v2 headroom 0.776; augmentation ablation neutral'],
-    ['**External validation**', f'ρ = **{SV["construct_validity"]["rho"]:.3f}** {ci(SV["construct_validity"]["ci95"])} vs IGDS9-SF (n = {SV["construct_validity"]["n"]}); hours baseline {inc["rho_hours"]:.3f}; Δρ = +{inc["delta_rho"]:.3f} {ci(inc["delta_ci"])}; pattern {comp["pattern"]["rho"]:.3f} vs volume {comp["volume"]["rho"]:.3f}', f'Pre-specified exclusions; paired bootstrap; late batch folded in per pre-stated rule; genre null p = {SX["genre"]["p"]:.3f} reported; caseness withheld (1 positive)'],
+    ['Voice model', '0.574 acc speaker-independent (chance 0.25); random split 0.657 → 8.3-pt leakage exposed', 'Speaker-independent CV; w2v2 headroom 0.776; augmentation ablation neutral'],
+    ['**External validation**', f'ρ = **{SV["construct_validity"]["rho"]:.3f}** {ci(SV["construct_validity"]["ci95"])} vs IGDS9-SF (n = {SV["construct_validity"]["n"]}); hours baseline {inc["rho_hours"]:.3f}; Δρ = +{inc["delta_rho"]:.3f} {ci(inc["delta_ci"])}; pattern {comp["pattern"]["rho"]:.3f} vs volume {comp["volume"]["rho"]:.3f}, formal contrast **+{comp["pattern_minus_volume"]["diff"]:.3f}** {ci(comp["pattern_minus_volume"]["ci"])}', f'Pre-specified exclusions; paired bootstrap; late batch folded in per pre-stated rule; genre null p = {SX["genre"]["p"]:.3f} reported; caseness withheld (1 positive)'],
     ['Fairness (STT → toxicity)', f'**0 false alerts** in {AF["overall"]["speech_hours"]} h / {AF["overall"]["clips"]:,} clips, every accent group; WER {fam["Dravidian"]["wer"]*100:.1f} % Dravidian → {fam["Tibeto-Burman"]["wer"]*100:.1f} % Tibeto-Burman', 'Svarah (117 speakers); deployed recogniser + served scorer'],
-    ['System / apps', 'Live on Render + Neon; v2.4.0 signed APKs validated on device; 23-day pilot; default path 14 % CPU / 288 MB; dual-STT 51–72 % / 419 MB → **fails gate → default OFF**', '180 backend (SQLite + Postgres) + 110 JVM + 7 guards; 288-req load 0 errors; fuzz; CVE; MobSF'],
+    ['System / apps', 'Live on Render + Neon; v2.4.0 signed APKs validated on device; 23-day pilot; default path 14 % CPU / 288 MB; dual-STT 51–72 % / 419 MB → **fails gate → default OFF**', '181 backend (SQLite + Postgres) + 110 JVM + 7 guards, all in CI; 288-req load 0 errors; fuzz; CVE; MobSF'],
 ], Inches(0.6), Inches(1.45), Inches(12.1), col_w=[Inches(1.9), Inches(6.2), Inches(4.0)], size=10, hi=(4,))
 fig(s, 'survey_features.png', Inches(0.6), Inches(5.0), h=Inches(1.95))
 fig(s, 'pr_chat.png', Inches(4.1), Inches(5.0), h=Inches(1.95))
@@ -389,7 +413,7 @@ tasks = [
     ('Hindi dual-script chat + Devanagari keyboard + dual-STT (v2.4.0)', 5, 7, 'done'),
     (f'External validation survey (IGDS9-SF, n = {SV["n_raw"]}) + analysis', 6, 7, 'done'),
     ('Accent-fairness audit · on-device drill · v2.4.0 release', 6, 7, 'done'),
-    ('Report (47 pp) · IEEE paper (5 pp) · defense kit', 6, 7, 'done'),
+    (f'Report ({REPORT_PP} pp) · IEEE paper ({IEEE_PP} pp) · defense kit', 6, 7, 'done'),
     ('Phase 3 reviews · final submission · viva', 6, 8, 'open'),
 ]
 gx, gy, gw = Inches(0.6), Inches(1.55), Inches(12.1)
@@ -414,7 +438,7 @@ _tb(s, gx, gy + row_h * (len(tasks) + 1) + Inches(0.05), gw, Inches(0.4),
     'Solid = complete · Light = in progress. Cadence from git: 19 commits May · 100 Jun · 48 Jul · 70 Aug (to 18 Aug).', 11, False, GREY)
 
 # =============== 11. References (template p9) ===============
-s = slide('References', notes='IEEE format; the full 44-entry list is in the report, 22 in the IEEE paper.')
+s = slide('References', notes=f'IEEE format; the full {REPORT_REFS}-entry list is in the report, {IEEE_REFS} in the IEEE paper.')
 refs = [
     'H. M. Pontes and M. D. Griffiths, "Measuring DSM-5 Internet Gaming Disorder: Development and validation of a short psychometric scale," Computers in Human Behavior, vol. 45, pp. 137–143, 2015.',
     'World Health Organization, International Classification of Diseases 11th Revision (ICD-11) — Gaming disorder (6C51), 2019.',

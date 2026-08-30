@@ -58,6 +58,23 @@ jobs:
           DATABASE_URL: postgresql://capstone:capstone@localhost:5432/capstone_test
         run: python -m pytest tests/ -v
 
+  # The 7 research-integrity guards pin every survey / ablation number quoted in the
+  # papers, decks and notes to the committed JSONs. "The guards fail the build if the
+  # paper and the data disagree" is only true if CI actually runs them — so it does.
+  research-integrity-guards:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
+      - name: Install dependencies (the guards exercise the analysis scripts)
+        run: pip install -r backend/requirements.txt pytest
+      - name: Paper <-> data guards
+        run: python -m pytest ml/tests -q
+
   # The two apps deliberately carry an IDENTICAL RiskPresentation (main + test) so
   # family-facing risk wording can never drift between them again — enforce it.
   shared-source-sync:

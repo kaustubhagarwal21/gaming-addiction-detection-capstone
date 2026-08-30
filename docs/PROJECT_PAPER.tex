@@ -206,7 +206,7 @@ rather than to maximise a headline accuracy number.
   \item An evaluation methodology with teeth: model-family bake-offs for all three
         channels, one-component-at-a-time ablations with bootstrap confidence
         intervals, speaker-independent voice splits (which quantified a
-        $\sim$9-point leakage inflation and \emph{reversed} a model-selection
+        8.3-point leakage inflation and \emph{reversed} a model-selection
         verdict), thresholds re-derived from held-out curves on every model change,
         and negative results reported alongside positive ones.
   \item \textbf{External construct validation against a clinical instrument}
@@ -594,7 +594,7 @@ had to \emph{earn} their place with a measured, held-out effect (reported in
 Gamers \& Anxiety (OSF, $n{=}13{,}464$) & adopted & real survey; grounds play-time bands + peer percentiles (hand-set table was measurably wrong) \\
 IGDS9-SF Latin America (OSF, $n{=}11{,}191$) & adopted & real IGD labels; severity base rate + chat-premise validation \\
 General toxicity corpus~\cite{jigsaw2018} & adopted & chat training base --- Jigsaw Wikipedia talk-page comments ($86\%$), plus a Davidson copy and a small YouTube set \\
-CONDA (real Dota~2 chat) & adopted & the in-domain anchor: its removal collapses PR-AUC $0.831 \rightarrow 0.512$ \\
+CONDA (real Dota~2 chat) & adopted & the in-domain anchor: its removal collapses PR-AUC $0.825 \rightarrow 0.511$ \\
 Davidson et al.\ tweets & adopted & real informal/slang register; measured PR-AUC gain (ablation table, \S6.4) \\
 HASOC 2019 Hindi~\cite{hasoc2019} & adopted & real Hindi abuse, trained in both scripts (Devanagari + romanised); measured trials: CONDA holds in-CI, Hindi alert capability near-$0 \rightarrow \geq 0.95$ precision on each script \\
 Hindi Wikipedia clean sample~\cite{wikihi} & adopted & drains a measured script-level toxicity prior (friendly Devanagari chat read $0.78$--$0.88$ before; the counterweight also lifts every Hindi held-out metric) \\
@@ -699,7 +699,7 @@ refuses otherwise). For voice, splits are \textbf{speaker-independent}
 (\texttt{GroupShuffleSplit} on speaker id, with augmented variants inheriting their
 clip's speaker): a random clip split lets the model partly recognise the
 \emph{person}, and we quantify that leakage directly --- the same configuration
-reads $0.657$ under random splits and $0.574$ speaker-independent, a $\approx 9$-point
+reads $0.657$ under random splits and $0.574$ speaker-independent, an $8.3$-point
 inflation that also \emph{flipped the model-selection verdict}
 (\S\ref{sec:modelselection}).
 
@@ -1399,7 +1399,7 @@ Per-message alerting is deliberately precision-first, which caps per-message rec
 --- but toxic players repeat, and repetition is itself evidence. The backend
 therefore raises \emph{one aggregate ``repeated concerning language'' alert} when
 three messages in a session score above a lower bar ($0.6$, where per-message recall
-is $0.85$ in-domain at precision $0.60$), so repeated toxicity in a session
+is $0.82$ in-domain at precision $0.63$), so repeated toxicity in a session
 surfaces even when no single line crosses the per-message cutoff. The three
 flagged messages are correlated (same speaker, same session), so the bar is a
 repetition heuristic that suppresses one-off false positives, not an
@@ -1440,7 +1440,7 @@ Macro-F1 & \multicolumn{4}{c}{0.568} \\
 This \emph{replaces} the earlier synthetic-feature model, whose $0.9925$ accuracy we
 had already flagged as internal validity only. The protocol matters as much as the
 number: under random clip splits this same configuration reads $0.657$, and the
-$\approx 9$-point gap \emph{is the quantified speaker leakage} --- the model partly
+$8.3$-point gap \emph{is the quantified speaker leakage} --- the model partly
 recognising people rather than emotions (\S\ref{sec:evalmethod}). $0.574$ on unseen
 speakers across three languages is the corrected generalisation number, and it is why
 voice keeps its low, corroborating-only ensemble weight ($0.30$, tied with chat and
@@ -1802,7 +1802,7 @@ choice &
 Leakage quantified ($0.657 \rightarrow 0.574$, and it had been selecting the wrong
 model); every design choice now carries a measured, CI-qualified delta
 (\S\ref{sec:ablations}); domain data revealed as the dominant chat factor
-($+0.32$ PR-AUC) \\
+($+0.31$ PR-AUC) \\
 \end{xltabular}
 
 The unifying principle is the paper's existing stance --- honesty over headline
@@ -1815,7 +1815,7 @@ assumptions --- drive the next revision.
 \begin{itemize}[leftmargin=1.4em]
   \item Production-deployed cloud backend (HTTPS, token auth, consent, durable
         managed Postgres); both apps build as signed release APKs.
-  \item A layered test program, all passing: a 180-test API suite (isolated database;
+  \item A layered test program, all passing: a 181-test API suite (isolated database;
         includes ML-unit tests for the shared audio extractor, noisy-OR fusion,
         threshold-tuner math and the session-streak alert; run automatically in CI
         against \textbf{both} SQLite and PostgreSQL~16 --- the production dialect ---
@@ -1856,7 +1856,7 @@ assumptions --- drive the next revision.
         16\,MB request-body cap, and threaded single-worker serving sized to the
         512\,MB instance. Verified with a concurrent smoke test (288 mixed requests
         across 24 threads, zero errors; re-verified after the heavier chat vectorizer
-        landed --- p50 80\,ms, p95 609\,ms --- via the permanent
+        landed --- p50 66\,ms, p95 684\,ms --- via the permanent
         \texttt{scripts/concurrency\_smoke.py}). On the device side, state shared across the
         monitor, accessibility, keyboard and notification threads is made thread-safe
         (concurrent game-detection cache; a crash-safe offline chat queue that removes a
@@ -2382,7 +2382,7 @@ Parent value & Per-day weighted risk + ``why'' (SHAP), live ``playing now'' + mo
 Child wellbeing & Mira check-in (typing indicator, double-send guard), gamified daily check-in + streak, reflections, breathing, break/limit nudges, today-vs-goal progress \\
 Reliability/anti-tamper & Heartbeat watchdog (uninstall/kill/offline alert, child-local quiet hours), optional Device Admin (uninstall block + instant disable alert), battery-optimisation exemption, double-start-safe services, consent-gated boot resume, parent-PIN lock on logout/settings (server-verified, constant-time), logout \emph{and} login alerts with truthful monitoring status, idempotent session-end, self-scoring stale-session guard, per-child risk notifications, multi-guardian FCM push (lazy-init) \\
 Privacy/Security & Token auth + \emph{role} checks on every parent-only endpoint, deleted-account tokens locked out despite the stateless 30-day TTL (TTL-cached existence probe), peppered PIN hashes (validated, family-wide PIN change), HTTPS-only, encrypted token store, consent (versioned), raw-audio deletion, retention purge, parent-controlled data export mirroring the deletion scope (credentials excluded), 16\,MB body cap, opt-in Sentry crash monitoring (stack traces only, no PII), family code always recoverable in PIN-gated Settings \\
-Engineering & Dual-dialect DB with pooled validated Postgres connections + composite indexes on the hot query paths, per-client rate limiting, hot-path caching/throttling + audio-concurrency cap + bounded throttle caches, thread-safe device-side shared state (concurrent cache, crash-safe confirm-then-delete offline queue, WorkManager network-aware retry), signed APKs, layered tests (180 API + 110 Android JVM + 82 production-mode + 25 live-cloud) + concurrency smoke + CI (pytest on SQLite \emph{and} PostgreSQL, Android lint + unit tests per push, weekly drift monitor against the production DB), real-device validated, lint-clean, deployed + durable DB \\
+Engineering & Dual-dialect DB with pooled validated Postgres connections + composite indexes on the hot query paths, per-client rate limiting, hot-path caching/throttling + audio-concurrency cap + bounded throttle caches, thread-safe device-side shared state (concurrent cache, crash-safe confirm-then-delete offline queue, WorkManager network-aware retry), signed APKs, layered tests (181 API + 110 Android JVM + 82 production-mode + 25 live-cloud) + concurrency smoke + CI (pytest on SQLite \emph{and} PostgreSQL, Android lint + unit tests per push, weekly drift monitor against the production DB), real-device validated, lint-clean, deployed + durable DB \\
 \bottomrule
 \end{tabularx}
 \end{center}
