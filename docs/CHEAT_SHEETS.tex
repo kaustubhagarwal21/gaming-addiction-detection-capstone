@@ -1,0 +1,135 @@
+% One page per person — print 4 pages, hand one to each teammate.
+% Content is the owner-rows of docs/TEAM_BRIEFING.md, compressed to what you
+% hold in your hand while standing up. Rebuild:  latexmk -pdf docs/CHEAT_SHEETS.tex
+\documentclass[10pt,a4paper]{article}
+\usepackage[margin=14mm]{geometry}
+\usepackage[T1]{fontenc}
+\usepackage[utf8]{inputenc}
+\usepackage{textcomp}
+\usepackage{enumitem}
+\usepackage{xcolor}
+\usepackage{titlesec}
+\usepackage{tcolorbox}
+\usepackage{helvet}
+\renewcommand{\familydefault}{\sfdefault}
+\setlength{\parindent}{0pt}
+\pagestyle{empty}
+
+\definecolor{navy}{HTML}{14223C}
+\definecolor{teal}{HTML}{0E7C86}
+\definecolor{amber}{HTML}{D9821E}
+\definecolor{greyt}{HTML}{5B636E}
+
+\newcommand{\person}[3]{%
+  \begin{tcolorbox}[colback=navy,colframe=navy,boxsep=1.5mm,left=3mm,right=3mm,top=1.5mm,bottom=1.5mm]
+  {\color{white}\Large\bfseries #1}\\[1mm]
+  {\color{white!80!navy}\small #2 \hfill \textbf{Run order: #3}}
+  \end{tcolorbox}\vspace{1mm}}
+
+\newcommand{\sect}[1]{\vspace{2mm}{\color{teal}\bfseries\small\MakeUppercase{#1}}\\[0.6mm]\hrule height 0.4pt\vspace{1.2mm}}
+
+% a hard question + the one-line answer you give
+\newcommand{\qa}[2]{\begin{minipage}{\linewidth}\small\textbf{\color{navy}#1}\\[0.3mm]\color{black!85}#2\end{minipage}\vspace{1.6mm}}
+
+\begin{document}
+
+% ===================================================================
+\person{Kaustubh Agarwal}{ML models, evaluation, external validation, the close}{slides 6--8, 11--12, 16--17 + demo}
+
+\sect{Numbers cold}
+\begin{itemize}[leftmargin=4mm,itemsep=0.5mm,topsep=0mm]\small
+\item Behaviour \textbf{91.6\,\%} --- \emph{say "on synthetic labels" in the same breath}
+\item Chat \textbf{PR-AUC 0.825}; at the 0.95 alert threshold \textbf{P 0.956 / R 0.428}
+\item Voice \textbf{0.574} speaker-independent (random splits said 0.657 --- an 8.3-point leakage we found and corrected)
+\item \textbf{$\rho$ = 0.317} [0.137, 0.478], $n$ = 103 --- the pre-designated primary endpoint
+\item Screen-time baseline \textbf{0.147}; model ahead in \textbf{97.4\,\%} of resamples ($\Delta\rho$ = +0.167, CI grazes zero --- \emph{say "suggestive, not established"})
+\item \textbf{Partial $\rho$ = 0.303} [0.110, 0.476] --- hours removed, still excludes zero
+\item \textbf{Pattern $-$ volume = +0.199 [+0.019, +0.380]} --- formally tested, excludes zero. \emph{This is your strongest number. Reach for it whenever the $\Delta\rho$ is attacked.}
+\item Genre $p$ = 0.598 (32\,\% power) $\cdot$ 1 disordered respondent $\to$ $\sim$157 usable needed for caseness
+\item Svarah fairness: \textbf{0 false alerts / 9.6\,h}; WER 35\,\% $\to$ 61\,\% across L1 families
+\end{itemize}
+
+\sect{Hardest questions}
+\qa{"0.32 is a weak correlation."}{$\sim$10\,\% shared variance, and 0.3--0.5 is the normal band for a brief screener against a full instrument (PHQ-2 vs PHQ-9). We claim construct carriage, not clinical accuracy. Then pivot to the baseline: the thing it beats is the screen-time counter every shipping tool uses.}
+\qa{"Why no sensitivity / specificity?"}{One respondent scored in the disordered range. The guard that refuses those metrics below a minimum positive count was written \emph{before} the data arrived. Reporting them off $n$=1 would be the dishonest choice.}
+\qa{"Your training labels are synthetic."}{Correct, and stated on every slide it matters. That is exactly why the survey exists --- it is where the served score meets a real clinical instrument.}
+\qa{"Your headline dropped from 0.352 to 0.317."}{Say it before they find it. A late batch of 22 arrived after the main wave; the rule for including late responses was fixed before any of it existed, so we folded it in and reported the attenuated number.}
+\qa{"Why is the genre multiplier still there?"}{An underpowered null is not evidence of no effect (32\,\% power). We flag it, we publish the failed test, and we report that removing it flips 34\,\% of bands --- which is precisely why it needs a powered study, not a silent deletion.}
+
+\vfill
+{\color{greyt}\footnotesize \textbf{Hand-offs:} device/battery numbers $\to$ Khushee $\cdot$ thresholds \& fusion $\to$ Kanak $\cdot$ ethics framing $\to$ Vidisha. \textbf{Protect slide 12's time.} Never say "addicted" or "diagnosis".}
+
+\newpage
+% ===================================================================
+\person{Khushee P Kiran}{Android apps, passive capture, anti-tamper, device cost}{slides 4, 10 (capture half), 14 --- and you drive the demo}
+
+\sect{Numbers cold}
+\begin{itemize}[leftmargin=4mm,itemsep=0.5mm,topsep=0mm]\small
+\item Default path (English STT): \textbf{14\,\% of one core, 288\,MB mean / 301\,MB peak} --- passes every gate
+\item Dual Hindi+English STT: \textbf{51--72\,\% CPU, 399/419\,MB --- fails 2 of our 3 gates, which is why it ships default OFF}
+\item Measured 2026-08-18, Galaxy M52 5G, \textbf{two back-to-back 15-min Roblox sessions}, per-minute sampling
+\item Data: \textbf{7.16\,MB up / 0.19\,MB down} per 15-min session $\cdot$ temp drift 37.5\,\textrightarrow\,39.2\,\textdegree C $\cdot$ \textbf{no thermal throttling}
+\item Cold start \textbf{569\,ms} true-cold, $\sim$230\,ms warm $\cdot$ session auto-start $\sim$10\,s, auto-end $\sim$25\,s, nudge $\sim$12\,s
+\item For scale: \emph{Roblox itself} runs at 215\,\% CPU --- our monitor is a rounding error next to the game
+\item v2.4.0 signed release; signing cert unchanged since day one
+\end{itemize}
+
+\sect{Hardest questions}
+\qa{"Did you actually measure battery, or are you guessing?"}{Measured, and the honest footnote comes first: \texttt{batterystats} reports zero power while the phone is on USB for adb, so we report the charging-safe proxy Android's own model uses --- averaged per-app CPU time --- plus RAM, thermal and data. Full table in \texttt{TESTING.md}.}
+\qa{"Can a child just evade it?"}{Yes, in one disclosed way: browser and webview games. Our boundary is \emph{installed apps, not games}. Closing it needs screen-capture or URL surveillance, which we refuse --- a disclosed boundary beats a privacy regression.}
+\qa{"What if they switch keyboards?"}{Detected. The heartbeat carries capture-capability bits; the parent gets an alert and the child gets a self-heal prompt.}
+\qa{"Clear app data and the observation counter resets?"}{No --- the counter is server-side. And the heartbeat dying is itself the alert.}
+\qa{"Can adb uninstall it?"}{We tried. \texttt{DELETE\_FAILED\_DEVICE\_POLICY\_MANAGER} --- Device Admin blocks it, and disabling admin fires an instant parent alert.}
+
+\vfill
+{\color{greyt}\footnotesize \textbf{Before the room:} both phones charged, on venue Wi-Fi, backend pre-warmed (\texttt{/api/health} $\to$ \texttt{models\_loaded: true}), video fallback on the laptop desktop. \textbf{Hand-offs:} model numbers $\to$ Kaustubh $\cdot$ server/CI $\to$ Kanak.}
+
+\newpage
+% ===================================================================
+\person{Kanak Goyal}{Backend, deployment, fusion \& alerting, dataset provenance}{slides 5, 9, 13, 14 (backend half)}
+
+\sect{Numbers cold}
+\begin{itemize}[leftmargin=4mm,itemsep=0.5mm,topsep=0mm]\small
+\item Fusion \textbf{40/30/30}, renormalised over whichever channels are actually present
+\item Chat aggregation is \textbf{max, not mean} --- one severe message must not be averaged away
+\item Operating points: 0.85 $\to$ P 0.800/R 0.703 $\cdot$ 0.90 $\to$ 0.888/0.623 $\cdot$ \textbf{0.95 $\to$ 0.956/0.428 (deployed)}
+\item Feedback tuner: capped at \textbf{$\pm$0.05}, floored, and \textbf{human-applied} --- there is no automatic loop
+\item \textbf{180 backend tests} on SQLite \emph{and} Postgres 16, + 110 JVM + 7 research-integrity guards
+\item Load: \textbf{288 concurrent requests, 0 errors, p50 66\,ms} $\cdot$ 512\,MB serving budget
+\item Datasets: \textbf{11 adopted, 2 rejected with written evidence}, + StudentLife as a reality check
+\end{itemize}
+
+\sect{Hardest questions}
+\qa{"Why threshold 0.95 instead of best-F1?"}{Base-rate arithmetic. A false alarm costs parental trust, and trust is the product. At best-F1 roughly 1 in 5 alerts is wrong; at 0.95 it is about 1 in 23. We chose precision and we say what it costs us --- recall drops to 0.428.}
+\qa{"Can an anxious parent drag the thresholds down until everything alerts?"}{No. The tuner is capped at $\pm$0.05, floored, and never applies itself --- a human does. There is no closed feedback loop for exactly this reason.}
+\qa{"Why RF and logistic regression instead of BERT?"}{Measured, not assumed: off-the-shelf toxic-BERT scores 0.709 on our split against our 0.825, inside a 512\,MB serving budget. We report the comparison rather than claiming transformers were infeasible.}
+\qa{"Why did you reject those Kaggle datasets?"}{We downloaded and inspected them. Synthetic provenance in one; the other measures engagement, which is not addiction. Both rejections are written up with the evidence --- §7 of the notes.}
+\qa{"Where are the fusion weights validated?"}{Straight answer: they are clinically-motivated priors, and the sensitivity analysis is in the paper --- we show how much the served bands move as they change. A validated weighting needs the telemetry-linked cohort, which is stage two.}
+
+\vfill
+{\color{greyt}\footnotesize \textbf{Hand-offs:} validation statistics $\to$ Kaustubh $\cdot$ on-device cost $\to$ Khushee $\cdot$ consent/privacy $\to$ Vidisha.}
+
+\newpage
+% ===================================================================
+\person{Vidisha Murali}{Ethics, privacy, scope, the India story --- and you open}{slides 2--3, 10 (chat/fairness half), 15}
+
+\sect{Numbers cold}
+\begin{itemize}[leftmargin=4mm,itemsep=0.5mm,topsep=0mm]\small
+\item Export scope \textbf{=} deletion scope, 15 tables, credentials excluded
+\item Consent is \textbf{versioned and fails closed} --- 403 until re-consent
+\item \textbf{Raw audio is never retained}: STT on-device, features extracted, audio deleted
+\item Hindi $\geq$ \textbf{0.95 precision} on all three registers (Devanagari, romanised, mixed)
+\item Survey: \textbf{adults 18+, anonymous}, no names/emails/identifiers, consent before the first question
+\item \textbf{Guide notified in writing 14 Aug 2026} --- official PES account, all four of us on the mail, design disclosed, explicit "does the department need more approval?"
+\end{itemize}
+
+\sect{Hardest questions}
+\qa{"Did you take permission for the survey? Where is the ethics approval?"}{\emph{Learn this one verbatim --- §10 of the notes.} There is a written record: 14 Aug 2026, official PES account, guide plus all teammates, full design disclosed, explicit approval query. That is faculty notification, \textbf{not} an ethics-committee determination, and no paper of ours says otherwise. \textbf{Concede the timing before they ask:} it went out while the form was still open --- after the main wave. Notification should have preceded the first response; it did not, and we corrected course mid-window. \textbf{If asked "did she reply?"} --- state only what the record documents and stop. We claim no reply, no approval, and no absence-of-objection.}
+\qa{"You alert on swear words but stay silent on self-harm."}{Name the asymmetry first --- it is real and we published it. It is a refusal to hard-code a contested clinical judgement into an automatic escalation. The tiered wellbeing-check is documented as a proposal and deliberately not shipped.}
+\qa{"Why only children? Why not adults?"}{A guardian with a duty of care is what makes screening someone who has not asked for it both possible and proportionate. The same system pointed at an adult is either a self-help journal or spyware.}
+\qa{"You are recording a child's microphone."}{Layered, and every layer is checkable: consent $\to$ on-device STT $\to$ server-side deletion $\to$ VAD gate $\to$ export and delete rights that share one scope.}
+
+\vfill
+{\color{greyt}\footnotesize \textbf{You open the room} --- the framing you set in slides 2--3 is the frame they judge the rest by. \textbf{Hand-offs:} fairness \emph{numbers} $\to$ Kaustubh (you own \emph{why it matters}) $\cdot$ capture mechanics $\to$ Khushee.}
+
+\end{document}
