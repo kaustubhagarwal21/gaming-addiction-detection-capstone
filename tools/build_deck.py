@@ -209,7 +209,7 @@ s = base('Phase III — where each expectation is evidenced', 'System testing ·
 table(s, [
     ['Phase III expectation', 'What we did', 'Evidence'],
     ['**System testing**', '290 automated tests in CI (backend on SQLite + Postgres, Android JVM); load smoke, API fuzz, CVE + MobSF audits; on-device resource drill on real hardware', 'slide 14 · TESTING.md · ci.yml'],
-    ['**Validation & verification**', 'Held-out / speaker-independent / in-domain evaluation; ablations with 95 % CIs; **external construct validation** vs IGDS9-SF (n = 87); accent-fairness audit; 7 research-integrity guards', 'slides 10–12 · docs/*.json · ml/tests/'],
+    ['**Validation & verification**', f'Held-out / speaker-independent / in-domain evaluation; ablations with 95 % CIs; **external construct validation** vs IGDS9-SF (n = {SV["construct_validity"]["n"]}); accent-fairness audit; 7 research-integrity guards', 'slides 10–12 · docs/*.json · ml/tests/'],
     ['**Deployment**', 'Live cloud backend (Render + Neon Postgres, HTTPS, tokens); signed APKs v2.4.0 on GitHub, validated on device; consented family pilot ran 23 days', 'slide 4 · DEPLOY.md · GitHub Releases'],
     ['**Final experimental results**', 'Behaviour 91.6 % (synthetic); chat PR-AUC 0.825 in-domain, ≥ 0.95 precision on 3 registers; voice 0.574 speaker-independent; **ρ = 0.317 vs clinical instrument**, leads hours baseline (97% of paired resamples; partial excludes zero)', 'slides 6–12 · model_metadata.json'],
     ['**Performance analysis (tables & graphs)**', 'PR curve · confusion matrices · reliability diagrams · ablation tables · survey correlation table + feature chart · device resource table · fairness-by-accent table', 'slides 6–14 · docs/figures/'],
@@ -453,7 +453,7 @@ s = base('Dataset Audit', 'Eleven real open corpora adopted by measured trial �
     'Svarah (eval-only, gated download, not redistributed). (DEFENSE_NOTES §7)'))
 bullets(s, [
     '**Adopted (11)**: Gamers & Anxiety (13,464) · IGDS9-SF LatAm (11,191) · CONDA · Davidson · **HASOC 2019 Hindi** · clean-Hindi Wikipedia · RAVDESS + CREMA-D + EMO-DB + URDU (9,817 clips)',
-    '**+ our own primary data**: the IGDS9-SF survey (n = 87) — no open dataset pairs the instrument with the pattern variables we measure',
+    f'**+ our own primary data**: the IGDS9-SF survey (n = {SV["n_usable"]} usable) — no open dataset pairs the instrument with the pattern variables we measure',
     '**+ eval-only**: Svarah Indian-accent English (6,656 clips, CC BY 4.0) for the fairness audit',
     '**Rejected with evidence**: Kaggle "Predict Online Gaming Behavior" (synthetic; engagement ≠ addiction) · "Mobile App Usage" (3/10 features, credential-walled)',
     '**Reality-checked** one hand-set prior against real phone telemetry (StudentLife): heavy-band late-night sits above the 90th percentile of normal student use',

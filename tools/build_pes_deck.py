@@ -362,7 +362,7 @@ table(s, [
     ['Behaviour model', '91.6 % acc · macro-F1 0.918 · CV 0.921 ± 0.002 (**synthetic labels**, grounded on 2 real surveys); ECE 0.062 → 0.015', 'Ablations w/ CIs; hours-only baseline 0.702; pattern-5 0.902 vs volume-5 0.871'],
     ['Chat model', f'In-domain PR-AUC **{full["pr_auc"]:.3f}** {ci(full["pr_auc_ci95"])}; P 0.956 / R 0.428 @ 0.95; Hindi P 0.968 (Devanagari) / 0.958 (romanised)', f'Ablation: − CONDA → {no_conda["pr_auc"]:.3f}; toxic-BERT baseline 0.709; HASOC held-out 933 rows'],
     ['Voice model', '0.574 acc speaker-independent (chance 0.25); random split 0.657 → 9-pt leakage exposed', 'Speaker-independent CV; w2v2 headroom 0.776; augmentation ablation neutral'],
-    ['**External validation**', f'ρ = **{SV["construct_validity"]["rho"]:.3f}** {ci(SV["construct_validity"]["ci95"])} vs IGDS9-SF (n = 86); hours baseline {inc["rho_hours"]:.3f}; Δρ = +{inc["delta_rho"]:.3f} {ci(inc["delta_ci"])}; pattern {comp["pattern"]["rho"]:.3f} vs volume {comp["volume"]["rho"]:.3f}', f'Pre-specified exclusions; paired bootstrap; late batch folded in per pre-stated rule; genre null p = {SX["genre"]["p"]:.3f} reported; caseness withheld (1 positive)'],
+    ['**External validation**', f'ρ = **{SV["construct_validity"]["rho"]:.3f}** {ci(SV["construct_validity"]["ci95"])} vs IGDS9-SF (n = {SV["construct_validity"]["n"]}); hours baseline {inc["rho_hours"]:.3f}; Δρ = +{inc["delta_rho"]:.3f} {ci(inc["delta_ci"])}; pattern {comp["pattern"]["rho"]:.3f} vs volume {comp["volume"]["rho"]:.3f}', f'Pre-specified exclusions; paired bootstrap; late batch folded in per pre-stated rule; genre null p = {SX["genre"]["p"]:.3f} reported; caseness withheld (1 positive)'],
     ['Fairness (STT → toxicity)', f'**0 false alerts** in {AF["overall"]["speech_hours"]} h / {AF["overall"]["clips"]:,} clips, every accent group; WER {fam["Dravidian"]["wer"]*100:.1f} % Dravidian → {fam["Tibeto-Burman"]["wer"]*100:.1f} % Tibeto-Burman', 'Svarah (117 speakers); deployed recogniser + served scorer'],
     ['System / apps', 'Live on Render + Neon; v2.4.0 signed APKs validated on device; 23-day pilot; default path 14 % CPU / 288 MB; dual-STT 51–72 % / 419 MB → **fails gate → default OFF**', '180 backend (SQLite + Postgres) + 110 JVM + 7 guards; 288-req load 0 errors; fuzz; CVE; MobSF'],
 ], Inches(0.6), Inches(1.45), Inches(12.1), col_w=[Inches(1.9), Inches(6.2), Inches(4.0)], size=10, hi=(4,))
@@ -387,7 +387,7 @@ tasks = [
     ('Cloud deployment (Render + Neon), CI, security audits', 3, 6, 'done'),
     ('Consented family pilot (6–28 Jul); feedback loop; drift monitor', 5, 6, 'done'),
     ('Hindi dual-script chat + Devanagari keyboard + dual-STT (v2.4.0)', 5, 7, 'done'),
-    ('External validation survey (IGDS9-SF, n = 87) + analysis', 6, 7, 'done'),
+    (f'External validation survey (IGDS9-SF, n = {SV["n_raw"]}) + analysis', 6, 7, 'done'),
     ('Accent-fairness audit · on-device drill · v2.4.0 release', 6, 7, 'done'),
     ('Report (47 pp) · IEEE paper (5 pp) · defense kit', 6, 7, 'done'),
     ('Phase 3 reviews · final submission · viva', 6, 8, 'open'),
