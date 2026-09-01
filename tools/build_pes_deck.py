@@ -263,10 +263,10 @@ s = slide('Abstract and Scope', notes=(
     'Android, guardian in the loop — and why (a guardian with duty of care is what makes screening the unwilling '
     'possible and proportionate).'))
 bullets(s, [
-    '**Problem.** Internet Gaming Disorder is WHO-recognised (ICD-11); parents notice **late**, from the outside. Existing tools are self-report questionnaires (need the child\'s honest cooperation) or screen-time counters (measure **how long**, a weak correlate of severity)',
-    '**What we built.** A deployed three-tier system — Child app (passive capture) → cloud ML backend → Parent app — that fuses **behaviour patterns**, **chat toxicity** (English + romanised Hindi + Devanagari) and **voice** into one calibrated, explainable *screening* signal with a plain-language "why"',
-    '**Scope.** Minors on Android; guardian-consented; screening and awareness — **not** a clinical diagnosis. Cloud backend live in production; signed APKs on GitHub; consented family pilot ran 23 days',
-    '**What Phase 3 adds.** External construct validation against the IGDS9-SF clinical instrument (134 raw / 104 usable), an accent-fairness audit (6,656 clips), on-device resource measurement, and the honest limitations that come with all three',
+    '**Problem.** Internet Gaming Disorder (IGD) is a WHO-recognised condition (listed in ICD-11, the WHO disease catalogue); parents notice it **late**, from the outside. Existing tools are self-report questionnaires (the child rates themself, so needs honest cooperation) or screen-time counters (measure **how long**, which only weakly tracks severity)',
+    '**What we built.** A deployed three-tier system — Child app (background capture) → cloud ML backend → Parent app — that combines **behaviour patterns**, **chat toxicity** (English, plus Hindi in romanised Latin letters or Devanagari script) and **voice** into one calibrated (a 0.8 score means about 80% of such cases really are high-risk), explainable screening signal with a plain-language "why"',
+    '**Scope.** Minors on Android; guardian-consented; screening and awareness — a signal that flags concern for a parent, **not** a clinical diagnosis. Cloud backend live in production; signed APKs on GitHub; consented family pilot ran 23 days',
+    '**What Phase 3 adds.** External (construct) validation: does our score track IGDS9-SF, the standard 9-question clinical screening questionnaire for gaming disorder? (134 raw / 104 usable); an accent-fairness audit of speech-to-text (6,656 clips); on-device resource measurement; and the honest limitations of each',
 ], size=16, gap=9)
 
 # =============== 4. Summary of Phase 1/2 + suggestions (template p4) ===============
@@ -278,12 +278,12 @@ s = slide('Summary of Work Done in Capstone Project Phase – 1 & 2', notes=(
     'because we measured" far more than "we did everything we said."'))
 table(s, [
     ['Phase', 'What was proposed / done', 'Suggestion or finding → improvement made'],
-    ['**Phase 1** (approval)', 'AI-driven prediction app: playtime + chat sentiment + speech emotion; Casual / At-risk / Addicted; parental dashboard; Flutter/React Native + Firebase; Android + iOS; camera for facial expression; screen-recording OCR; Kaggle datasets',
-     'Narrowed to what is **capturable, consentable and validatable**: native Android only (iOS has no capture API); camera **dropped** (no proportionate consent story); OCR **dropped** (privacy regression); Kaggle behaviour sets **audited and rejected** (synthetic provenance)'],
-    ['**Phase 2** (build + evaluate)', 'Both apps + Flask backend built and deployed; 3-model ensemble with calibration + SHAP; 11 real open datasets adopted by measured trial; ablations with CIs; family pilot; 266 tests in CI at Phase-2 close (291 now)',
-     'Review feedback: "labels are synthetic" → grounded on 2 real surveys and stated on every slide; "voice number looks inflated" → speaker-independent split (–8.3 pts, honest); "no Hindi" → dual-script HASOC path + Devanagari keyboard'],
-    ['**Phase 3** (this review)', f'External validation survey; accent-fairness audit; on-device resource drill; v2.4.0 released; {REPORT_PP}-page report + {IEEE_PP}-page IEEE paper',
-     '"Does the score mean anything?" → **ρ = 0.317 vs IGDS9-SF, leads screen time in 97% of resamples**; "is it fair across accents?" → **0 false alerts / 9.6 h**, WER gap named; "battery?" → **measured**, dual-STT fails our gate → default OFF'],
+    ['**Phase 1** (approval)', 'AI-driven prediction app: playtime + chat sentiment + speech emotion; Casual / At-risk / Addicted; parental dashboard; Flutter/React Native + Firebase; Android + iOS; camera for facial expression; screen-recording OCR (reading on-screen text from screenshots); Kaggle datasets',
+     'Narrowed to what is **capturable, consentable and validatable**: native Android only (iOS has no capture API); camera **dropped** (no proportionate consent story); OCR **dropped** (privacy regression); Kaggle behaviour sets **audited and rejected** (synthetic provenance: the data was generated, not collected from real players)'],
+    ['**Phase 2** (build + evaluate)', 'Apps + Flask backend deployed; 3-model ensemble + calibration + SHAP (per-prediction ‘why’ for parents); 11 real open datasets adopted by measured trial; ablations (retrain minus one part) + confidence intervals; family pilot; 266 CI tests at Phase-2 close (291 now)',
+     'Review feedback: "labels are synthetic" → grounded on 2 real surveys, stated on every slide; "voice number looks inflated" → speaker-independent split (no speaker in both train + test; –8.3 pts, honest); "no Hindi" → HASOC (Hindi hate-speech corpus) in both scripts + Devanagari keyboard'],
+    ['**Phase 3** (this review)', f'External validation survey; accent-fairness audit; on-device resource drill (CPU / memory measured on a phone); v2.4.0 released; {REPORT_PP}-page report + {IEEE_PP}-page IEEE paper',
+     '"Does the score mean anything?" → **ρ = 0.317 (rank correlation) vs IGDS9-SF, leads screen time in 97% of resamples**; "fair across accents?" → **0 false alerts / 9.6 h**, WER (word error rate) gap named; "battery?" → **measured**, dual-STT (English/Hindi speech-to-text) fails gate → default OFF'],
 ], Inches(0.6), Inches(1.5), Inches(12.1), col_w=[Inches(1.7), Inches(5.0), Inches(5.4)], size=11)
 
 # =============== 5. Inferences from literature (template outline) ===============
@@ -294,11 +294,11 @@ s = slide('Inferences Drawn from Literature Survey', notes=(
     'And one inference from our own survey that the literature did not give us: pattern > volume, measured.'))
 table(s, [
     ['Source', 'Inference', 'How it shaped our design'],
-    ['You et al. 2025; Coșa et al. 2025; Ergin & Essau 2025 (family & IGD)', 'Parent–child relationship and behavioural patterns predict IGD better than raw exposure; interventions work through the family', 'Guardian-in-the-loop screening; **pattern** features (late-night, re-logins, binges) as first-class inputs; nudges, not blocks'],
-    ['Pontes & Griffiths 2015 (IGDS9-SF); LatAm IGDS9-SF dataset, n = 11,191', 'A validated 9-item DSM-5 instrument exists; disordered-range base rate ≈ 6.4 %; toxic-chat involvement tracks severity (r = +0.156)', f'IGDS9-SF as the **external validation anchor**; base rate grounds thresholds; chat channel justified — and replicated locally (ρ = {SX["chat_premise"]["rho"]:.3f})'],
-    ['Huang et al. 2024; Jiang 2024 (ML for gaming disorder)', 'Prior ML work models survey data or single signals; none deploys passive multi-signal capture to a guardian', 'The gap we fill: deployed, multimodal, explainable, calibrated'],
-    ['Weld et al. 2021 (CONDA); Mandl et al. 2019 (HASOC); Javed et al. 2023 (Svarah)', 'In-game chat and code-mixed Hindi are their own registers; Indian-accent ASR error is uneven', 'Domain corpora over model capacity (toxic-BERT loses to our LogReg by 12 pts); dual-script Hindi; **accent-fairness audit**'],
-    ['**Our own survey (n = 104 usable)**', 'Every pattern feature out-ranks every volume feature against IGDS9-SF', 'The design premise — measure *how*, not *how long* — confirmed against real labels'],
+    ['You et al. 2025; Coșa et al. 2025; Ergin & Essau 2025 (family & IGD)', 'Parent–child relationship and behavioural patterns (how a child plays) predict IGD better than raw hours of play; interventions work through the family', 'Guardian stays in the loop; **pattern** features (late-night play, re-logins, binges) are core model inputs; nudges, not blocks'],
+    ['Pontes & Griffiths 2015 (IGDS9-SF); Latin-American IGDS9-SF dataset, n = 11,191', 'Validated 9-item DSM-5 (psychiatric manual) instrument; base rate (how common the disordered range is) ≈ 6.4 %; toxic-chat involvement tracks severity (r = +0.156)', f'IGDS9-SF is our **external validation anchor** (the real label we test against); base rate sets thresholds; chat channel justified — and reproduced in our survey (ρ = {SX["chat_premise"]["rho"]:.3f})'],
+    ['Huang et al. 2024; Jiang 2024 (ML for gaming disorder)', 'Prior ML work models questionnaire data or a single signal; none deploys passive capture of several signals reporting to a guardian', 'The gap we fill: deployed, behaviour + chat + voice, explainable, calibrated'],
+    ['Weld et al. 2021 (CONDA, real in-game chat); Mandl et al. 2019 (HASOC); Javed et al. 2023 (Svarah)', 'Game chat and mixed Hindi–English are their own writing styles; speech-to-text (ASR) error varies by Indian accent', 'Domain data > model size: pretrained toxic-BERT is 12 pts below our LogReg; dual-script Hindi; **accent-fairness audit** (Svarah, Indian-English speech)'],
+    ['**Our own survey (n = 104 usable)**', 'Each pattern feature (how) beats each volume feature (how long) at tracking IGDS9-SF', 'Our design premise — measure how, not how long — confirmed against real questionnaire labels'],
 ], Inches(0.6), Inches(1.5), Inches(12.1), col_w=[Inches(3.4), Inches(4.4), Inches(4.3)], size=11)
 
 # =============== 6. Architecture (template p5) ===============
@@ -310,9 +310,9 @@ s = slide('Architecture', notes=(
     'with verdicts → threshold tuner, nudges, capture-coverage transparency screen.'))
 bx_y, bx_h = Inches(1.6), Inches(2.6)
 for title, body, x in [
-    ('ChildApp (Android)', 'Game detection (allowlist → OS category → parent override)\n10 objective session features\nIME + accessibility chat capture (Devanagari layout)\nVAD-gated mic → on-device Vosk STT\nAnti-tamper · versioned consent (fails closed)', Inches(0.6)),
-    ('Flask backend (Render + Neon Postgres)', 'RF behaviour (10 feats) · LogReg+TF-IDF chat · HistGB voice\nAvailability-weighted fusion 40/30/30\nIsotonic calibration · SHAP "why"\nAlerts to all guardians · drift monitor (PSI/KS)\nExport scope = delete scope · HTTPS · tokens', Inches(4.75)),
-    ('ParentApp (Android)', 'Risk band + plain-language why · 14-day trend\nReal-time alerts (risk / toxicity / tamper)\nAccurate / false-alarm verdicts → Beta threshold tuner\nNudges to child · weekly PDF\n"What we can and can\'t see" transparency', Inches(8.9)),
+    ('ChildApp (Android)', 'Game detection (allowlist → OS category → parent override)\n10 objective (measured) session features\nChat: custom keyboard (IME) + accessibility service\nMic on only during speech (VAD, voice-activity detection) → on-device Vosk speech-to-text\nAnti-tamper · versioned consent (no consent → no capture)', Inches(0.6)),
+    ('Flask backend (Render + Neon Postgres)', 'RF behaviour (10 feats) · LogReg+TF-IDF chat · HistGB voice\nAvailability-weighted fusion 40/30/30 (re-weights over channels present)\nIsotonic calibration (monotone correction of scores) · SHAP "why"\nAlerts to all guardians · drift monitor (PSI/KS)\nExport and delete cover the same data · HTTPS · tokens', Inches(4.75)),
+    ('ParentApp (Android)', 'Risk band + plain-language why · 14-day risk trend\nReal-time alerts (risk / toxicity / tamper)\nAccurate / false-alarm verdicts → Beta threshold tuner (Bayesian; adjusts alert cut-off)\nNudges to child · weekly PDF report\n"What we can and can\'t see" transparency', Inches(8.9)),
 ]:
     b = s.shapes.add_shape(MSO_SHAPE.ROUNDED_RECTANGLE, x, bx_y, Inches(3.8), bx_h)
     b.fill.solid(); b.fill.fore_color.rgb = LIGHT; b.line.color.rgb = ORANGE; b.line.width = Pt(2)
@@ -321,8 +321,8 @@ for title, body, x in [
 for x in (Inches(4.42), Inches(8.57)):
     a = s.shapes.add_shape(MSO_SHAPE.RIGHT_ARROW, x, bx_y + Inches(1.1), Inches(0.32), Inches(0.4))
     a.fill.solid(); a.fill.fore_color.rgb = ORANGE; a.line.fill.background()
-bullets(s, ['**Data flow:** session telemetry / chat lines / 10-s voice segments → per-channel scores → fused, calibrated risk + SHAP → dashboard + push alerts; raw audio **deleted** after feature extraction',
-            '**Modules:** game detection · session lifecycle · chat capture (IME/accessibility) · voice capture + STT · behaviour model · chat model · voice model · fusion & alerting · feedback tuner · drift monitor · consent & anti-tamper · parent dashboard'],
+bullets(s, ['**Data flow:** session telemetry (session start / end times) / chat lines / 10-s voice segments → one score per channel → fused, calibrated risk + SHAP "why" → dashboard + push alerts; raw audio **deleted** after feature extraction',
+            '**Modules:** game detection · session lifecycle · chat capture (IME/accessibility) · voice capture + speech-to-text (STT) · behaviour model · chat model · voice model · fusion & alerting · feedback tuner · drift monitor (flags data unlike the training data) · consent & anti-tamper (flags disabled capture) · parent dashboard'],
         y=Inches(4.45), h=Inches(2.3), size=13, gap=6)
 
 # =============== 7. List of tasks/modules + tools (template p6) ===============
@@ -331,32 +331,32 @@ s = slide('List of Tasks / Modules', notes=(
     'open-source; no licensed component. Mention that the two gated datasets (HASOC, Svarah) are NOT redistributed.'))
 table(s, [
     ['Stage', 'What we do', 'Where'],
-    ['Data collection & preparation', '11 open corpora screened by provenance/fit/openness, adopted by measured trial; 2 rejected with evidence; own IGDS9-SF survey (134 raw / 104 usable) as primary data', 'ml/fetch_*.py, ml/analyze_*.py, docs/VALIDATION_PLAN.md'],
-    ['Data input', 'ChildApp session telemetry, IME/accessibility chat, VAD-gated audio; Google-Form export for the survey', 'android/ChildApp, ml/eval_behavior_survey.py'],
-    ['Pre-processing', 'Train/serve-aligned feature derivation (one shared function); TF-IDF word ∪ char_wb; 36 acoustic features; romanisation of Hindi; keyword-column matching for the survey', 'backend/behavior_features.py, ml/'],
-    ['Modelling', 'RF (10 feats) · LogReg+isotonic chat with noisy-OR lexicon · HistGB voice; availability-weighted fusion', 'ml/retrain_models.py, backend/app.py'],
-    ['Visualisation & interpretation', 'SHAP per prediction; PR curve, confusion matrices, reliability diagrams, ablation tables, survey figure; parent-facing plain-language why', 'ml/make_figures.py, docs/figures/'],
-    ['Storage', 'SQLite (dev) / Neon Postgres (prod), one code path; export = delete scope; audio never retained', 'backend/app.py, DEPLOY.md'],
+    ['Data collection & preparation', '11 open datasets screened for provenance (origin), task fit and open licence, adopted after a measured trial; 2 rejected with evidence; own IGDS9-SF survey (134 raw / 104 usable) as primary data', 'ml/fetch_*.py, ml/analyze_*.py, docs/VALIDATION_PLAN.md'],
+    ['Data input', 'ChildApp session telemetry, keyboard (IME) / accessibility chat capture, VAD-gated audio; the survey’s Google-Form CSV export', 'android/ChildApp, ml/eval_behavior_survey.py'],
+    ['Pre-processing', 'One feature function shared by training and serving; TF-IDF over word + character n-grams; 36 acoustic features (pitch, energy, timbre); Hindi romanised to Latin spelling; survey columns matched by keyword', 'backend/behavior_features.py, ml/'],
+    ['Modelling', 'RF (10 feats) · LogReg+isotonic chat + noisy-OR word list (can only raise scores) · HistGB voice; availability-weighted fusion', 'ml/retrain_models.py, backend/app.py'],
+    ['Visualisation & interpretation', 'SHAP per prediction → plain-language why for parents; precision–recall curve, confusion matrices, reliability diagrams (calibration plots), ablation tables, survey figure', 'ml/make_figures.py, docs/figures/'],
+    ['Storage', 'One code path: SQLite locally, Postgres (Neon) in prod; export = exactly what delete removes; audio never retained', 'backend/app.py, DEPLOY.md'],
 ], Inches(0.6), Inches(1.45), Inches(12.1), col_w=[Inches(2.3), Inches(6.7), Inches(3.1)], size=10)
 _tb(s, Inches(0.6), Inches(4.7), Inches(12.1), Inches(0.35), 'SDK / API / Model / Tools (all open-source):', 13, True, ORANGE)
 _tb(s, Inches(0.6), Inches(5.05), Inches(12.1), Inches(1.9),
-    'Android SDK 34 / Kotlin · Retrofit · Vosk 0.3.47 (Apache-2.0; en-in + hi small models) · Firebase Cloud Messaging · '
+    'Android SDK 34 / Kotlin · Retrofit · Vosk 0.3.47 offline speech-to-text (Apache-2.0; en-in + hi small models) · Firebase Cloud Messaging (push alerts) · '
     'Python 3.11 · Flask · scikit-learn (RandomForest, LogisticRegression, HistGradientBoosting, isotonic) · SHAP · '
-    'librosa / webrtcvad · psycopg2 · Postgres 16 (Neon) · Render · GitHub Actions · pytest · schemathesis · bandit · '
-    'pip-audit · MobSF · LaTeX/IEEEtran · Datasets: Jigsaw, CONDA, Davidson, HASOC 2019 (gated), Hindi Wikipedia, '
-    'RAVDESS, CREMA-D, EMO-DB, URDU, Gamers & Anxiety (OSF), IGDS9-SF LatAm (OSF), StudentLife, Svarah (CC BY 4.0, gated).',
+    'librosa / webrtcvad (audio / VAD) · psycopg2 · Postgres 16 (Neon) · Render (cloud host) · GitHub Actions · pytest · schemathesis (API fuzzing) · bandit · '
+    'pip-audit · MobSF (three security scanners) · LaTeX/IEEEtran · Datasets: Jigsaw (Wikipedia comment toxicity), CONDA, Davidson (Twitter hate speech), HASOC 2019 (gated: on request), Hindi Wikipedia, '
+    'RAVDESS, CREMA-D, EMO-DB, URDU (emotional-speech corpora), Gamers & Anxiety (OSF), IGDS9-SF LatAm (OSF), StudentLife, Svarah (CC BY 4.0, gated).',
     11, False, BLACK)
 
 # =============== 8. Individual contribution (template p7) — EDIT BEFORE PRESENTING ===============
 CONTRIB = [
     # name, modules, LOC (evidence-based per module; person split is a PROPOSAL), hours (ESTIMATE — edit)
-    ('Kaustubh Agarwal', 'ML pipeline (3 models, calibration, fusion, ablations); backend serving + API; external validation survey + analysis; fairness audit; paper & IEEE draft',
+    ('Kaustubh Agarwal', 'ML pipeline (3 models, calibration, fusion, ablations); backend model serving + REST API; external validation survey (IGDS9-SF) + analysis; accent-fairness audit; report & IEEE paper draft',
      LOC['ml'] + LOC['backend'] // 2 + LOC['docs'] // 2, '≈ 420 h'),
-    ('Khushee P Kiran', 'ChildApp: game detection, session lifecycle, IME + Devanagari keyboard, accessibility capture, voice recorder + on-device STT, anti-tamper, consent; on-device drill',
+    ('Khushee P Kiran', 'ChildApp: game detection, session tracking, custom keyboard (IME) + Devanagari layout, accessibility chat capture, voice recorder + on-device speech-to-text, anti-tamper, consent; on-device resource drill',
      LOC['child'] + LOC['child_tests'], '≈ 300 h'),
-    ('Kanak Goyal', 'Backend infra: Postgres/SQLite dual dialect, auth, rate limiting, alerts/FCM, drift monitor, export/delete; CI, tests, deployment (Render/Neon)',
+    ('Kanak Goyal', 'Backend infra: one DB code path for SQLite (local) and Postgres (production), auth, rate limiting, alerts/FCM, drift monitor, export/delete; CI, tests, deployment (Render/Neon)',
      LOC['backend'] // 2 + LOC['backend_tests'] + LOC['ci'], '≈ 280 h'),
-    ('Vidisha Murali', 'ParentApp: dashboard, alerts + feedback verdicts, chat/emotion analysis screens, transparency screen, weekly PDF; privacy/ethics docs, survey instrument & recruitment, review decks',
+    ('Vidisha Murali', 'ParentApp: dashboard, alerts + accurate/false-alarm verdicts, chat/emotion analysis screens, “what we can and can’t see” transparency screen, weekly PDF; privacy/ethics docs, survey questionnaire & recruitment, review decks',
      LOC['parent'] + LOC['parent_tests'] + LOC['docs'] // 2, '≈ 260 h'),
 ]
 s = slide('Individual Contribution', notes=(
@@ -370,7 +370,7 @@ table(s, [['Team member', 'Tasks / modules assigned', 'Development (LOC, approx.
         f'**{sum(LOC.values()):,}**', '≈ 1,260 h']],
       Inches(0.6), Inches(1.5), Inches(12.1), col_w=[Inches(1.9), Inches(6.5), Inches(2.0), Inches(1.7)], size=11, hi=(5,))
 _tb(s, Inches(0.6), Inches(5.35), Inches(12.1), Inches(0.9),
-    'LOC counted with `git ls-files | wc -l` on 2026-08-18 (source, tests, docs, CI), attributed by agreed module ownership; '
+    'Lines of code (LOC) counted with `git ls-files | wc -l` on 2026-08-18 (source, tests, docs, CI) and attributed by the module ownership the team agreed; '
     'hours are team estimates. Timeline of every task/module: see the Gantt chart.', 11, False, GREY)
 
 # =============== 9. Demonstration & testing (template p8) ===============
@@ -383,17 +383,17 @@ s = slide('Demonstration and Testing of the Modules Completed', notes=(
     'committed JSONs; 7 CI guards fail the build if the paper and data disagree.'))
 table(s, [
     ['Module', 'Result (held-out, real data unless stated)', 'Testing'],
-    ['Behaviour model', '91.6 % acc · macro-F1 0.918 · CV 0.921 ± 0.002 (**synthetic labels**, grounded on 2 real surveys); ECE 0.062 → 0.015', 'Ablations w/ CIs; hours-only baseline 0.702; pattern-5 0.902 vs volume-5 0.871'],
-    ['Chat model', f'In-domain PR-AUC **{full["pr_auc"]:.3f}** {ci(full["pr_auc_ci95"])}; P 0.956 / R 0.428 @ 0.95; Hindi P 0.968 (Devanagari) / 0.958 (romanised)', f'Ablation: − CONDA → {no_conda["pr_auc"]:.3f}; toxic-BERT baseline 0.709; HASOC held-out 933 rows'],
-    ['Voice model', '0.574 acc speaker-independent (chance 0.25); random split 0.657 → 8.3-pt leakage exposed', 'Speaker-independent CV; w2v2 headroom 0.776; augmentation ablation neutral'],
-    ['**External validation**', f'ρ = **{SV["construct_validity"]["rho"]:.3f}** {ci(SV["construct_validity"]["ci95"])} vs IGDS9-SF (n = {SV["construct_validity"]["n"]}); hours baseline {inc["rho_hours"]:.3f}; Δρ = +{inc["delta_rho"]:.3f} {ci(inc["delta_ci"])}; pattern {comp["pattern"]["rho"]:.3f} vs volume {comp["volume"]["rho"]:.3f}, formal contrast **+{comp["pattern_minus_volume"]["diff"]:.3f}** {ci(comp["pattern_minus_volume"]["ci"])}', f'Pre-specified exclusions; paired bootstrap; late batch folded in per pre-stated rule; genre null p = {SX["genre"]["p"]:.3f} reported; caseness withheld (1 positive)'],
-    ['Fairness (STT → toxicity)', f'**0 false alerts** in {AF["overall"]["speech_hours"]} h / {AF["overall"]["clips"]:,} clips, every accent group; WER {fam["Dravidian"]["wer"]*100:.1f} % Dravidian → {fam["Tibeto-Burman"]["wer"]*100:.1f} % Tibeto-Burman', 'Svarah (117 speakers); deployed recogniser + served scorer'],
-    ['System / apps', 'Live on Render + Neon; v2.4.0 signed APKs validated on device; 23-day pilot; default path 14 % CPU / 288 MB; dual-STT 51–72 % / 419 MB → **fails gate → default OFF**', '181 backend (SQLite + Postgres) + 110 JVM + 7 guards, all in CI; 288-req load 0 errors; fuzz; CVE; MobSF'],
+    ['Behaviour model', '91.6 % acc · macro-F1 0.918 · CV 0.921 ± 0.002 (**synthetic labels**, grounded on 2 real surveys); ECE (calibration error) 0.062 → 0.015', 'Ablations w/ conf. intervals; hours-only baseline 0.702; 5 pattern feats 0.902 vs 5 volume 0.871'],
+    ['Chat model', f'In-domain (real in-game chat) PR-AUC **{full["pr_auc"]:.3f}** {ci(full["pr_auc_ci95"])}; P 0.956 / R 0.428 at threshold 0.95; Hindi P 0.968 (Devanagari) / 0.958 (romanised)', f'Ablation: no CONDA → {no_conda["pr_auc"]:.3f}; toxic-BERT baseline 0.709; HASOC 933 rows held out (never trained on)'],
+    ['Voice model', '0.574 acc speaker-independent (chance 0.25); random split 0.657 → 8.3-pt leakage exposed (memorised voices)', 'Speaker-independent CV; wav2vec2 headroom 0.776 (larger model); augmentation: no effect'],
+    ['**External validation**', f'Spearman ρ (rank correlation) = **{SV["construct_validity"]["rho"]:.3f}** {ci(SV["construct_validity"]["ci95"])} vs IGDS9-SF (n = {SV["construct_validity"]["n"]}); screen-time hours alone {inc["rho_hours"]:.3f}; gain over hours Δρ = +{inc["delta_rho"]:.3f} {ci(inc["delta_ci"])}; pattern features {comp["pattern"]["rho"]:.3f} vs volume features {comp["volume"]["rho"]:.3f}, formal contrast (pattern − volume) **+{comp["pattern_minus_volume"]["diff"]:.3f}** {ci(comp["pattern_minus_volume"]["ci"])}', f'Exclusions fixed in advance; paired bootstrap (same people); late batch folded in per pre-stated rule; genre null (no effect) p = {SX["genre"]["p"]:.3f} reported; cut-off sens./spec. withheld (1 positive)'],
+    ['Fairness (STT → toxicity)', f'**0 false alerts** in {AF["overall"]["speech_hours"]} h / {AF["overall"]["clips"]:,} clips, every accent group; WER (word error rate) by first-language family: {fam["Dravidian"]["wer"]*100:.1f} % Dravidian → {fam["Tibeto-Burman"]["wer"]*100:.1f} % Tibeto-Burman', 'Svarah (Indian-English, 117 speakers); deployed speech-to-text + scorer'],
+    ['System / apps', 'Live on Render + Neon; v2.4.0 signed APKs validated on device; 23-day pilot; default path 14 % CPU / 288 MB; dual-STT (two speech-to-text engines) 51–72 % / 419 MB → **fails resource gate → default OFF**', '181 backend (SQLite + Postgres) + 110 JVM tests + 7 paper-vs-data guards, all in CI; 288-req load 0 errors; fuzz; CVE scan; MobSF'],
 ], Inches(0.6), Inches(1.45), Inches(12.1), col_w=[Inches(1.9), Inches(6.2), Inches(4.0)], size=10, hi=(4,))
 fig(s, 'survey_features.png', Inches(0.6), Inches(5.0), h=Inches(1.95))
 fig(s, 'pr_chat.png', Inches(4.1), Inches(5.0), h=Inches(1.95))
 _tb(s, Inches(7.0), Inches(5.05), Inches(5.7), Inches(1.9),
-    'Live demo (DEMO_RUNBOOK §3): parent dashboard → alert verdict → nudge → chat/emotion analysis → live capture in Roblox → tamper alert. Backup video ready. Two results AGAINST the system are reported: genre multiplier unsupported; 4 of 5 proxy names discredited → renamed in the product.',
+    'Live demo: parent dashboard → alert verdict → nudge → chat/emotion analysis → live capture in Roblox → tamper alert. Backup video ready. Two results AGAINST the system are reported: genre multiplier (per-genre risk weight) unsupported; 4 of 5 proxy names discredited → renamed in the product. PR-AUC = area under the precision–recall curve; right metric when toxic messages are rare.',
     11, False, BLACK)
 
 # =============== 10. Gantt (template outline) ===============
