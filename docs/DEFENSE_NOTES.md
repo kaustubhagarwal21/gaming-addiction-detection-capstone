@@ -440,10 +440,16 @@ no longer even matches the multiplier's assumption. We report it as a null
 because a validation study that can only confirm isn't one. But the honest reading is
 *underpowered, not disproven* — resampling gives the test 32% power at this n, 90%
 only near n ≈ 400. Removing the multiplier flips 34.4% of served session bands (paper
-§6.5 sensitivity analysis), so we're not making a change that large on a null this
-weak. It stays flagged as the ensemble's least-evidenced component, first in line for
-the larger cohort, and its magnitude is an environment variable — so a future result
-retires it without a code change.
+§6.5 sensitivity analysis), so for months we kept it, flagged as the ensemble's
+least-evidenced component, rather than make a change that large on a null this weak.
+**Decision (7 Oct 2026): it comes out of the served score in the weeks after Review 2.**
+The argument that settled it: the validated score never included it — the survey scores
+answers through the behaviour model alone — so removing it makes what parents see equal
+to what we validated, and the burden of proof sits on keeping an untested multiplier,
+not on removing it. Because 34.4% of bands shift, it ships as a versioned score with a
+note to parents, not a silent swap. A properly powered study (n ≈ 400) could bring it
+back only if it finds an effect; until the change ships, an environment variable
+already switches it off without a code change.
 
 **Q: Your parent-facing "craving score", "tolerance score" — do those mean anything?**
 Mostly no, and we tested it rather than waiting to be asked. Against the IGDS9-SF item

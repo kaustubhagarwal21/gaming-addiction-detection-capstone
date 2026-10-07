@@ -1,0 +1,528 @@
+{
+  "methodology": [
+    {
+      "heading": "Proposed Approach / Methodology",
+      "subheading": "Basic approach and results obtained",
+      "kind": "steps",
+      "steps": [
+        {
+          "title": "Capture passively",
+          "body": "The ChildApp records game sessions, typed chat and 10-second voice segments in the background. Raw audio is deleted once features are extracted.",
+          "result": "About 14% of one CPU core, 288 MB. Ran in a 23-day consented family pilot."
+        },
+        {
+          "title": "Measure play patterns",
+          "body": "Ten measured features: five on volume, like daily hours, and five on pattern, like late-night share, binges, short breaks and rapid re-logins.",
+          "result": "Pattern features track the survey better: {pattern} against {volume} for volume."
+        },
+        {
+          "title": "Score each channel",
+          "body": "Behaviour: Random Forest. Chat: TF-IDF model plus keyword list. Voice: acoustic emotion model. Each is calibrated: a 0.7 means about 70% likely.",
+          "result": "Behaviour calibration error fell 0.062 to 0.015. Chat PR-AUC {chat_prauc} out of 1."
+        },
+        {
+          "title": "Fuse and alert carefully",
+          "body": "Weighted average: behaviour 40%, chat 30%, voice 30%, times a genre weight, banded Low, Some or High concern. Chat alerts need 0.95.",
+          "result": "Chat alerts are right 95.6% of the time and catch 42.8% of toxic messages."
+        },
+        {
+          "title": "Validate externally",
+          "body": "Score anonymous adult survey answers through the behaviour model and compare with IGDS9-SF, a standard 9-question gaming-disorder questionnaire.",
+          "result": "A moderate link: rank correlation {rho} {rho_ci} on {n_scored} respondents."
+        }
+      ],
+      "footer": "Core idea: measure how a child plays, not just how long, then let a standard outside questionnaire, not our own labels, decide whether the behaviour score means anything.",
+      "notes": "One: capture is passive, so the child does nothing, and raw audio is deleted after feature extraction. Two: we measure how a child plays, not just how long. Three: each channel has its own model, and calibrated means a predicted 70% really happens about 70% of the time. The behaviour model reaches 91.6% accuracy, but on synthetic labels from a simulation grounded on two real surveys, so we do not lean on it. Chat combines the model and keyword list by noisy-OR, so either detector can raise the score. PR-AUC summarises the precision and recall trade-off, where 1.0 is perfect. Voice is weakest: 0.574 accuracy on speakers it never trained on. Four: the average is renormalised over channels that are present, and no child is shown at High concern before three scored sessions. Five: only the behaviour score was validated, without genre weight, chat or voice. Screen-time hours alone give {rho_hours}. SHAP, which credits each feature's share of a score, writes the parent-facing reasons."
+    },
+    {
+      "heading": "Proposed Approach / Methodology",
+      "subheading": "Is there a need to change the approach?",
+      "kind": "twocol",
+      "cols": [
+        {
+          "title": "The core approach holds",
+          "bullets": [
+            "The behaviour score tracks a standard gaming-disorder questionnaire: a moderate link, {rho} {rho_ci}, across {n_scored} scored survey respondents.",
+            "Pattern features track the survey better than volume: {pattern} against {volume}. The difference, {contrast} {contrast_ci}, has an interval that excludes zero.",
+            "With screen-time hours controlled for, the link stays {partial} {partial_ci}. Whether it beats hours alone is only suggestive: that interval touches zero.",
+            "All three modules and fusion run live on Render and Neon, covered by 181 backend and 110 Android tests in CI.",
+            "Limits remain: adults only, and one respondent in the disordered range, so no sensitivity or specificity yet."
+          ]
+        },
+        {
+          "title": "Targeted changes from our own data",
+          "bullets": [
+            "**DONE:** Renamed 4 of 5 parent-facing labels that did not match their namesake survey question, e.g. Loss of control became Frequent long sessions.",
+            "**DONE:** Kept dual Hindi plus English speech-to-text OFF. It used 51-72% CPU and 419 MB, failing our phone resource budget.",
+            "**PLANNED (from 19 Oct):** Remove the genre weight. Benefit: parents see exactly the score we validated, and an assumption the survey did not support is removed.",
+            "Drawback: 34.4% of past session bands would change, so the score needs a version number and parents must be told.",
+            "**PROPOSED (needs ethics approval):** Validate with guardian-answered IGDS9-SF linked to measured play data, the only route to children and to sensitivity and specificity."
+          ]
+        }
+      ],
+      "footer": "Our stance: evidence decides, even against our own assumptions. We changed what our data contradicted and kept what it supported.",
+      "notes": "Our answer: keep the approach and change parts only where our own data says so. Rho is a rank correlation, and the ranges are 95% intervals. The raw survey had {n_raw} responses, {n_usable} usable. A late batch lowered the headline from 0.352 to {rho}, and a rule set in advance made us keep the lower number. Two changes are done. The renames change wording only. Model inputs are untouched. Hindi plus English speech costs four to five times the CPU of the default. Two changes are next. Removing the genre weight is planned for the weeks right after this review. It was never part of the validated score, and the survey found no genre effect, p {genre_p}. That test had only 32% power, so removal is about consistency, not proof that genre is irrelevant. Until the change ships the weight stays, flagged, and an environment variable can switch it off without code changes. A properly powered study could justify bringing it back. The guardian study needs ethics approval first and will be slower, but it is the only route to children."
+    }
+  ],
+  "algo1_workflow": [
+    {
+      "heading": "Algorithm & Pseudocode",
+      "subheading": "Algorithm 1 - End-to-end workflow (the logical flow of the project)",
+      "kind": "pseudocode",
+      "code": {
+        "title": "One gaming session, from phone to parent",
+        "lines": [
+          "# 1. CHILD PHONE: PassiveMonitorService checks every 5 s",
+          "if phone unlocked and a game is in front: start session",
+          "if child away from game > 20 s: end session at the moment they left",
+          "typed chat (custom keyboard / accessibility) -> POST /chat",
+          "mic, only while that game is in front:",
+          "  Vosk speech-to-text on the phone -> POST /chat as voice_stt",
+          "  every 10 s: send audio segment -> POST /voice",
+          "every 3 min: heartbeat (app alive, permissions still granted)",
+          "# 2. BACKEND: score each item the moment it arrives",
+          "chat line: tox = noisy_or(keyword score, ML score)",
+          "  tox >= 0.95 -> alert now; 3 lines >= 0.6 in session -> streak alert",
+          "voice clip: speech gate -> 36 features -> emotion -> delete audio",
+          "session end: compute 10 behaviour features from play history",
+          "  b = calibrated RF, c = MAX typed-chat score, v = mean voice risk",
+          "  risk = clip(weighted avg of present b/c/v (0.4/0.3/0.3) x genre)",
+          "  band = Low / Some / High (High -> Some if fewer than 3 sessions)",
+          "  Some/High -> alert (polled); High -> also pushed to every guardian",
+          "# 3. PARENT APP: dashboard, SHAP reasons, parent rates each alert",
+          "tune_from_feedback.py proposes thresholds; a human applies them"
+        ]
+      },
+      "side_title": "In plain words",
+      "side_bullets": [
+        "The phone spots a game by itself and, only while it is open, sends typed chat, spoken words as text and 10-second voice clips.",
+        "Each chat line is scored the moment it arrives, so a clearly abusive message alerts the parent without waiting for the session to end.",
+        "When play stops, the server combines habits, chat and voice into one score and a Low, Some or High concern band.",
+        "Parents see the reasons and rate each alert. Those ratings suggest new thresholds, but a person decides whether to apply them."
+      ],
+      "code_ref": "PassiveMonitorService.kt; app.py save_chat/save_voice/run_prediction/_maybe_create_alert",
+      "notes": "A background service on the phone checks every 5 seconds which app is in front. A game starts a session. If the child stays away from it for more than 20 seconds, the session ends at the moment they left. Chat comes from our own keyboard or the accessibility service. The microphone runs only while that exact game is in front, and Vosk turns speech into text on the phone. A heartbeat every 3 minutes tells parents monitoring is still running. On the server, noisy-OR means a line is flagged if either the keyword list or the trained model is confident. The speech gate drops clips with almost no speech, and the audio is deleted once features are taken. At session end, the calibrated Random Forest gives probabilities that match real frequencies. Spoken words stay out of the chat score so they are not counted twice. SHAP shows which habits raised the score. This is a screening signal, never a diagnosis."
+    }
+  ],
+  "algo2_behaviour": [
+    {
+      "heading": "Algorithm & Pseudocode",
+      "subheading": "Algorithm 2 - Behaviour risk score (Random Forest)",
+      "kind": "pseudocode",
+      "code": {
+        "title": "Behaviour score from 10 measured session features",
+        "lines": [
+          "# Runs on each scored snapshot (live updates and session end)",
+          "if session ended with duration <= 0 seconds:",
+          "  skip behaviour channel     # an empty session is not evidence",
+          "feats = compute_behavioral_features(session)",
+          "  history = this child's sessions from the 30 days before this one",
+          "  week    = the part of history from the last 7 days",
+          "  daily_play_time_hours   = earlier play today + this session",
+          "  sessions_per_day        = (sessions this week + 1) / 7",
+          "  late_night_play_ratio   = share of starts 22:00-06:00, child time",
+          "  binge_sessions_per_week = sessions this week lasting 3 hours or more",
+          "  rapid_relogin_ratio     = share of breaks shorter than 15 minutes",
+          "  # plus weekly hours, days played, streak, avg duration, avg break",
+          "x = scaler.transform(the 10 measured features)",
+          "p_low, p_some, p_high = calibrated_rf.predict_proba(x)",
+          "b_score = 0.5 * p_some + 1.0 * p_high       # between 0 and 1",
+          "shap = TreeExplainer(raw_rf).shap_values(x)  # skipped on live updates",
+          "impact = 0.5 * shap[Some] + 1.0 * shap[High]   # same weights",
+          "reasons = top 4 features by abs(impact), tagged raises or lowers",
+          "return b_score, reasons      # enters fusion with weight 0.40"
+        ]
+      },
+      "side_title": "In plain words",
+      "side_bullets": [
+        "The model sees only 10 behaviours measured from session times, such as late-night starts, 3-hour binges and quick restarts after a short break.",
+        "Calibration adjusts the probabilities so they match how often each outcome really occurs. The score counts High concern fully and Some concern at half.",
+        "SHAP shows how each input raised or lowered the score. Formula scores like 'Gaming cravings' are left out, since they only repackage these inputs.",
+        "91.6% accuracy is on synthetic labels from a simulation grounded on two real surveys. It is a screening signal, not a diagnosis."
+      ],
+      "code_ref": "backend/app.py: compute_behavioral_features(), run_prediction(), _shap_explain_impl()",
+      "notes": "Say: this is how one session becomes a behaviour score. We look back 30 days at this child's sessions that started before this one, so re-scoring an old session gives the same answer. History is capped at the latest 200 sessions. Late night uses the child's local clock. A break counts only if it lasts between zero minutes and one day, and the break just before this session is included, because restarting four minutes after stopping is the pattern we want. With no breaks the average defaults to 120 minutes. A zero-second session is skipped so it cannot count as a healthy day. The forest has 200 trees of depth 6. Isotonic calibration cut expected calibration error from 0.062 to 0.015. SHAP is skipped on frequent live updates to save memory. Proxy scores like 'Gaming cravings' are still computed and stored but never fed to the model. Cravings is just late-night ratio plus re-login ratio, so SHAP would be citing a disguised copy of two real reasons."
+    }
+  ],
+  "algo3_chat": [
+    {
+      "heading": "Algorithm & Pseudocode",
+      "subheading": "Algorithm 3 - Chat toxicity scoring and alerts",
+      "kind": "pseudocode",
+      "code": {
+        "title": "Scoring one chat line, then the whole session",
+        "lines": [
+          "# For each chat line the phone uploads: save_chat()",
+          "text = message trimmed, rejected if empty or over 2000 characters",
+          "# kw: count abusive words, phrases (English + Hindi, both scripts)",
+          "kw = min(0.2*strong_words + 0.1*mild_words + 0.3*phrases, 0.9)",
+          "# ml: model probability, calibrated so scores match real rates",
+          "ml = calibrated_logreg(tfidf(clean_text(text)))",
+          "fused = 1 - (1 - kw) * (1 - ml)              # noisy-OR",
+          "if same text in this session in last 8 s: skip as duplicate",
+          "save (text, source, fused) in chat_messages",
+          "if fused >= 0.95:                            # CHAT_ALERT_T",
+          "  severity = high if fused >= 0.97 else medium",
+          "  alert parents, nudge child (at most one nudge pending)",
+          "if fused >= 0.6:                             # CHAT_STREAK_BAR",
+          "  n = lines in this session scoring >= 0.6",
+          "  if n >= 3: raise ONE high streak alert per session",
+          "# Later, run_prediction() builds the session chat score",
+          "typed = saved scores whose source is not voice_stt",
+          "chat_score = max(typed)        # enters fusion with weight 0.30"
+        ]
+      },
+      "side_title": "In plain words",
+      "side_bullets": [
+        "Toxic lines are rare, about 3.5% of chat. At a 0.5 cutoff only 0.235 of alerts are right: three false alarms per real one.",
+        "So a single line alerts only at 0.95. On real game chat, precision is 0.956 (alerts right) and recall 0.428 (toxic lines caught).",
+        "The streak rule wins back missed abuse: three lines scoring 0.6 or more in one session raise one high alert.",
+        "Noisy-OR: the line counts as clean only if both detectors say clean, so the fused score is never below the stronger one."
+      ],
+      "code_ref": "backend/app.py: save_chat(), fuse_toxicity(), run_prediction(); backend/text_utils.py",
+      "notes": "This is what happens to every chat line the phone sends. The keyword list catches clear abuse, including Hindi typed in Devanagari or in English letters. The model turns the cleaned text into TF-IDF word and character features, runs logistic regression, then isotonic calibration, so its scores track how often lines really are toxic. Noisy-OR treats the two scores as independent clues. The single-line bar is high on purpose: a false alarm about a child's language costs parent trust. The 0.235 figure comes from a realistic general chat stream. On real Dota 2 chat, PR-AUC, the area under the precision-recall curve, is {chat_prauc}, against 0.709 for off-the-shelf toxic-BERT. Hindi precision at 0.95 is 0.968 in Devanagari and 0.958 romanised. At 0.97, the high-severity mark, precision was 1.00 but recall only 0.024. The 0.6 bar alone gives precision 0.63 and recall 0.82 per line, so we require three hits. The session score uses typed lines only, because spoken words already feed the voice channel."
+    }
+  ],
+  "algo4_voice": [
+    {
+      "heading": "Algorithm & Pseudocode",
+      "subheading": "Algorithm 4 - Voice channel (on-device speech-to-text + emotion)",
+      "kind": "pseudocode",
+      "code": {
+        "title": "Voice: from 10-second clip to session voice score",
+        "lines": [
+          "# Phone: only while the tracked game is in the foreground (16 kHz mic)",
+          "for each phrase Vosk transcribes on the phone:",
+          "  send text to /chat as voice_stt   # alert check, not the chat score",
+          "every 10 s: send that audio as a WAV to /voice   # at most 2 MB",
+          "# Server: save_voice() -> analyse_audio()",
+          "if clip is silent or speech_ratio < 0.1:  # VAD gate (webrtcvad)",
+          "  store \"no voice captured\" and stop      # missing, not neutral",
+          "f = 36 acoustic features (MFCC, pitch, energy, spectrum)",
+          "p = HistGradientBoosting.predict_proba(f)  # 4 emotion probabilities",
+          "words = voice_stt lines from the last 20 s",
+          "# fuse_emotion(): tone gives arousal, words give valence",
+          "arousal = probability-weighted arousal of p   # calm vs animated",
+          "valence = weighted blend(tone prior, word valence, word toxicity)",
+          "emotion = nearest of 4 emotion points on the (valence, arousal) map",
+          "intensity = max(p)",
+          "delete the WAV, keep only (emotion, intensity, p)",
+          "# Session voice score in run_prediction()",
+          "VOICE_RISK: angry 0.9, frustrated 0.7, excited 0.4, neutral 0.1",
+          "v = mean over segments of VOICE_RISK[emotion] * intensity",
+          "# (if a WAV is still on disk: probability-weighted VOICE_RISK)"
+        ]
+      },
+      "side_title": "In plain words",
+      "side_bullets": [
+        "While the game is on screen, the phone sends two things: words transcribed on the phone itself, and 10-second audio clips, deleted after analysis.",
+        "Tone tells calm from animated. Words tell positive from negative. Combining them stops loud but happy speech from being read as angry.",
+        "Honest accuracy is 0.574 on four emotions, tested on speakers never seen in training. A random split showed 0.657 because the model memorised voices.",
+        "Training speech is acted adult emotion recorded in studios, not children gaming. So voice is only supporting evidence, weighted 0.30 in fusion."
+      ],
+      "code_ref": "backend/app.py: save_voice(), analyse_audio(), fuse_emotion(), run_prediction()",
+      "notes": "The phone listens only while the tracked game is on screen. First, Vosk turns speech into text on the phone, and each phrase goes through the chat toxicity model, so spoken abuse can raise an alert. These lines stay out of the session chat score so words are not counted twice. Second, every 10 seconds the audio clip is uploaded. A speech detector, called a VAD, drops clips that are silent or mostly game sound, and those count as missing voice. The rest become 36 acoustic numbers, and a gradient-boosted tree model gives four emotion probabilities. Recent words then adjust the reading, so excited is not mistaken for angry. The audio is deleted, so production scores use each stored emotion times its confidence. Training data is about 9,800 acted clips from RAVDESS, CREMA-D, EMO-DB and URDU. Macro-F1, the F1 averaged over the four emotions, is 0.568. Embeddings from wav2vec2, a large pretrained speech model, reached 0.776 versus 0.553 for our features, but do not fit our 512 MB server."
+    }
+  ],
+  "algo5_fusion": [
+    {
+      "heading": "Algorithm & Pseudocode",
+      "subheading": "Algorithm 5 - Fusion, risk band and parent alert",
+      "kind": "pseudocode",
+      "code": {
+        "title": "Fuse the channels, pick a band, alert the parents",
+        "lines": [
+          "# 1. Fuse only the channels captured in this session",
+          "parts = []",
+          "if behaviour present: parts.append((0.40, b_score))",
+          "if chat present:      parts.append((0.30, c_score))",
+          "if voice present:     parts.append((0.30, v_score))",
+          "if parts is empty: band = unknown          # no evidence, no score",
+          "else:",
+          "  score = sum(w * s) / sum(w) over parts   # renormalise",
+          "  score = clip(score * genre_weight(game), 0, 1)  # 0.70 to 1.25",
+          "  band = Low if score < 0.33 else Some if score < 0.67 else High",
+          "if band == High and scored_sessions < 3: band = Some  # observe",
+          "save prediction(scores, band, which channels were present)",
+          "# 2. Alert the guardians (session end, or a late re-score)",
+          "if band in (Some, High): severity = medium if Some else high",
+          "elif revising and old_alert: edit old_alert as info and return",
+          "else: return                                # Low or no data",
+          "if old_alert and revising and severity rose: retire old, add new",
+          "elif old_alert: edit old_alert in place     # no re-alarm",
+          "else: insert new alert",
+          "deliver to every guardian by polling, High also by FCM push"
+        ]
+      },
+      "side_title": "In plain words",
+      "side_bullets": [
+        "Renormalising means we average only the channels we have. A placeholder for a missing channel would add fake risk to silent or chat-less games.",
+        "Observation mode: with fewer than 3 scored sessions, High concern is capped to Some concern. One session is too little evidence.",
+        "Weights 0.40, 0.30, 0.30 are hand-set from clinical definitions, which centre on behaviour. They are not learned, only stress-tested by shifting each by 0.15.",
+        "The genre multiplier is our weakest part. The survey found no genre effect (p {genre_p}), but it was too small to rule one out."
+      ],
+      "code_ref": "backend/app.py: run_prediction(), _maybe_create_alert(), _push_high_risk()",
+      "notes": "A session can have three scores: behaviour, chat and voice. We average only the ones captured, so a game with no text chat is not judged on a placeholder. The average is multiplied by a genre weight, clipped to 0 to 1, and cut at 0.33 and 0.67 into Low, Some and High concern. Until a child has 3 scored sessions we never show High concern. Some concern creates a medium alert and High concern a high alert, and every guardian sees it. High concern is also pushed to their phones through Firebase Cloud Messaging. If late evidence raises the band, we create a new alert so it is delivered again. If it lowers the band, we correct the old one. On 131 pilot sessions, shifting the weights by 0.15 changed a median 0.8 percent of bands, worst case 10.7 percent. Removing the genre multiplier changes 34.4 percent. The survey's genre test had only 32 percent power, so we keep the multiplier but flag it as unproven."
+    }
+  ],
+  "design": [
+    {
+      "heading": "Design Approach",
+      "subheading": "What we followed and why",
+      "kind": "twocol",
+      "cols": [
+        {
+          "title": "Approach followed",
+          "bullets": [
+            "**Modular three-tier design:** a ChildApp captures, a Flask server on Render scores, and a ParentApp explains. Each tier can change on its own.",
+            "**Late fusion:** three separate models (behaviour, chat, voice) each produce a score, and only those scores are combined into one band.",
+            "**Measured inputs only:** the behaviour model uses 10 features computed from play-session timing, and training and live scoring share one feature function.",
+            "**Privacy by design:** on-phone speech-to-text, raw audio deleted after feature extraction, no data accepted without parent consent, no screen recording.",
+            "**Evaluation-driven:** each major choice was tested against a measured alternative, such as a removed feature, a removed dataset or a different model."
+          ]
+        },
+        {
+          "title": "Why",
+          "bullets": [
+            "Channels fail on their own and arrive at different times. A missing channel is left out, not filled with a fake value.",
+            "Parents need reasons, not just a number. SHAP (it splits one prediction into per-feature shares) names the top behaviour reasons.",
+            "It must run on mid-range phones and a free 512 MB server, so every scoring model is a small classical model, not deep learning.",
+            "Users are minors, so the system keeps as little as it can. Voice is kept as features and a label, never as a recording.",
+            "Claims must be checkable. Each comparison can be rerun, and automated tests check that numbers quoted in the paper match the data."
+          ]
+        }
+      ],
+      "footer": "Benefit: each channel can be tested, explained and replaced alone. Drawback: channel interactions are never learned, and fusion weights are set by hand, then checked by shifting them.",
+      "notes": "Our design rests on five ideas. First, three tiers: the child's phone only captures, the server only scores, and the parent's app only explains. Second, late fusion: behaviour, chat and voice each have their own model, and we combine only their final scores, weighted 0.40, 0.30 and 0.30 and renormalised over whichever channels are present. Third, one shared function in backend/behavior_features.py feeds both training and live scoring, so the two cannot drift apart. Fourth, privacy: speech is transcribed on the phone with Vosk, the server deletes raw audio after extracting 36 acoustic features, it refuses data without current parent consent, and we never record the screen. Fifth, every choice has a measured alternative. For example, we re-banded pilot sessions under two other fusion rules. Noisy-OR (any one channel can push the score up) flipped 45.0% of bands and max-pooling 32.1%, every flip upward, so the weighted average is the conservative choice. The cost is that we never learn how channels interact."
+    },
+    {
+      "heading": "Design Approach",
+      "subheading": "Benefits, drawbacks and alternatives considered",
+      "kind": "table",
+      "table": {
+        "header": [
+          "Alternative considered",
+          "Why we did not choose it",
+          "What we gave up"
+        ],
+        "col_widths_in": [
+          3,
+          5.2,
+          3.9
+        ],
+        "rows": [
+          [
+            "One deep model over all signals",
+            "No public dataset pairs phone play data with gaming-disorder labels. Small separate models are easier to measure, explain and serve.",
+            "Patterns visible only when signals are learned together."
+          ],
+          [
+            "Transformer chat model (toxic-BERT)",
+            "On real in-game chat it scored 0.709 PR-AUC (toxic-ranking quality, 1.0 is perfect) against our {chat_prauc}. It would also be slow on our GPU-free 512 MB server.",
+            "Deeper language understanding than word patterns."
+          ],
+          [
+            "Cross-platform app (Flutter or React Native)",
+            "Capture relies on Android-only services: app-usage stats, a custom keyboard, an accessibility service and Device Administrator. Both apps are native Kotlin.",
+            "iOS support. Both apps are Android-only APKs."
+          ],
+          [
+            "Cloud speech-to-text",
+            "It would send the child's voice to an outside company. Vosk transcribes on the phone, and our server deletes each clip after feature extraction.",
+            "Spoken Hindi is not transcribed by default. Dual Hindi and English recognition needs 51-72% CPU and 419 MB, so it is off."
+          ],
+          [
+            "Screen capture with OCR (text read from screenshots)",
+            "Recording the screen costs more privacy than the gap it closes. Our custom keyboard reads typed chat instead.",
+            "Browser-tab, cloud-streaming and messenger web-view games stay invisible. We disclose this."
+          ],
+          [
+            "Early fusion: one model on all features",
+            "Channels arrive at different times and often go missing: in the pilot, voice was in 99.9% of live predictions, chat in 0.4%.",
+            "Cross-channel effects. Weights are rescaled over the channels present."
+          ]
+        ]
+      },
+      "notes": "Each row is a road we did not take and what it cost us. A single deep model needs labelled phone play data, and no public dataset has it. That is also why the behaviour labels are synthetic. On chat, we measured instead of assuming. Off-the-shelf toxic-BERT scored 0.709 on real Dota 2 chat, below our TF-IDF pipeline at {chat_prauc}. Removing the in-game chat data drops ours to {no_conda}, so the data mattered more than the model size. The Phase-1 plan proposed Flutter or React Native with iOS. The capture we built relies on Android services such as a custom keyboard and an accessibility service, so both apps are native Kotlin and Android only. Vosk transcribes speech on the phone, so no outside company hears the child. Default capture costs about 14% CPU and 288 MB, while adding Hindi recognition fails our device budget, so spoken Hindi is not transcribed by default. We accept the browser-game blind spot rather than record the screen."
+    }
+  ],
+  "demo_status": [
+    {
+      "heading": "Demonstration and Testing of the Modules Completed",
+      "subheading": "Module completion and what we demonstrate",
+      "kind": "table",
+      "intro": "All six modules are complete and deployed in release v2.4.0. The live demo runs the full flow, from a game session to the parent's alert.",
+      "table": {
+        "header": [
+          "Module",
+          "Status",
+          "Shown in the live demo",
+          "How it is tested"
+        ],
+        "col_widths_in": [
+          2.2,
+          1.9,
+          4,
+          4
+        ],
+        "rows": [
+          [
+            "ChildApp capture",
+            "Complete, including Hindi (Devanagari) typing.",
+            "Opening Roblox starts a session in about 10 seconds. Typed and spoken chat reach the parent. Turning off the capture permission alerts parents.",
+            "79 Android unit tests, including Hindi typing. Manual checklist on a real phone."
+          ],
+          [
+            "Backend scoring and fusion",
+            "Complete, live",
+            "When the game closes, the session is scored and appears on the parent dashboard.",
+            "181 tests on SQLite and Postgres. 288 simultaneous requests, 0 errors."
+          ],
+          [
+            "ParentApp",
+            "Complete, signed APK",
+            "Concern level with plain-language reasons, rating an alert Accurate or False alarm, a nudge, the weekly PDF.",
+            "31 Android unit tests. 25 live-server checks cover every parent screen."
+          ],
+          [
+            "ML models: behaviour, chat, voice",
+            "Complete, all three served",
+            "Chat Analysis lists flagged messages. Emotion Insights shows emotions heard in voice.",
+            "Chat PR-AUC {chat_prauc} on unseen gaming chat (precision-recall area, fair for rare toxic text). Behaviour 91.6%, synthetic labels only. Voice 0.574 on unseen speakers."
+          ],
+          [
+            "External validation and fairness",
+            "Complete, reported",
+            "Results slide, not live: behaviour score compared with IGDS9-SF, a standard gaming-disorder questionnaire, {n_scored} adults. Moderate rank correlation {rho}.",
+            "0 false toxicity alerts on {clips} Indian-English speech clips. 7 CI guards check the paper's numbers against the data."
+          ],
+          [
+            "Deployment and CI",
+            "Complete, live on Render",
+            "Health page opened first to wake the free server. Both apps use the live cloud, no laptop.",
+            "CI reruns all tests on every push. 23-day consented family pilot."
+          ]
+        ]
+      },
+      "notes": "Say: every module is built, deployed and tested, so we demo the whole product. We follow DEMO_RUNBOOK section 3. First open the health URL so the free cloud server is awake. Parent app: sign in as the demo family, open Arjun's dashboard and its reasons, rate one alert, send a nudge, then show Emotion Insights, Chat Analysis and the weekly PDF. Child app: the home screen, the Mira counsellor chat, the daily check-in, and logout asking for the parent PIN. Then live capture: open Roblox, type and speak, close it, and refresh the parent dashboard. Close by turning off Accessibility, the chat-capture permission, to show the tamper alert. If the cloud is slow, switch to the laptop backend over USB. If the phone or network fails, play the backup video, which follows the same order. Extra numbers: an 82-check production sweep and a median response of 66 ms. Hindi typing and two-language voice are beta. Two-language voice is off by default because it uses too much CPU."
+    }
+  ],
+  "applicability": [
+    {
+      "heading": "Applicability of Proposed Methodology in Other Domain",
+      "subheading": "Where the methodology transfers",
+      "kind": "table",
+      "table": {
+        "header": [
+          "Domain and the common problem",
+          "Components that transfer",
+          "Modifications required",
+          "Datasets / data sources"
+        ],
+        "col_widths_in": [
+          3.1,
+          3,
+          2.9,
+          3.1
+        ],
+        "rows": [
+          [
+            "Phone and social-media overuse. Hour counters miss compulsive patterns like late-night checking.",
+            "Volume and pattern features, calibrated Random Forest, SHAP reasons (which features raised the score), three concern bands.",
+            "Swap game sessions for app sessions. Retrain on real labels.",
+            "StudentLife phone data. Validate against the Smartphone Addiction Scale short version or Bergen Social Media Addiction Scale."
+          ],
+          [
+            "Gambling harm. It shows in night play and chasing losses, not only money spent.",
+            "Pattern features (night share, binges, rapid re-entry), calibrated scores, and alerts only when very sure.",
+            "Add stake and loss-chasing features. Alert the player or support staff, not a parent.",
+            "Public bwin records (Transparency Project, Division on Addiction). Validate with the Problem Gambling Severity Index."
+          ],
+          [
+            "Abuse on Indian platforms and school chat. English-only filters miss Hinglish and Devanagari Hindi.",
+            "TF-IDF text model plus keyword list, highest score per session, streak alert for repeated abuse, fairness audit.",
+            "Add bullying labels and more Indian languages. Re-tune the alert threshold on school chat.",
+            "HASOC shared-task data in Hindi and English. MACD, abusive comments in five Indian languages."
+          ],
+          [
+            "Fintech fraud alerts. Fraud is rare, and floods of false alerts get ignored.",
+            "Only the method: PR-AUC (honest when positives are rare), calibration, precision-first thresholds, ablations (remove one part, measure the loss).",
+            "New models. Transaction speed and time of day matter more than the amount.",
+            "IEEE-CIS Fraud Detection data on Kaggle. The ULB credit-card fraud dataset."
+          ]
+        ]
+      },
+      "notes": "This slide covers template points one to five. The shared problem in every row is ours too: a simple count of hours, keywords or money misses the pattern that signals harm, and false alarms quickly destroy trust. Calibrated means that among cases scored 0.7, about 70 percent really are positive. For fintech, say clearly that our models do not transfer, only the evaluation and alerting method. References to verify: StudentLife, Wang and colleagues, ACM UbiComp 2014. Smartphone Addiction Scale short version, Kwon and colleagues, PLoS ONE 2013. Bergen Social Media Addiction Scale, Andreassen and colleagues, Psychology of Addictive Behaviors 2016. bwin data, Transparency Project, Division on Addiction, Cambridge Health Alliance, LaBrie and colleagues 2007. Problem Gambling Severity Index, Ferris and Wynne, Canadian Centre on Substance Abuse 2001. HASOC, Mandl and colleagues, FIRE 2019. MACD, Gupta and colleagues, ShareChat, NeurIPS 2022 Datasets and Benchmarks. IEEE-CIS Fraud Detection, Kaggle with Vesta, 2019. ULB credit-card fraud, Dal Pozzolo and colleagues, ULB with Worldline, 2015."
+    },
+    {
+      "heading": "Applicability of Proposed Methodology in Other Domain",
+      "subheading": "Benefits, feasibility, comparison and future scope",
+      "kind": "twocol",
+      "cols": [
+        {
+          "title": "Benefits and comparison",
+          "bullets": [
+            "Pattern-aware signals: night play, binge sessions and rapid re-entry, not just total hours.",
+            "Calibrated scores: of all cases scored 0.7, about 70% really are at risk. SHAP turns each score into plain-language reasons.",
+            "Precision-first alerting: alert only when very sure, so families or staff are not flooded with false alarms.",
+            "Fairness audit built in: check every accent or language group for false alerts before trusting the system.",
+            "Existing tools fall short: screen-time dashboards report volume only, keyword or English-only filters miss Hinglish abuse, and risk scores are rarely calibrated."
+          ]
+        },
+        {
+          "title": "Feasibility, limitations, future scope",
+          "bullets": [
+            "Feasible wherever passive usage data and a validated questionnaire both exist to check the scores against.",
+            "Needs in-domain data: without real gaming chat in training, our chat PR-AUC (ranking quality when positives are rare) fell 31 points, {chat_prauc} to {no_conda}.",
+            "Every new population needs its own ethics review and consent, under India's Digital Personal Data Protection (DPDP) Act 2023.",
+            "Transfer is never free: models must be retrained and re-validated in each new domain.",
+            "Future scope: a reusable screening-pipeline toolkit, per-domain pilots, and on-device small models only after a resource drill like ours."
+          ]
+        }
+      ],
+      "footer": "What transfers is the method: measure patterns, calibrate, explain, alert only when sure, and audit fairness. The trained models do not transfer.",
+      "notes": "This slide covers template points six to nine. The main benefit is the recipe, not the trained models: measure patterns, calibrate the score, explain it, alert only when sure, and audit fairness. Be honest about feasibility. PR-AUC measures how well a model ranks the rare positives above the rest. Dropping CONDA, the real Dota 2 chat corpus, took chat PR-AUC from {chat_prauc} to {no_conda}. Our own external check is a moderate link, rho {rho}, on adult self-report, so every new domain must earn its own validation. One open-data check is already done: in StudentLife, college students' late-night share of phone activity has a median of 0.32 and a 90th percentile of 0.36, so our heavy-use prior of 0.60 sits well above normal night use. On-device, the default ChildApp used 14 percent CPU and 288 MB, while dual Hindi and English speech-to-text took 51 to 72 percent CPU and peaked at 419 MB, failed our gate, and stays off by default."
+    }
+  ],
+  "conclusion": [
+    {
+      "heading": "Conclusion",
+      "kind": "bullets",
+      "intro": "The system gives parents a screening signal, never a diagnosis. Here is what we built, what we showed and what is still open.",
+      "bullets": [
+        "**Built and deployed.** A child phone app records play, a server scores it with three models, and a parent app shows concern levels. It is live, with a consented 23-day family pilot.",
+        "**Core idea: how a child plays, not how long.** For surveyed adults, late-night play, binges and quick re-logins tracked gaming-disorder scores better than play-time measures: correlations {pattern} versus {volume}, gap {contrast} {contrast_ci}.",
+        "**Validated: a moderate link.** For {n_scored} adult gamers, the behaviour score correlated with IGDS9-SF, a standard 9-question gaming-disorder scale, at {rho} {rho_ci}. Its edge over screen time alone is suggestive, not proven.",
+        "**Not yet validated:** spotting clinical-range cases (the survey had only one), any result on children, and the 91.6% behaviour accuracy, which was measured on simulated labels, not real ones.",
+        "**Honest failures.** No survey support for the genre multiplier. Four of five reason labels had misleading names and were renamed. Bilingual speech-to-text failed our phone test, so it is off by default.",
+        "**Next.** Remove the genre weight so parents see exactly the validated score, and submit the IEEE paper. After ethics approval, link parents’ IGDS9-SF answers to each child’s measured play."
+      ],
+      "notes": "Close on four points. First, this is a working, deployed system: 181 backend tests, 110 Android tests and 7 paper-versus-data guards run in CI. Second, the core idea is that the pattern of play carries signal that raw hours miss. The gap is a difference between two correlations, and its 95 percent interval stays above zero. Third, be exact about scope. Only the behaviour score was tested, on adults, against their own questionnaire answers. With screen time held fixed the link remains, partial {partial} {partial_ci}. But the lead over screen time alone has an interval that touches zero, so call it suggestive. Fourth, say the failures out loud. Genre gave p {genre_p} at 32 percent power, so it is underpowered rather than disproven. We are removing it from the served score anyway, because it was never part of what we validated; a study of about 400 people could bring it back only if it shows an effect. Only the craving label held up. Bilingual Hindi and English speech-to-text used 51 to 72 percent CPU and 419 MB, so it failed our gate. The next work needs data, not new models."
+    }
+  ],
+  "references": [
+    "H. M. Pontes and M. D. Griffiths, \"Measuring DSM-5 Internet Gaming Disorder: Development and validation of a short psychometric scale,\" Computers in Human Behavior, vol. 45, pp. 137–143, 2015.",
+    "World Health Organization, International Classification of Diseases 11th Revision (ICD-11) — Gaming disorder (6C51), 2019.",
+    "H. Weld et al., \"CONDA: a CONtextual Dual-Annotated dataset for in-game toxicity understanding and detection,\" in Findings of ACL-IJCNLP, 2021.",
+    "T. Mandl, S. Modha, P. Majumder, D. Patel, M. Dave, C. Mandlia, and A. Patel, \"Overview of the HASOC track at FIRE 2019: Hate speech and offensive content identification in Indo-European languages,\" in Proc. FIRE, 2019.",
+    "T. Javed et al., \"Svarah: Evaluating English ASR systems on Indian accents,\" in Proc. INTERSPEECH, 2023.",
+    "S. M. Lundberg and S.-I. Lee, \"A unified approach to interpreting model predictions,\" in Advances in Neural Information Processing Systems (NeurIPS), 2017.",
+    "L. Hanu and Unitary team, \"Detoxify: toxic comment classification models,\" open-source software, github.com/unitaryai/detoxify, 2020.",
+    "Alpha Cephei, \"Vosk speech recognition toolkit,\" open-source software, alphacephei.com/vosk.",
+    "S. R. Livingstone and F. A. Russo, \"The Ryerson Audio-Visual Database of Emotional Speech and Song (RAVDESS),\" PLoS ONE, vol. 13, no. 5, 2018.",
+    "H. Cao, D. G. Cooper, M. K. Keutmann, R. C. Gur, A. Nenkova, and R. Verma, \"CREMA-D: Crowd-sourced emotional multimodal actors dataset,\" IEEE Trans. Affective Computing, vol. 5, no. 4, 2014.",
+    "F. Burkhardt, A. Paeschke, M. Rolfes, W. F. Sendlmeier, and B. Weiss, \"A database of German emotional speech,\" in Proc. Interspeech, 2005.",
+    "S. Latif, A. Qayyum, M. Usman, and J. Qadir, \"Cross lingual speech emotion recognition: Urdu vs. Western languages,\" in Proc. Int. Conf. on Frontiers of Information Technology (FIT), 2018."
+  ],
+  "references_domain": [
+    "R. Wang, F. Chen, Z. Chen, et al., \"StudentLife: Assessing mental health, academic performance and behavioral trends of college students using smartphones,\" in Proc. ACM UbiComp, Seattle, WA, USA, 2014, pp. 3–14, doi: 10.1145/2632048.2632054.",
+    "M. Kwon, D.-J. Kim, H. Cho, and S. Yang, \"The smartphone addiction scale: Development and validation of a short version for adolescents,\" PLoS ONE, vol. 8, no. 12, Art. no. e83558, 2013.",
+    "C. S. Andreassen et al., \"The relationship between addictive use of social media and video games and symptoms of psychiatric disorders: A large-scale cross-sectional study,\" Psychology of Addictive Behaviors, vol. 30, no. 2, pp. 252–262, 2016.",
+    "R. A. LaBrie, D. A. LaPlante, S. E. Nelson, A. Schumann, and H. J. Shaffer, \"Assessing the playing field: A prospective longitudinal study of Internet sports gambling behavior,\" Journal of Gambling Studies, vol. 23, no. 3, pp. 347–362, 2007.",
+    "J. Ferris and H. Wynne, \"The Canadian Problem Gambling Index: Final report,\" Canadian Centre on Substance Abuse, Ottawa, ON, Canada, 2001.",
+    "V. Gupta et al., \"MACD: Multilingual abusive comment detection at scale for Indic languages,\" in Advances in Neural Information Processing Systems (NeurIPS), Datasets and Benchmarks Track, vol. 35, 2022, pp. 26176–26191.",
+    "IEEE Computational Intelligence Society and Vesta Corporation, \"IEEE-CIS Fraud Detection,\" Kaggle, 2019. [Online]. Available: kaggle.com/competitions/ieee-fraud-detection",
+    "A. Dal Pozzolo, O. Caelen, R. A. Johnson, and G. Bontempi, \"Calibrating probability with undersampling for unbalanced classification,\" in Proc. IEEE Symp. Series on Computational Intelligence (SSCI), 2015, pp. 159–166.",
+    "Government of India, \"The Digital Personal Data Protection Act, 2023,\" Act No. 22 of 2023, The Gazette of India, 2023."
+  ]
+}
