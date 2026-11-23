@@ -9,7 +9,13 @@ info:
     TF-IDF/logistic-regression chat toxicity, and acoustic voice-emotion
     classification. Protected routes require the signed bearer token returned
     by login or registration.
-  version: '2.0.0'
+
+    Score version 2 (November 2026): the fused risk score is the 40/30/30
+    weighted mean of the channels present in the session, renormalised over
+    those channels and clipped to [0, 1]. The game's genre no longer changes
+    it, so prediction payloads carry `score_version` and no longer include the
+    version-1 fields `genre_weight` and `game_genre`.
+  version: '2.1.0'
   contact:
     name: PES Capstone Team
 
@@ -115,7 +121,38 @@ paths:
           required: true
       responses:
         '200':
-          description: Session ended with prediction
+          description: >-
+            Session ended with prediction. A repeated end (already_ended) replays
+            the stored prediction, whose score_version says which formula made it.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean }
+                  session_id: { type: integer }
+                  duration_seconds: { type: integer }
+                  short_session: { type: boolean }
+                  already_ended: { type: boolean }
+                  consent_required: { type: boolean }
+                  prediction:
+                    type: object
+                    properties:
+                      risk_label:
+                        type: string
+                        description: Internal band key (casual, at_risk, addicted or unknown)
+                      risk_score: { type: number, format: float, nullable: true }
+                      behavior_score: { type: number, format: float }
+                      chat_score: { type: number, format: float }
+                      voice_score: { type: number, format: float }
+                      modalities: { $ref: '#/components/schemas/Modalities' }
+                      recommendations: { type: array, items: { type: string } }
+                      top_factors: { type: array, items: { type: object } }
+                      observation_mode: { type: boolean }
+                      sessions_analyzed: { type: integer }
+                      score_version: { $ref: '#/components/schemas/ScoreVersion' }
+        '503':
+          description: Session saved but finalization is pending or in progress; retry
 
   /api/session/{sid}/behavioral:
     post:
@@ -139,7 +176,15 @@ paths:
           schema: { type: integer }
           required: true
       responses:
-        '200': { description: Live prediction }
+        '200':
+          description: >-
+            Live prediction, or the stored one (session_closed) when the session
+            has already ended
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Prediction'
+        '409': { description: Session already closed and it has no stored prediction }
 
   /api/session/{sid}/voice:
     post:
@@ -340,7 +385,18 @@ paths:
       parameters:
         - { in: query, name: user_id, schema: { type: integer }, required: true }
       responses:
-        '200': { description: Alerts list }
+        '200':
+          description: Newest alerts first (at most 200) plus the unread total
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean }
+                  unread_count: { type: integer, minimum: 0 }
+                  alerts:
+                    type: array
+                    items: { $ref: '#/components/schemas/Alert' }
 
   /api/counselor/chat:
     post:
@@ -431,7 +487,15 @@ paths:
       tags: [Auth]
       summary: Public model metrics and limitations
       responses:
-        '200': { description: Model card }
+        '200':
+          description: Model card, including the served score_version and a fusion_note
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  score_version: { $ref: '#/components/schemas/ScoreVersion' }
+                  fusion_note: { type: string }
 
   /api/register:
     post:
@@ -534,7 +598,10 @@ paths:
       tags: [Sessions]
       summary: Idempotently store an offline completed session
       responses:
-        '200': { description: Backfill stored/scored or existing idempotent result returned }
+        '200':
+          description: >-
+            Backfill stored/scored or existing idempotent result returned; its
+            prediction carries risk_label, risk_score and score_version
 
   /api/session/{sid}:
     get:
@@ -543,7 +610,10 @@ paths:
       parameters:
         - { in: path, name: sid, schema: { type: integer }, required: true }
       responses:
-        '200': { description: Session detail }
+        '200':
+          description: >-
+            Session detail. prediction is the latest stored predictions row; its
+            score_version is null for a legacy row scored under version 1.
         '404': { description: Session not found }
 
   /api/sessions:
@@ -597,6 +667,12 @@ paths:
       summary: Store or replace a parent's prediction verdict
       responses:
         '200': { description: Feedback stored }
+        '400':
+          description: >-
+            Invalid input, or the alert type takes no verdict. Only risk,
+            risk_revision, toxicity and toxicity_streak alerts do; score_update
+            and monitoring-event alerts do not.
+        '404': { description: Alert not found }
 
   /api/feedback/summary:
     get:
@@ -687,3 +763,74 @@ components:
         user_id: { type: integer }
         name: { type: string }
         role: { type: string }
+    ScoreVersion:
+      type: integer
+      enum: [1, 2]
+      description: |
+        Formula that produced the score. 2 (current): the weighted mean of the
+        channels present in the session, renormalised over them and clipped to
+        [0, 1], with no game-genre factor. 1: a legacy score stored before
+        November 2026, when that mean was also multiplied by a per-genre weight.
+        Stored as predictions.score_version; NULL there marks a version-1 row, and
+        a replayed stored prediction reports it as 1.
+    Modalities:
+      type: object
+      description: Which channels produced evidence for this session
+      properties:
+        behavior: { type: boolean }
+        chat: { type: boolean }
+        voice: { type: boolean }
+    Prediction:
+      type: object
+      description: |
+        Ensemble result for one session. The version-1 fields genre_weight and
+        game_genre were removed with score version 2: no client read them, and
+        the genre no longer affects the score.
+      properties:
+        success: { type: boolean }
+        risk_category:
+          type: string
+          description: Internal band key (casual, at_risk, addicted or unknown)
+        risk_label:
+          type: string
+          description: Same internal band key as risk_category, matching /end
+        risk_score: { type: number, format: float, nullable: true }
+        final_risk_score: { type: number, format: float, nullable: true }
+        behavior_score: { type: number, format: float }
+        chat_score: { type: number, format: float }
+        voice_score: { type: number, format: float }
+        confidence: { type: number, format: float }
+        observation_mode: { type: boolean }
+        sessions_analyzed: { type: integer }
+        top_factors: { type: array, items: { type: object } }
+        modalities: { $ref: '#/components/schemas/Modalities' }
+        disclaimer: { type: string }
+        score_version: { $ref: '#/components/schemas/ScoreVersion' }
+        session_closed:
+          type: boolean
+          description: Present when the session had already ended and the stored prediction is returned
+    Alert:
+      type: object
+      properties:
+        id: { type: integer }
+        type:
+          type: string
+          description: |
+            risk, risk_revision, toxicity and toxicity_streak carry a model
+            assessment and accept a parent verdict (POST /api/feedback).
+            session_start, login, offline, permission and tamper report monitoring
+            events. score_update is the one-time informational note (severity low,
+            at most one per child, never pushed) raised when a child whose earlier
+            sessions were scored under score version 1 receives a version-2 score;
+            it takes no verdict and is not a risk alert.
+        message: { type: string }
+        severity:
+          type: string
+          description: info, low, medium or high
+        created_at: { type: string }
+        age_minutes: { type: integer, nullable: true }
+        read: { type: boolean }
+        feedback:
+          type: string
+          nullable: true
+          description: The parent's verdict on this alert, if one was given

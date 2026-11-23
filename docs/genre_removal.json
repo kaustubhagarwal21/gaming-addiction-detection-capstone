@@ -1,0 +1,55 @@
+{
+  "score_version": 2,
+  "removed_on": "2026-11-23",
+  "removed_on_display": "23 Nov 2026",
+  "v1_formula": "final = clip(g * sum_k(w_k * s_k) / sum_k(w_k), 0, 1), summed over the channels k captured in the session (w_behaviour = 0.40, w_chat = 0.30, w_voice = 0.30, renormalised over the present channels); s_behaviour = 0.5*P(Some concern class) + 1.0*P(High concern class) from the calibrated behaviour RandomForest, s_chat = the highest stored per-message chat score, s_voice = the voice emotion score; g = GENRE_RISK_WEIGHTS[GAME_GENRES[game_name]], 1.0 when the game or its genre is not listed. Band: final < RISK_T1 (0.33) Low concern, < RISK_T2 (0.67) Some concern, otherwise High concern; observation mode (fewer than 3 scored sessions) caps High concern at Some concern. Source: backend/app.py run_prediction at 95ae1c8.",
+  "v2_formula": "final = clip(sum_k(w_k * s_k) / sum_k(w_k), 0, 1): the v1 formula without the genre factor (equivalently g = 1.0 for every game). Channels, the 40/30/30 weights and their renormalisation, the three channel scores, the RISK_T1/RISK_T2 bands and the observation-mode cap are unchanged. This is the computation that genre_sweep x0.0 evaluated on the pilot. The clip no longer does anything, because a weighted mean of scores in [0, 1] stays in [0, 1].",
+  "v1_genre_weights": {
+    "Battle Royale": 1.25,
+    "FPS": 1.2,
+    "MOBA": 1.2,
+    "MMO": 1.15,
+    "RPG": 1.1,
+    "Strategy": 0.9,
+    "Sandbox": 0.95,
+    "Casual": 0.7
+  },
+  "band_shift": {
+    "fraction": 0.3435,
+    "n_sessions": 131,
+    "source": "docs/fusion_sensitivity.json genre_sweep[\"x0.0\"], written by ml/analyze_fusion_sensitivity.py (--unit session) against the production pilot database (Neon Postgres via DATABASE_URL); clean rerun committed 2026-08-03 (620088b). The script, GENRE_RISK_WEIGHTS/GAME_GENRES and the served fusion code are unchanged between that run and 95ae1c8.",
+    "rerun_offline": false,
+    "notes": "x0.0 sets every session's effective weight to 1 + (g - 1) * 0.0 = 1.0, so it is exactly the v2 score under the same renormalised 40/30/30 fusion and RISK_T1/RISK_T2 bands. 0.3435 = 45 of 131 sessions whose band differs from the stored, served band. Unit: the latest stored prediction (with modality flags) of each completed session since the pilot start (script default 2026-07-06; the JSON does not record the value used), excluding the demo/E2E accounts (user_id 1 and 3). The script writes nothing unless its re-implementation reproduces every stored final score within 2e-4 and every stored band; this run passed with max |diff| 6e-05. Served bands before the change: 63 Low, 68 Some, 0 High concern. The observation-mode cap had applied to 0 rows and is re-applied in the counterfactual only where it had applied before, so a move into High concern during a child's first sessions would be counted although serving caps it. Direction is not recorded: the genre sweep stores only the share of changed bands, with no up/down split and no per-genre counts. By construction, a change is Some -> Low concern for a genre weighted above 1.0 (Battle Royale, FPS, MOBA, MMO, RPG) or Low -> Some / Some -> High concern for one weighted below 1.0 (Strategy, Sandbox, Casual); games not in GAME_GENRES (weight 1.0) cannot change. Not re-run offline: git tracks no pilot snapshot under data/ (only behavior_dataset.csv and chat_dataset.csv), and the only local database (backend/gaming_addiction.db, gitignored) holds just the excluded demo accounts, so 0 rows pass the pilot filter. The figure stands as measured on 131 sessions. Since score v2, ml/analyze_fusion_sensitivity.py reproduces every stored row with the formula that served it (the genre factor only for score_version NULL rows, via the historical GENRE_RISK_WEIGHTS_V1 table and its GENRE_RISK_WEIGHTS alias), reports the v1/v2 row counts, and records the genre sweep's up/down split for future runs; ml/monitor_drift.py compares fused scores only within one score version, so the formula change cannot be reported as drift."
+  },
+  "survey_genre_test": {
+    "H": 4.587974721045122,
+    "p": 0.5976339073349868,
+    "power_at_n": 0.3175,
+    "n_groups": 7
+  },
+  "validated_path": {
+    "included_genre": false,
+    "statement": "In the IGDS9-SF validation study, respondents were scored only by the load_model() scorer in ml/eval_behavior_survey.py, which ml/eval_survey_extras.py reuses unchanged. Each respondent's self-reported play-pattern answers (Q5-Q11) are mapped to the 10 objective behavioural features, scaled with the served feature_scaler.pkl, passed through the served isotonic-calibrated behaviour RandomForest (behavior_calibrated.pkl), and reduced with the expression run_prediction uses for the behaviour channel: 0.5*P(Some concern class) + 1.0*P(High concern class). Nothing else is applied. Neither script imports backend/app.py, GENRE_RISK_WEIGHTS or GAME_GENRES (their only backend import is behavior_features.derive_psychometrics). There is no chat or voice channel, no 40/30/30 fusion, no observation-mode cap, and no band thresholds (the correlation uses the continuous score). The survey's \"type of game\" answer is used only in a separate Kruskal-Wallis test of IGDS9-SF totals across genres. The headline rho = 0.317 (95% CI 0.137 to 0.478, n = 103) therefore validates the behaviour-channel score with no genre factor. Score version 1 multiplied the fused score by a per-genre weight (0.70 to 1.25) that lay outside the validated computation, and version 2 removes it.",
+    "what_it_does_not_mean": "It does not mean the survey validated the whole served score. It validated one computation, the behaviour channel. Respondents were anonymous adults whose answers were self-reported and mapped to band midpoints; it used no device telemetry from children. The result is a construct-validity correlation with the IGDS9-SF (rho = 0.317), not diagnostic accuracy: caseness metrics are withheld because only 1 scored respondent reached the disordered range (36 or more). The chat and voice channels, the 40/30/30 fusion weights and their renormalisation, the 0.33/0.67 band thresholds and the observation-mode cap were never part of it. So removing the genre weight makes the served score identical to the validated computation only for sessions scored on behaviour alone. When chat or voice is present, the v2 score is still a fusion whose weights are priors: in the v1 pilot analysis, re-scoring from behaviour alone matched the served band in 67.7% of 130 sessions. Nor does it show that genre has no effect. The Kruskal-Wallis null (H = 4.59, p = 0.598, 7 genres) had about 32% power at n = 103, so it is underpowered, not disproven. The case for removal is that the multiplier sat outside the validated computation and the one test of it found no support."
+  },
+  "parent_notice": "We updated how the risk score is calculated (score version 2). The game-genre adjustment was removed because our validation study found no evidence that the type of game changes the risk. Earlier sessions were scored the old way, so the concern level from now on may differ from before even if play has not changed. Nothing else about monitoring has changed.",
+  "deployed": false,
+  "parent_notice_delivery": "One informational alert (type 'score_update', severity 'low') per child, raised on the child's first v2 prediction only if the child has legacy v1 predictions; at most once per child, enforced by the partial unique index idx_alerts_one_score_update and INSERT ... ON CONFLICT DO NOTHING; not feedback-eligible in the ParentApp (AlertTriage), not counted in agreement statistics, never pushed.",
+  "tests_added": [
+    "backend/tests/test_api.py::test_genre_no_longer_changes_the_served_score",
+    "backend/tests/test_api.py::test_live_end_and_replayed_predictions_carry_score_version",
+    "backend/tests/test_backend_hardening.py::test_score_v2_note_reaches_a_child_with_v1_history_exactly_once",
+    "backend/tests/test_backend_hardening.py::test_score_v2_note_never_goes_to_a_child_without_v1_history",
+    "backend/tests/test_backend_hardening.py::test_score_v2_note_is_information_not_a_rateable_risk_alert",
+    "backend/tests/test_backend_hardening.py::test_schema_init_twice_is_harmless_and_keeps_score_versions",
+    "backend/tests/test_backend_hardening.py::test_score_version_migration_upgrades_a_pre_v2_sqlite_database",
+    "backend/tests/test_ml_units.py::test_drift_compares_fused_scores_within_one_score_version"
+  ],
+  "backend_suite": {
+    "sqlite": "190 passed",
+    "postgres_16": "189 passed, 1 skipped (the SQLite-only migration test)",
+    "ml_guards": "7 passed",
+    "run_on": "2026-11-23"
+  },
+  "migration_rehearsal": "2026-11-23, Postgres 16 in Docker: schema created by the pre-v2 backend (HEAD 95ae1c8) with one v1 prediction, then the v2 backend started against it: score_version column and partial unique index created; the v1 row stayed NULL, new rows stored 2; exactly one parent note, still one after a cold second worker scored again; a raw duplicate insert was refused (UniqueViolation)."
+}

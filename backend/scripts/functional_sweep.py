@@ -5,7 +5,8 @@ mode): this exercises every feature flow the two apps use, with real tokens, inc
 the paths the suite doesn't cover — registration/family joins, the heartbeat watchdog
 with child-local quiet hours, tamper events, the nudge lifecycle, chat de-dupe and
 toxicity alerts, a real WAV voice upload (silence floor + late re-score), role guards,
-stale-session self-healing, feedback + agreement, and the PDF report.
+stale-session self-healing, feedback + agreement, the PDF report, and score version 2
+(no genre factor, stored score_version, the one-time parent note).
 
 Run from backend/:  python scripts/functional_sweep.py
 Exit code 0 = all checks passed.
@@ -146,10 +147,17 @@ check('session start', r.status_code == 200 and sid)
 
 r = client.post(f'/api/session/{sid}/predict', headers=auth(tok_a))
 j = r.get_json()
-check('live predict: internal category + genre', r.status_code == 200 and
-      j['risk_label'] in ('casual', 'at_risk', 'addicted') and j['game_genre'] == 'Sandbox'
-      and abs(j['genre_weight'] - 0.95) < 1e-6, j)
+# Score version 2: the fused score carries no genre factor, so the v1-only
+# genre_weight/game_genre fields are gone and the result names its formula version.
+check('live predict: internal category + score version 2', r.status_code == 200 and
+      j['risk_label'] in ('casual', 'at_risk', 'addicted') and j['score_version'] == 2
+      and 'genre_weight' not in j and 'game_genre' not in j, j)
 check('observation mode on sparse data', j['observation_mode'] is True)
+conn = db()
+stored_versions = {row['score_version'] for row in conn.execute(
+    'SELECT score_version FROM predictions WHERE session_id=?', (sid,))}
+conn.close()
+check('stored prediction row records score_version 2', stored_versions == {2}, stored_versions)
 
 print("== Chat: de-dupe, toxicity alert, auto language nudge ==")
 r = client.post(f'/api/session/{sid}/chat', json={'message': 'nice one gg', 'source': 'keyboard'},
@@ -397,10 +405,50 @@ r = client.post('/api/child/reflection', json={'user_id': child_a, 'mood_rating'
 check('reflection saved', r.status_code == 200)
 r = client.get('/api/model_card')
 check('model card public + honest note', r.status_code == 200 and 'chat_alert_note' in r.get_json())
+check('model card names the served score version', r.get_json().get('score_version') == 2)
 r = client.post('/api/analyse/chat', json={'message': 'you are trash'})
 check('analyse chat requires auth -> 401', r.status_code == 401)
 r = client.post('/api/analyse/chat', json={'message': 'you are trash'}, headers=auth(tok_a))
 check('analyse chat labels (authed)', r.status_code == 200 and r.get_json()['label'] in ('safe', 'borderline', 'toxic'))
+
+print("== Score version 2: one-time note to parents ==")
+def score_notes(uid):
+    feed = client.get(f'/api/alerts?user_id={uid}', headers=auth(tok_p)).get_json()['alerts']
+    return [a for a in feed if a['type'] == appmod.SCORE_V2_NOTICE_TYPE]
+
+# Asha's family registered after v2: nothing of hers was ever scored the old way.
+check('child with no v1 history gets no score-version note', score_notes(child_a) == [])
+# Ravi gets one session scored before v2 (score_version NULL, as on the live database).
+r = client.post('/api/consent', json={'user_id': child_b, 'version': appmod.CONSENT_VERSION,
+                                      'parent_pin': '9876'}, headers=auth(tok_b))
+check('sibling consent recorded', r.status_code == 200)
+conn = db()
+v1_end = datetime.now() - timedelta(days=2)
+cur = conn.execute("""INSERT INTO sessions (user_id, game_name, start_time, end_time,
+                      duration_seconds, final_risk_score, risk_category, finalization_complete)
+                      VALUES (?, 'BGMI', ?, ?, 3600, 0.62, 'at_risk', 1)""",
+                   (child_b, (v1_end - timedelta(hours=1)).isoformat(), v1_end.isoformat()))
+conn.execute("""INSERT INTO predictions (session_id, behavior_score, chat_score, voice_score,
+                final_risk_score, risk_category, confidence, timestamp, behavior_present,
+                chat_present, voice_present) VALUES (?,0.5,0,0,0.62,'at_risk',0.8,?,1,0,0)""",
+             (cur.lastrowid, v1_end.isoformat()))
+conn.commit(); conn.close()
+r = client.post('/api/session/start', json={'user_id': child_b, 'game_name': 'Candy Crush'},
+                headers=auth(tok_b))
+sid_b = r.get_json()['session_id']
+for _ in range(2):                                   # two consecutive v2 predictions
+    r = client.post(f'/api/session/{sid_b}/predict', headers=auth(tok_b))
+notes = score_notes(child_b)
+check('v1-history child: exactly ONE note after two v2 predictions',
+      r.status_code == 200 and len(notes) == 1, notes)
+check('note is the calm low-severity text',
+      notes and notes[0]['severity'] == 'low'
+      and notes[0]['message'] == appmod.SCORE_V2_PARENT_NOTICE, notes)
+if notes:
+    r = client.post('/api/feedback', json={'alert_id': notes[0]['id'], 'label': 'accurate'},
+                    headers=auth(tok_p))
+    check('note takes no Accurate/False-alarm verdict -> 400', r.status_code == 400)
+client.post(f'/api/session/{sid_b}/end', headers=auth(tok_b))
 
 print("== Parent-controlled deletion ==")
 r = client.post('/api/user/delete_data', json={'user_id': child_b, 'scope': 'account'},

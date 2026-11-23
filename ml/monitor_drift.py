@@ -106,11 +106,47 @@ def _exclusion_sql(excluded):
     return f' AND (s.user_id IS NULL OR s.user_id NOT IN ({ph}))', list(excluded)
 
 
-def load_window(cur, start_iso, end_iso, excluded=()):
+def has_column(cur, table, column) -> bool:
+    """True if the monitored DB's `table` has `column`. predictions.score_version only
+    exists once a score-v2 backend has started against the database."""
+    if _PH == '?':
+        cur.execute(f'PRAGMA table_info({table})')
+        return any(r['name'] == column for r in cur.fetchall())
+    cur.execute('SELECT 1 FROM information_schema.columns '
+                'WHERE table_name=%s AND column_name=%s', (table, column))
+    return cur.fetchone() is not None
+
+
+def score_version_of(row) -> int:
+    """Formula version behind a stored fused score: NULL/missing = legacy score v1."""
+    v = row.get('score_version')
+    return int(v) if v is not None else 1
+
+
+def version_matched(ref, rec, col='final_risk_score'):
+    """Restrict both windows to fused scores produced by ONE formula version.
+
+    Score v2 (23 Nov 2026) removed the genre multiplier from the fused score, so a
+    window pair straddling the change differs by construction - comparing them would
+    report our own change as model drift (the 2026-08-24 red run was the same failure
+    class, caused by a demo reseed). The recent window's newest version is the target;
+    returns (ref_values, recent_values, target_version, mixed) where mixed says rows
+    of another version were dropped. Channel scores are unaffected by the change."""
+    versions = {score_version_of(r) for r in rec if r.get(col) is not None}
+    target = max(versions) if versions else 1
+    a = [r[col] for r in ref if r.get(col) is not None and score_version_of(r) == target]
+    b = [r[col] for r in rec if r.get(col) is not None and score_version_of(r) == target]
+    mixed = any(score_version_of(r) != target
+                for r in list(ref) + list(rec) if r.get(col) is not None)
+    return a, b, target, mixed
+
+
+def load_window(cur, start_iso, end_iso, excluded=(), with_version=False):
     frag, extra = _exclusion_sql(excluded)
+    sv = 'p.score_version' if with_version else 'NULL'
     cur.execute(f'''SELECT p.final_risk_score, p.behavior_score, p.chat_score,
                           p.voice_score, p.risk_category, p.behavior_present,
-                          p.chat_present, p.voice_present,
+                          p.chat_present, p.voice_present, {sv} AS score_version,
                           SUBSTR(p.timestamp,1,10) AS day
                    FROM predictions p
                    LEFT JOIN sessions s ON s.session_id = p.session_id
@@ -204,8 +240,11 @@ def main():
 
     conn = _connect()
     cur = conn.cursor()
-    ref = load_window(cur, ref_start.isoformat(), recent_start.isoformat(), excluded)
-    rec = load_window(cur, recent_start.isoformat(), now.isoformat(), excluded)
+    with_version = has_column(cur, 'predictions', 'score_version')
+    ref = load_window(cur, ref_start.isoformat(), recent_start.isoformat(), excluded,
+                      with_version)
+    rec = load_window(cur, recent_start.isoformat(), now.isoformat(), excluded,
+                      with_version)
     users_ref = window_users(cur, ref_start.isoformat(), recent_start.isoformat(), excluded)
     users_rec = window_users(cur, recent_start.isoformat(), now.isoformat(), excluded)
     conn.close()
@@ -221,7 +260,8 @@ def main():
                           'recent': [str(recent_start.date()), str(now.date()), len(rec)]},
               'population': {'reference_users': users_ref, 'recent_users': users_rec,
                              'min_users': args.min_users, 'excluded_users': excluded},
-              'scores': {}, 'bands': {}, 'presence': {}, 'volume': {}}
+              'scores': {}, 'scores_skipped': {}, 'bands': {}, 'presence': {},
+              'volume': {}}
     if len(ref) < MIN_ROWS or len(rec) < MIN_ROWS:
         print(f"\nInsufficient data (need >= {MIN_ROWS} predictions per window) — "
               "widen the windows or re-run once the pilot has accumulated history.")
@@ -235,12 +275,27 @@ def main():
     report['status'] = 'ok'
 
     print(f"\n{'score':<18} {'PSI':>7} {'verdict':<10} {'KS p':>9} {'mean ref->rec'}")
+    fused_mixed = False
     for col in ('final_risk_score', 'behavior_score', 'chat_score', 'voice_score'):
-        a = np.array([r[col] for r in ref if r[col] is not None], dtype=float)
-        b = np.array([r[col] for r in rec if r[col] is not None], dtype=float)
+        target = None
+        if col == 'final_risk_score':
+            # Only the FUSED score's formula is versioned; compare like with like.
+            a, b, target, fused_mixed = version_matched(ref, rec, col)
+        else:
+            a = [r[col] for r in ref if r[col] is not None]
+            b = [r[col] for r in rec if r[col] is not None]
+        a, b = np.array(a, dtype=float), np.array(b, dtype=float)
         a, b = a[np.isfinite(a)], b[np.isfinite(b)]
         if len(a) < MIN_ROWS or len(b) < MIN_ROWS:
-            print(f"{col:<18} {'—':>7} insufficient rows")
+            if target is not None and fused_mixed:
+                report['scores_skipped'][col] = {
+                    'reason': 'score formula changed inside the windows (score v2 removed '
+                              'the genre multiplier); too few same-version rows to compare',
+                    'score_version': target, 'n_ref': int(len(a)), 'n_recent': int(len(b))}
+                print(f"{col:<18} {'—':>7} skipped: score v{target} has too few rows in "
+                      f"both windows ({len(a)} ref / {len(b)} recent) - formula change, not drift")
+            else:
+                print(f"{col:<18} {'—':>7} insufficient rows")
             continue
         v = psi(a, b)
         ks_p = float(ks_2samp(a, b).pvalue)
@@ -251,12 +306,18 @@ def main():
         if reference_degenerate(a):
             entry['psi_note'] = ('reference near-constant: PSI measures departure '
                                  'from that constant (tolerance-band bins)')
+        if target is not None:
+            entry['score_version'] = target
+            entry['version_filtered'] = bool(fused_mixed)
         report['scores'][col] = entry
         print(f"{col:<18} {v:7.3f} {label(v):<10} {ks_p:9.4f} "
               f"{a.mean():.3f} -> {b.mean():.3f}"
               + ('   [degenerate ref]' if 'psi_note' in entry else ''))
 
-    print("\nrisk-band shares (reference -> recent):")
+    print("\nrisk-band shares (reference -> recent):"
+          + ("  [windows mix score v1 and v2 rows: v2 moves bands by construction]"
+             if fused_mixed else ""))
+    report['bands_mix_score_versions'] = bool(fused_mixed)
     for band in ('casual', 'at_risk', 'addicted'):
         pr = sum(1 for r in ref if r['risk_category'] == band) / len(ref)
         pc = sum(1 for r in rec if r['risk_category'] == band) / len(rec)

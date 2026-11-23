@@ -1115,3 +1115,235 @@ def test_burst_of_late_chat_does_not_stampede_predictions(client):
     assert row['n'] - before <= 2, f"stampede: {row['n'] - before} predictions"
     # Work is deferred, not dropped: the flag survives for the stale-session sweep.
     assert int(row['voice_rescore_pending'] or 0) != 0 or row['n'] > before
+
+
+# ── Score version 2: one-time parent note, migration ───────────────────────────
+
+def _score_probe_child(appmod, *, with_v1_history):
+    """A fresh child (blank PINs, so a later init_db has nothing to re-hash). With
+    v1 history it also gets one closed session scored before score v2: its prediction
+    row has no score_version, exactly like every pre-v2 production row."""
+    conn = appmod.get_db()
+    uid = appmod.insert_returning_id(
+        conn, 'INSERT INTO users (name, pin, parent_pin, age) VALUES (?,?,?,?)',
+        ('Score version probe', '', '', 13), pk='user_id')
+    if with_v1_history:
+        end = datetime.now() - timedelta(days=3)
+        sid = appmod.insert_returning_id(
+            conn, '''INSERT INTO sessions (user_id, game_name, start_time, end_time,
+                     duration_seconds, final_risk_score, risk_category,
+                     finalization_complete) VALUES (?,?,?,?,?,?,?,1)''',
+            (uid, 'BGMI', (end - timedelta(hours=1)).isoformat(), end.isoformat(),
+             3600, 0.5, 'at_risk'), pk='session_id')
+        conn.execute('''INSERT INTO predictions
+                        (session_id, behavior_score, chat_score, voice_score,
+                         final_risk_score, risk_category, confidence, timestamp,
+                         behavior_present, chat_present, voice_present)
+                        VALUES (?,0.4,0.0,0.0,0.5,'at_risk',0.8,?,1,0,0)''',
+                     (sid, end.isoformat()))
+    conn.commit()
+    conn.close()
+    return uid
+
+
+def _v2_scored_session(appmod, uid):
+    """Close a new session holding one stored chat score and run the v2 fusion on it."""
+    conn = appmod.get_db()
+    end = datetime.now() - timedelta(minutes=2)
+    sid = appmod.insert_returning_id(
+        conn, '''INSERT INTO sessions (user_id, game_name, start_time, end_time,
+                 duration_seconds) VALUES (?,?,?,?,?)''',
+        (uid, 'Candy Crush', (end - timedelta(minutes=20)).isoformat(),
+         end.isoformat(), 1200), pk='session_id')
+    conn.execute('''INSERT INTO chat_messages (session_id, message, source, confidence,
+                    timestamp) VALUES (?,?,?,?,?)''',
+                 (sid, 'gg', 'keyboard', 0.2, end.isoformat()))
+    conn.commit()
+    conn.close()
+    assert appmod.run_prediction(sid, explain=False)['score_version'] == 2
+    return sid
+
+
+def _score_notes(appmod, uid):
+    conn = appmod.get_db()
+    rows = [dict(r) for r in conn.execute(
+        '''SELECT id, type, message, severity, read, session_id FROM alerts
+           WHERE user_id=? AND type=? ORDER BY id''',
+        (uid, appmod.SCORE_V2_NOTICE_TYPE)).fetchall()]
+    conn.close()
+    return rows
+
+
+def test_score_v2_note_reaches_a_child_with_v1_history_exactly_once(client, monkeypatch):
+    """A child whose earlier sessions were scored under v1 gets ONE calm note on their
+    first v2 score: not one per prediction, not one per worker, and never pushed."""
+    import app as appmod
+
+    pushes = []
+    monkeypatch.setattr(appmod, '_push_to_family', lambda *a, **k: pushes.append(a))
+    monkeypatch.setattr(appmod, '_send_fcm_push', lambda *a, **k: pushes.append(a))
+    uid = _score_probe_child(appmod, with_v1_history=True)
+
+    _v2_scored_session(appmod, uid)
+    notes = _score_notes(appmod, uid)
+    assert len(notes) == 1
+    assert notes[0]['message'] == appmod.SCORE_V2_PARENT_NOTICE
+    assert notes[0]['severity'] == 'low'
+    assert notes[0]['session_id'] is None and not notes[0]['read']
+
+    _v2_scored_session(appmod, uid)                  # a second consecutive v2 score
+    assert _score_notes(appmod, uid) == notes
+
+    # A fresh worker has no in-process shortcut; the database check still holds.
+    appmod._SCORE_V2_NOTICE_SETTLED.discard(uid)
+    _v2_scored_session(appmod, uid)
+    assert _score_notes(appmod, uid) == notes
+
+    # Two workers that BOTH passed the existence check: the partial unique index lets
+    # one insert land, the other's ON CONFLICT DO NOTHING is a quiet no-op...
+    conn = appmod.get_db()
+    c = conn.cursor()
+    try:
+        raced = appmod._insert_alert(c, uid, appmod.SCORE_V2_NOTICE_TYPE,
+                                     appmod.SCORE_V2_PARENT_NOTICE, 'low',
+                                     if_absent=True)
+        conn.commit()
+        # ...and even a plain duplicate INSERT is refused by the database itself.
+        with pytest.raises(Exception):
+            appmod._insert_alert(c, uid, appmod.SCORE_V2_NOTICE_TYPE, 'duplicate', 'low')
+    finally:
+        conn.rollback()           # never leave a write open for the shared test DB
+        conn.close()
+    assert raced is None
+    assert _score_notes(appmod, uid) == notes
+    assert pushes == []                              # informational: never pushed
+
+
+def test_score_v2_note_never_goes_to_a_child_without_v1_history(client):
+    import app as appmod
+
+    uid = _score_probe_child(appmod, with_v1_history=False)
+    _v2_scored_session(appmod, uid)
+    _v2_scored_session(appmod, uid)
+    assert _score_notes(appmod, uid) == []
+    appmod._SCORE_V2_NOTICE_SETTLED.discard(uid)     # a fresh worker re-checks...
+    _v2_scored_session(appmod, uid)
+    assert _score_notes(appmod, uid) == []           # ...and finds no v1 rows either
+
+
+def test_score_v2_note_is_information_not_a_rateable_risk_alert(client):
+    """The note shows in the parent's feed but is no model verdict: the backend takes
+    no Accurate/False-alarm feedback on it (the ParentApp's AlertTriage.isFeedbackEligible
+    shows no buttons for it), agreement statistics never see it, and a session's risk
+    alert never adopts or revises it."""
+    import app as appmod
+
+    uid = _score_probe_child(appmod, with_v1_history=True)
+    sid = _v2_scored_session(appmod, uid)
+    note = _score_notes(appmod, uid)[0]
+
+    feed = client.get(f'/api/alerts?user_id={uid}').get_json()
+    shown = next(a for a in feed['alerts'] if a['id'] == note['id'])
+    assert shown['type'] == 'score_update' and shown['severity'] == 'low'
+    assert shown['message'] == appmod.SCORE_V2_PARENT_NOTICE
+    assert shown['feedback'] is None
+
+    assert appmod.SCORE_V2_NOTICE_TYPE not in (
+        appmod.RISK_FEEDBACK_TYPES + appmod.CHAT_FEEDBACK_TYPES)
+    for label in ('accurate', 'false_alarm'):
+        response = client.post('/api/feedback',
+                               json={'alert_id': note['id'], 'label': label})
+        assert response.status_code == 400
+    summary = client.get(f'/api/feedback/summary?user_id={uid}').get_json()
+    assert summary['total'] == 0 and summary['agreement_rate'] is None
+
+    conn = appmod.get_db()
+    risk_id = appmod._maybe_create_alert(
+        conn.cursor(), uid, {'risk_category': 'at_risk', 'final_risk_score': 0.5},
+        session_id=sid)
+    conn.commit()
+    conn.close()
+    assert risk_id is not None and risk_id != note['id']
+    assert _score_notes(appmod, uid) == [note]
+
+    # Family-facing wording rules: a screening tool never says "addicted" or diagnoses.
+    text = appmod.SCORE_V2_PARENT_NOTICE.lower()
+    assert 'addict' not in text and 'diagnos' not in text
+
+
+def test_schema_init_twice_is_harmless_and_keeps_score_versions(client):
+    """Every worker runs init_db() at startup against a live database that already
+    holds data. Re-running it must not fail, must not backfill or rewrite
+    score_version (NULL is the v1 record), and must keep the one-note index."""
+    import app as appmod
+
+    uid = _score_probe_child(appmod, with_v1_history=True)
+    _v2_scored_session(appmod, uid)
+
+    def versions():
+        conn = appmod.get_db()
+        rows = conn.execute(
+            '''SELECT p.score_version FROM predictions p
+               JOIN sessions s ON s.session_id=p.session_id
+               WHERE s.user_id=? ORDER BY p.id''', (uid,)).fetchall()
+        conn.close()
+        return [row['score_version'] for row in rows]
+
+    assert versions() == [None, 2]
+    appmod.init_db()
+    appmod.init_db()
+    assert versions() == [None, 2]
+
+    conn = appmod.get_db()
+    c = conn.cursor()
+    try:
+        has_column = appmod._column_exists(c, 'predictions', 'score_version')
+        again = appmod._insert_alert(c, uid, appmod.SCORE_V2_NOTICE_TYPE, 'again', 'low',
+                                     if_absent=True)
+        conn.commit()
+    finally:
+        conn.rollback()
+        conn.close()
+    assert has_column
+    assert again is None
+    assert len(_score_notes(appmod, uid)) == 1
+
+
+def test_score_version_migration_upgrades_a_pre_v2_sqlite_database(tmp_path, monkeypatch):
+    """SQLite has no ADD COLUMN IF NOT EXISTS, so add_column swallows the duplicate on
+    re-runs. A database created before score v2, holding a prediction, must gain the
+    column once, keep the row as NULL (= v1), and gain the one-note index."""
+    import sqlite3
+    import app as appmod
+
+    if appmod.USE_POSTGRES:
+        pytest.skip('SQLite upgrade path; the Postgres leg runs ADD COLUMN IF NOT EXISTS')
+    path = str(tmp_path / 'pre_score_v2.db')
+    raw = sqlite3.connect(path)
+    raw.executescript('''
+        CREATE TABLE predictions (
+            id INTEGER PRIMARY KEY AUTOINCREMENT, session_id INTEGER NOT NULL,
+            behavior_score REAL DEFAULT 0, chat_score REAL DEFAULT 0,
+            voice_score REAL DEFAULT 0, final_risk_score REAL DEFAULT 0,
+            risk_category TEXT DEFAULT 'casual', confidence REAL DEFAULT 0,
+            timestamp TEXT DEFAULT CURRENT_TIMESTAMP);
+        INSERT INTO predictions (session_id, final_risk_score, risk_category)
+            VALUES (7, 0.61, 'at_risk');
+    ''')
+    raw.commit()
+    raw.close()
+
+    monkeypatch.setattr(appmod, 'DATABASE', path)
+    appmod.init_db()
+    appmod.init_db()
+
+    raw = sqlite3.connect(path)
+    columns = [row[1] for row in raw.execute('PRAGMA table_info(predictions)')]
+    rows = raw.execute(
+        'SELECT session_id, final_risk_score, score_version FROM predictions').fetchall()
+    index = raw.execute("SELECT sql FROM sqlite_master "
+                        "WHERE name='idx_alerts_one_score_update'").fetchone()
+    raw.close()
+    assert columns.count('score_version') == 1
+    assert rows == [(7, 0.61, None)]
+    assert index is not None and "type='score_update'" in index[0]

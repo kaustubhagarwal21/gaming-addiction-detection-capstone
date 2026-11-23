@@ -1535,6 +1535,11 @@ def init_db():
     add_column(c, 'predictions', 'behavior_present', 'INTEGER DEFAULT NULL')
     add_column(c, 'predictions', 'chat_present',     'INTEGER DEFAULT NULL')
     add_column(c, 'predictions', 'voice_present',    'INTEGER DEFAULT NULL')
+    # Formula version behind each stored score (SCORE_VERSION). NULL = legacy score-v1
+    # row (genre multiplier applied); never backfilled, because NULL is that record.
+    # Nullable with no default, so on Postgres this is a catalog-only change (no table
+    # rewrite) even on a large live table.
+    add_column(c, 'predictions', 'score_version',    'INTEGER DEFAULT NULL')
     # Client-generated idempotency key for OFFLINE sessions back-filled after the fact
     # (a game started with no connectivity can't allocate a server session id live, so
     # the child app buffers start/end locally and posts them when the network returns).
@@ -1636,6 +1641,10 @@ def init_db():
         CREATE UNIQUE INDEX IF NOT EXISTS idx_alerts_one_toxicity_streak
             ON alerts(session_id, type)
             WHERE session_id IS NOT NULL AND type='toxicity_streak';
+        -- At most ONE score-version-2 note per child ('score_update' must equal
+        -- SCORE_V2_NOTICE_TYPE; the note inserts ON CONFLICT DO NOTHING against this).
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_alerts_one_score_update
+            ON alerts(user_id) WHERE type='score_update';
         CREATE INDEX IF NOT EXISTS idx_behavioral_session   ON behavioral_data(session_id);
         CREATE INDEX IF NOT EXISTS idx_chat_session         ON chat_messages(session_id);
         CREATE INDEX IF NOT EXISTS idx_voice_session        ON voice_events(session_id);
@@ -1704,16 +1713,15 @@ init_db()
 from text_utils import clean_text, keyword_toxicity
 from behavior_features import derive_psychometrics
 
-# ─────────────── GENRE RISK WEIGHTS ─────────────────────────────
-# Battle Royale / FPS have higher addiction correlation (variable reward schedules,
-# competitive pressure, no natural stopping points)
-# Contextual risk multiplier applied to the final ensemble score. Direction is
-# literature-motivated — competitive, real-time, social multiplayer genres (battle
-# royale / FPS / MOBA) show higher problematic-use association than casual/puzzle
-# games (e.g. Männikkö et al. 2017; genre–IGD correlations). The exact multipliers
-# are a hand-set PRIOR, not fitted values, and should be calibrated with data. Keys
-# must match the display names in Constants.PACKAGE_TO_GAME (Android) for a hit.
-GENRE_RISK_WEIGHTS = {
+# ─────────────── GENRE RISK WEIGHTS (SCORE v1 ONLY) ─────────────
+# HISTORICAL. Not used by any served or re-computed score since SCORE_VERSION 2 (see
+# the fusion in run_prediction). Under score v1 the availability-weighted channel mean
+# was multiplied by this hand-set, literature-motivated prior (competitive real-time
+# genres up, casual games down; e.g. Männikkö et al. 2017) and clipped to [0, 1]. It
+# is kept verbatim, under this explicit name, only so analyses of stored history
+# (ml/analyze_fusion_sensitivity.py) can reproduce v1 served scores exactly. Predictions
+# with score_version NULL were produced with it; rows with score_version 2 were not.
+GENRE_RISK_WEIGHTS_V1 = {
     'Battle Royale': 1.25,
     'FPS':           1.20,
     'MOBA':          1.20,
@@ -1723,7 +1731,14 @@ GENRE_RISK_WEIGHTS = {
     'Sandbox':       0.95,
     'Casual':        0.70,
 }
+# Deprecated alias for the historical-analysis import in ml/analyze_fusion_sensitivity.py
+# (`from app import GENRE_RISK_WEIGHTS`). Same v1 table; serving never reads it.
+GENRE_RISK_WEIGHTS = GENRE_RISK_WEIGHTS_V1
 
+# Game display name -> genre, as score v1 resolved it (keys match the display names in
+# the ChildApp's Constants.PACKAGE_TO_GAME). Serving no longer consults it; it stays so
+# v1 history can be re-derived with GENRE_RISK_WEIGHTS_V1. The /api/games catalogue
+# carries its own descriptive 'genre' field.
 GAME_GENRES = {
     'PUBG Mobile':    'Battle Royale',
     'BGMI':           'Battle Royale',
@@ -1733,7 +1748,7 @@ GAME_GENRES = {
     'COD Mobile':     'FPS',
     'Warzone Mobile': 'FPS',
     'Valorant Mobile':'FPS',
-    'Valorant':       'FPS',       # names served by /api/games must resolve a genre
+    'Valorant':       'FPS',       # as served by /api/games (v1 resolved it too)
     'CS2':            'FPS',
     'Sudoku':         'Casual',
     'Mobile Legends': 'MOBA',
@@ -2237,6 +2252,40 @@ def compute_behavioral_features(session_id: int) -> dict:
     return {**objective, **derive_psychometrics(**objective)}
 
 
+# ─────────────── SCORE VERSION ──────────────────────────────────
+# Version of the formula behind the served fused risk score. Every new prediction row
+# stores it (predictions.score_version); NULL marks a legacy score-v1 row.
+#   v1: the availability-weighted mean of the present channels was multiplied by a
+#       hand-set per-genre weight (GENRE_RISK_WEIGHTS_V1: Battle Royale 1.25 ... Casual
+#       0.70), then clipped to [0, 1].
+#   v2: no genre factor. Served score = clip(availability-weighted mean of the present
+#       channels, 0, 1). Why: the IGDS9-SF validation survey found no genre effect
+#       (Kruskal-Wallis p = 0.598, at only 32% power, so underpowered rather than
+#       disproven) and the validated computation never included genre, so v2 makes
+#       what parents see equal to what was validated. Team decision of 7 Oct 2026,
+#       promised to the Review 2 panel as a VERSIONED change with a one-time note to
+#       parents (SCORE_V2_PARENT_NOTICE), not a silent swap: on the production pilot it
+#       moves the band of 34.4% of 131 sessions (docs/fusion_sensitivity.json,
+#       genre_sweep "x0.0"). It is deliberately not switchable by configuration —
+#       bringing genre back needs new evidence, a code change and a new version.
+SCORE_VERSION = 2
+
+# The one-time note a parent receives when a child whose history was scored under v1
+# gets their first v2 score (see _maybe_insert_score_v2_notice). Informational type:
+# not feedback-eligible, not a risk alert, never pushed; the ParentApp routes an
+# unknown type at severity 'low' to its quiet Activity channel. init_db's partial
+# unique index idx_alerts_one_score_update repeats this literal (init_db runs at import,
+# before this line) and is what makes the note at-most-once per child.
+SCORE_V2_NOTICE_TYPE = 'score_update'
+SCORE_V2_PARENT_NOTICE = (
+    "We updated how the risk score is calculated (score version 2). The game-genre "
+    "adjustment was removed because our validation study found no evidence that the "
+    "type of game changes the risk. Earlier sessions were scored the old way, so the "
+    "concern level from now on may differ from before even if play has not changed. "
+    "Nothing else about monitoring has changed."
+)
+
+
 def run_prediction(session_id: int, explain: bool = True) -> dict:
     """Run 3-model ensemble prediction and persist result.
 
@@ -2367,19 +2416,7 @@ def run_prediction(session_id: int, explain: bool = True) -> dict:
         except Exception as e:
             logger.error(f"Voice prediction error: {e}")
 
-    # ── Genre risk weighting ─────────────────────────────────────
-    conn2 = get_db()
-    c2 = conn2.cursor()
-    c2.execute('SELECT game_name FROM sessions WHERE session_id=?', (session_id,))
-    gname_row = c2.fetchone()
-    conn2.close()
-    genre_weight = 1.0
-    game_genre   = 'Unknown'
-    if gname_row:
-        game_genre   = GAME_GENRES.get(gname_row['game_name'], 'Unknown')
-        genre_weight = GENRE_RISK_WEIGHTS.get(game_genre, 1.0)
-
-    # ── Availability-weighted ensemble ───────────────────────────
+    # ── Availability-weighted ensemble (score version 2) ─────────
     # Base prior 40/30/30 (behaviour/chat/voice). Behaviour dominates because
     # DSM-5 Internet Gaming Disorder and ICD-11 Gaming Disorder are defined
     # behaviourally (impaired control, escalating priority, continuation despite
@@ -2390,7 +2427,8 @@ def run_prediction(session_id: int, explain: bool = True) -> dict:
     # Weights are re-normalized over only the modalities that produced a score, so an
     # absent modality contributes nothing (previously a missing chat/voice injected a
     # placeholder value, adding a fake risk floor and capping behaviour-only sessions
-    # below the "addicted" threshold).
+    # below the "addicted" threshold). Since SCORE_VERSION 2 nothing else enters: the
+    # game's genre no longer scales the score (see SCORE_VERSION for why).
     components = []
     if b_present: components.append((0.40, b_score, b_conf))
     if c_present: components.append((0.30, c_score, c_conf))
@@ -2398,11 +2436,10 @@ def run_prediction(session_id: int, explain: bool = True) -> dict:
     total_sessions = prior_meaningful + (1 if components else 0)
     observation_mode = total_sessions < 3
     if components:
-        tw        = sum(w for w, _, _ in components)
-        raw_final = sum(w * s for w, s, _ in components) / tw
-        conf      = round(sum(w * cf for w, _, cf in components) / tw, 4)
-        final     = float(np.clip(raw_final * genre_weight, 0, 1))
-        cat       = risk_category(final)
+        tw    = sum(w for w, _, _ in components)
+        final = float(np.clip(sum(w * s for w, s, _ in components) / tw, 0, 1))
+        conf  = round(sum(w * cf for w, _, cf in components) / tw, 4)
+        cat   = risk_category(final)
     else:
         final = None
         conf  = 0.0
@@ -2424,12 +2461,14 @@ def run_prediction(session_id: int, explain: bool = True) -> dict:
         'observation_mode':  observation_mode,
         'sessions_analyzed': total_sessions,
         'top_factors':       top_factors,
-        'game_genre':        game_genre,
-        'genre_weight':      round(genre_weight, 2),
         # Which signals were actually captured for this session. A score of 0 with
         # present=False means "no data for this game" (e.g. a game with no text chat,
         # or a silent single-player session), NOT "captured and harmless".
         'modalities':        {'behavior': b_present, 'chat': c_present, 'voice': v_present},
+        # Formula that produced final_risk_score. v1's 'genre_weight' and 'game_genre'
+        # fields left with the multiplier: no client read them, and listing the genre
+        # beside the score would suggest it still changes it.
+        'score_version':     SCORE_VERSION,
     }
 
     conn = get_db()
@@ -2437,16 +2476,21 @@ def run_prediction(session_id: int, explain: bool = True) -> dict:
     c.execute('''INSERT INTO predictions
                  (session_id, behavior_score, chat_score, voice_score,
                   final_risk_score, risk_category, confidence, timestamp,
-                  behavior_present, chat_present, voice_present)
-                 VALUES (?,?,?,?,?,?,?,?,?,?,?)''',
+                  behavior_present, chat_present, voice_present, score_version)
+                 VALUES (?,?,?,?,?,?,?,?,?,?,?,?)''',
               (session_id, result['behavior_score'], result['chat_score'],
                result['voice_score'], result['final_risk_score'],
                result['risk_category'], result['confidence'],
                datetime.now().isoformat(),
-               1 if b_present else 0, 1 if c_present else 0, 1 if v_present else 0))
+               1 if b_present else 0, 1 if c_present else 0, 1 if v_present else 0,
+               SCORE_VERSION))
     c.execute('UPDATE sessions SET final_risk_score=?, risk_category=?, confidence=? WHERE session_id=?',
               (result['final_risk_score'], result['risk_category'], result['confidence'], session_id))
     conn.commit()
+    if _sr is not None and _sr['user_id'] is not None:
+        # Separate short transaction AFTER the prediction committed: the note can never
+        # cost (or roll back) a score. Near-free once the child is settled in-process.
+        _maybe_insert_score_v2_notice(conn, _sr['user_id'])
     conn.close()
     logger.info("[Session %s] Prediction: %s (%s)", session_id, cat,
                 f"{final:.3f}" if final is not None else "no evidence")
@@ -2454,20 +2498,30 @@ def run_prediction(session_id: int, explain: bool = True) -> dict:
 
 # ──────────────────────── ALERT HELPERS ──────────────────────────
 
-def _insert_alert(cursor, user_id, atype, message, severity, session_id=None):
+def _insert_alert(cursor, user_id, atype, message, severity, session_id=None,
+                  if_absent=False):
     """Insert an alert with an EXPLICIT local timestamp. The created_at column DEFAULT
     differs by engine (SQLite's CURRENT_TIMESTAMP is UTC, Postgres' now() is
     server-local), which skewed alert ages/ordering against every other timestamp the
-    app writes via datetime.now()."""
+    app writes via datetime.now().
+
+    if_absent=True is for types a partial unique index limits (e.g. the one-time
+    score-update note): the insert becomes ON CONFLICT DO NOTHING and returns None when
+    the row already exists, instead of raising (which on Postgres would also abort the
+    caller's transaction)."""
     sql = ('INSERT INTO alerts '
            '(user_id, type, message, severity, created_at, session_id) '
            'VALUES (?,?,?,?,?,?)')
+    if if_absent:
+        sql += ' ON CONFLICT DO NOTHING'
     params = (user_id, atype, message, severity, datetime.now().isoformat(), session_id)
     if USE_POSTGRES:
         cursor.execute(sql + ' RETURNING id', params)
         row = cursor.fetchone()
         return int(row['id']) if row else None
     cursor.execute(sql, params)
+    if if_absent and not cursor.rowcount:
+        return None                   # skipped; lastrowid would be a stale earlier id
     return int(cursor.lastrowid) if cursor.lastrowid is not None else None
 
 
@@ -2484,6 +2538,61 @@ def _insert_toxicity_streak_once(cursor, user_id, session_id, message):
         return int(row['id']) if row else None
     cursor.execute(sql, params)
     return int(cursor.lastrowid) if cursor.rowcount else None
+
+
+# Children (user ids) that need no further score-v2 note check in THIS process: the note
+# already exists, or they have no legacy (score_version NULL) prediction. Neither state
+# can be undone by v2 code — every new prediction is written with SCORE_VERSION — so
+# after one check per child per worker the hot path costs nothing. Purely a cache: the
+# at-most-once guarantee is the database's (idx_alerts_one_score_update).
+_SCORE_V2_NOTICE_SETTLED: set = set()
+
+
+def _maybe_insert_score_v2_notice(conn, user_id):
+    """Give the parent ONE informational note the first time a child whose history was
+    scored under score v1 receives a v2 prediction. Children with no v1 history (new
+    since v2, or data erased) never get it.
+
+    At most one per child even under concurrency: two threads or workers can both pass
+    the existence check, but the partial unique index (one 'score_update' alert per
+    user_id) plus ON CONFLICT DO NOTHING lets exactly one INSERT land. Runs in its own
+    transaction on an already-committed connection and never raises — a failure only
+    defers the note to the child's next prediction. Returns the new alert id or None."""
+    try:
+        user_id = int(user_id)
+    except (TypeError, ValueError):
+        return None
+    if user_id in _SCORE_V2_NOTICE_SETTLED:
+        return None
+    try:
+        c = conn.cursor()
+        # Literal type (not a bound parameter) so the partial unique index is usable.
+        c.execute(f"SELECT 1 FROM alerts WHERE user_id=? "
+                  f"AND type='{SCORE_V2_NOTICE_TYPE}' LIMIT 1", (user_id,))
+        if c.fetchone() is not None:
+            _SCORE_V2_NOTICE_SETTLED.add(user_id)
+            return None
+        c.execute('''SELECT 1 FROM predictions p
+                     JOIN sessions s ON s.session_id = p.session_id
+                     WHERE s.user_id=? AND p.score_version IS NULL LIMIT 1''', (user_id,))
+        if c.fetchone() is None:
+            conn.rollback()           # end the read-only transaction
+            _SCORE_V2_NOTICE_SETTLED.add(user_id)
+            return None
+        alert_id = _insert_alert(c, user_id, SCORE_V2_NOTICE_TYPE,
+                                 SCORE_V2_PARENT_NOTICE, 'low', if_absent=True)
+        conn.commit()
+        _SCORE_V2_NOTICE_SETTLED.add(user_id)
+        if alert_id is not None:
+            logger.info("Score-v2 note raised for user %s (alert %s)", user_id, alert_id)
+        return alert_id
+    except Exception as exc:
+        try:
+            conn.rollback()
+        except Exception:
+            pass
+        logger.warning("Score-v2 parent note for user %s deferred: %s", user_id, exc)
+        return None
 
 
 # Ordering used to decide whether a late revision ESCALATES (see _maybe_create_alert).
@@ -3060,6 +3169,12 @@ def model_card():
                                 'thresholds, so this favours precision over recall to avoid '
                                 'false alarms on normal gaming chat.'),
         'ensemble_weights':    {'behaviour': 0.40, 'chat': 0.30, 'voice': 0.30},
+        'score_version':       SCORE_VERSION,
+        'fusion_note':         ('Fused score = the weighted mean of the channels present in '
+                                'the session (weights renormalised over those channels), '
+                                'clipped to [0, 1]. Score version 2 removed the earlier '
+                                'game-genre multiplier, which the validation survey did not '
+                                'support.'),
         'thresholds_note':     ('Risk-band cutoffs are clinically-motivated priors (even '
                                 'tertiles), not values fitted to labelled outcomes.'),
         'data_note':           m.get('data_note'),
@@ -3934,7 +4049,7 @@ def _latest_prediction(session_id: int):
     c = conn.cursor()
     c.execute('''SELECT p.risk_category, p.final_risk_score, p.behavior_score,
                         p.chat_score, p.voice_score, p.confidence, p.behavior_present,
-                        p.chat_present, p.voice_present, s.user_id
+                        p.chat_present, p.voice_present, p.score_version, s.user_id
                  FROM predictions p JOIN sessions s ON s.session_id=p.session_id
                  WHERE p.session_id=?
                  ORDER BY p.id DESC LIMIT 1''', (session_id,))
@@ -3946,6 +4061,10 @@ def _latest_prediction(session_id: int):
     user_id = value.pop('user_id', None)
     value['risk_label'] = value.get('risk_category') or 'unknown'
     value['risk_score'] = value.get('final_risk_score')
+    # A replay serves the STORED score, so report the formula that produced it:
+    # NULL marks a legacy row, which score v1 computed.
+    stored_version = value.get('score_version')
+    value['score_version'] = int(stored_version) if stored_version is not None else 1
     value['modalities'] = {
         'behavior': bool(value.get('behavior_present')),
         'chat': bool(value.get('chat_present')),
@@ -4553,6 +4672,7 @@ def end_session(sid):
         'top_factors':       prediction.get('top_factors', []),
         'observation_mode':  prediction.get('observation_mode', False),
         'sessions_analyzed': prediction.get('sessions_analyzed', 0),
+        'score_version':     prediction.get('score_version'),
     }
     if short_session:
         pred_response['short_session_note'] = 'Session under 1 minute — collect more data for reliable results.'
@@ -4637,6 +4757,9 @@ def _finalize_backfilled_session(sid, user_id):
         return {
             'risk_category': row['risk_category'] or risk_category(score),
             'final_risk_score': score,
+            # A stored score with no prediction row predates score v2, which always
+            # writes one alongside the session score.
+            'score_version': 1,
         }
 
     state = row['backfill_finalized']
@@ -4892,6 +5015,7 @@ def backfill_session():
               'prediction': {
                   'risk_label': prediction['risk_category'],
                   'risk_score': prediction['final_risk_score'],
+                  'score_version': prediction.get('score_version'),
               }}
     if deduped:
         result['deduped'] = True

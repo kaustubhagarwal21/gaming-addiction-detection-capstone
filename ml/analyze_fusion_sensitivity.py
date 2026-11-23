@@ -7,7 +7,14 @@ they optimal?" but "would different reasonable values change what the parent see
 This script answers that empirically on the latest STORED prediction from each
 completed pilot session: it first proves it
 can replicate the served fused score exactly (same renormalised present-channel
-weighting, genre multiplier, clip), then re-labels every prediction under
+weighting, clip, and - for score-v1 rows only - the genre multiplier), then
+re-labels every prediction under
+
+Score versions: rows with predictions.score_version NULL were served by score v1,
+which multiplied the fused score by GENRE_RISK_WEIGHTS; rows with score_version 2
+(from 23 Nov 2026) were served without it. Each row is reproduced with the formula
+that actually produced it, so the replication gate holds across the change; the genre
+sweep can only move v1 rows (a v2 row carries no genre factor to scale).
 
   1. a weight sweep  — every (w_b, w_c, w_v) on the simplex within +/-0.15 of the
      40/30/30 prior (0.05 grid), renormalised over present channels,
@@ -67,6 +74,17 @@ def _connect():
     conn = sqlite3.connect(path)
     conn.row_factory = sqlite3.Row
     return conn, '?'
+
+
+def _has_column(cur, ph, table, column):
+    """True if the data DB's `table` has `column` - databases last written before
+    score v2 have no predictions.score_version, and every row in them is v1."""
+    if ph == '?':
+        cur.execute(f'PRAGMA table_info({table})')
+        return any(r['name'] == column for r in cur.fetchall())
+    cur.execute('SELECT 1 FROM information_schema.columns '
+                'WHERE table_name=%s AND column_name=%s', (table, column))
+    return cur.fetchone() is not None
 
 
 def band(score, t1, t2):
@@ -134,10 +152,13 @@ def main():
     # with real pilot children, and E2E/functional probes exercise those accounts —
     # the same contamination class the reflections analysis had to exclude. A pilot
     # sensitivity claim must be computed on pilot traffic only.
+    sv_col = ('p.score_version' if _has_column(cur, ph, 'predictions', 'score_version')
+              else 'NULL')
     cur.execute(f'''SELECT p.behavior_score AS b, p.chat_score AS c, p.voice_score AS v,
                            p.behavior_present AS bp, p.chat_present AS cp,
                            p.voice_present AS vp, p.final_risk_score AS fin,
-                           p.risk_category AS category, s.game_name AS game
+                           p.risk_category AS category, s.game_name AS game,
+                           {sv_col} AS sv
                     FROM predictions p JOIN sessions s ON s.session_id = p.session_id
                     WHERE p.timestamp >= {ph} AND p.behavior_present IS NOT NULL
                     AND s.user_id NOT IN (1, 3)
@@ -146,6 +167,9 @@ def main():
     rows = []
     for r in cur.fetchall():
         genre = GAME_GENRES.get(r['game'], 'Unknown')
+        # Reproduce each row with the formula that served it: score v1 (version NULL)
+        # applied the genre multiplier, score v2 does not.
+        is_v1 = r['sv'] is None
         final = float(r['fin'] or 0)
         category = str(r['category'] or '')
         raw_category = band(final, RISK_T1, RISK_T2)
@@ -156,7 +180,8 @@ def main():
                      # that served policy in every counterfactual instead of reporting
                      # band flips the parent could never actually see.
                      'observation_cap': category == 'at_risk' and raw_category == 'addicted',
-                     'g': float(GENRE_RISK_WEIGHTS.get(genre, 1.0))})
+                     'v1': is_v1,
+                     'g': float(GENRE_RISK_WEIGHTS.get(genre, 1.0)) if is_v1 else 1.0})
     conn.close()
 
     print(f"{args.unit} rows since {args.since} (with modality flags): {len(rows)}")
@@ -182,6 +207,8 @@ def main():
     baseline = [r['category'] for r in rows]
 
     report = {'n': len(rows), 'analysis_unit': args.unit,
+              'score_versions': {'v1': sum(1 for r in rows if r['v1']),
+                                 'v2': sum(1 for r in rows if not r['v1'])},
               'replication_max_abs_diff': round(max_diff, 6),
               'observation_capped_rows': sum(1 for r in rows if r['observation_cap']),
               'baseline_shares': {k: round(sum(1 for x in baseline if x == k) / len(rows), 4)
@@ -203,15 +230,23 @@ def main():
           f"median band-flip {np.median(flips):.1%}, worst {max(flips):.1%} "
           f"at {combos[int(np.argmax(flips))]}")
 
-    # 2) Genre-effect sweep: off (x0) .. doubled (x2).
+    # 2) Genre-effect sweep: off (x0) .. doubled (x2). Only score-v1 rows carry a
+    # genre factor, so only they can move; the denominator stays all rows. The
+    # direction split (bands up vs down) is recorded separately so the existing
+    # genre_sweep values keep their meaning for readers of the JSON.
+    order = {'casual': 0, 'at_risk': 1, 'addicted': 2}
     report['genre_sweep'] = {}
+    report['genre_sweep_direction'] = {}
     for scale in (0.0, 0.5, 1.5, 2.0):
         lab = [served_band(r, fuse(r, 0.40, 0.30, 0.30, genre_scale=scale),
                            RISK_T1, RISK_T2)
                for r in rows]
         f = sum(1 for a, x in zip(baseline, lab) if a != x) / len(rows)
+        ups = sum(1 for a, x in zip(baseline, lab) if order[x] > order[a])
+        downs = sum(1 for a, x in zip(baseline, lab) if order[x] < order[a])
         report['genre_sweep'][f'x{scale}'] = round(f, 4)
-        print(f"genre effect x{scale}: band-flip {f:.1%}")
+        report['genre_sweep_direction'][f'x{scale}'] = {'up': ups, 'down': downs}
+        print(f"genre effect x{scale}: band-flip {f:.1%} (up {ups}, down {downs})")
 
     # 2b) CHANNEL CONTRIBUTION: what does each modality add to the final decision?
     # Re-fuse every row using only a SUBSET of its present channels (weights

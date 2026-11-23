@@ -1,0 +1,119 @@
+{
+  "backend_tests": 190,
+  "android_tests": 110,
+  "ml_guards": 7,
+  "total_tests": 300,
+  "method": {
+    "total_tests": "backend_tests + android_tests, the documents' \"N automated tests + M research-integrity guards\" convention; ml_guards are counted separately",
+    "all_ci_tests_including_guards": 307,
+    "backend_tests": {
+      "count": 190,
+      "command": "python -m pytest tests/ --collect-only -q",
+      "cwd": "backend",
+      "ci_command": "python -m pytest tests/ -v",
+      "ci_job": "backend-tests + backend-tests-postgres (same suite, SQLite and Postgres 16 legs; counted once)",
+      "by_file": {
+        "tests/test_api.py": 74,
+        "tests/test_backend_hardening.py": 95,
+        "tests/test_ml_units.py": 21
+      }
+    },
+    "ml_guards": {
+      "count": 7,
+      "command": "python -m pytest ml/tests --collect-only -q",
+      "cwd": ".",
+      "ci_command": "python -m pytest ml/tests -q",
+      "ci_job": "research-integrity-guards",
+      "by_file": {
+        "ml/tests/test_paper_survey_numbers.py": 4,
+        "ml/tests/test_survey_parsing.py": 3
+      }
+    },
+    "android_tests": {
+      "count": 110,
+      "method": "static count of @Test / @org.junit.Test annotations under android/<App>/app/src/test (comments and string literals stripped); Gradle is not run by this script",
+      "ci_command": "./gradlew lintDebug testDebugUnitTest --no-daemon (in android/ChildApp and android/ParentApp)",
+      "ci_job": "android-checks",
+      "by_app": {
+        "ChildApp": 79,
+        "ParentApp": 31
+      },
+      "by_file": {
+        "android/ChildApp/app/src/test/java/com/pes/gamingdetector/api/AuthSessionStateTest.kt": 5,
+        "android/ChildApp/app/src/test/java/com/pes/gamingdetector/util/CaptureHealthLogicTest.kt": 4,
+        "android/ChildApp/app/src/test/java/com/pes/gamingdetector/util/CaptureTargetLogicTest.kt": 1,
+        "android/ChildApp/app/src/test/java/com/pes/gamingdetector/util/ChatQueueLogicTest.kt": 9,
+        "android/ChildApp/app/src/test/java/com/pes/gamingdetector/util/ChildDashboardUiLogicTest.kt": 3,
+        "android/ChildApp/app/src/test/java/com/pes/gamingdetector/util/KeyboardLayoutMachineTest.kt": 10,
+        "android/ChildApp/app/src/test/java/com/pes/gamingdetector/util/KeystrokeBufferTest.kt": 10,
+        "android/ChildApp/app/src/test/java/com/pes/gamingdetector/util/OfflineSessionLogicTest.kt": 7,
+        "android/ChildApp/app/src/test/java/com/pes/gamingdetector/util/PrivacyTextTest.kt": 1,
+        "android/ChildApp/app/src/test/java/com/pes/gamingdetector/util/RiskPresentationTest.kt": 4,
+        "android/ChildApp/app/src/test/java/com/pes/gamingdetector/util/ServerUrlTest.kt": 3,
+        "android/ChildApp/app/src/test/java/com/pes/gamingdetector/util/SessionDurationClockTest.kt": 2,
+        "android/ChildApp/app/src/test/java/com/pes/gamingdetector/util/SessionEndLogicTest.kt": 2,
+        "android/ChildApp/app/src/test/java/com/pes/gamingdetector/util/TranscriptPickerTest.kt": 12,
+        "android/ChildApp/app/src/test/java/com/pes/gamingdetector/util/WavUtilTest.kt": 6,
+        "android/ParentApp/app/src/test/java/com/pes/parentmonitor/api/AuthSessionStoreTest.kt": 4,
+        "android/ParentApp/app/src/test/java/com/pes/parentmonitor/util/AlertCountsTest.kt": 2,
+        "android/ParentApp/app/src/test/java/com/pes/parentmonitor/util/AlertTriageTest.kt": 7,
+        "android/ParentApp/app/src/test/java/com/pes/parentmonitor/util/NotificationIdentityTest.kt": 2,
+        "android/ParentApp/app/src/test/java/com/pes/parentmonitor/util/NotificationRoutingTest.kt": 3,
+        "android/ParentApp/app/src/test/java/com/pes/parentmonitor/util/ProfileValidationTest.kt": 3,
+        "android/ParentApp/app/src/test/java/com/pes/parentmonitor/util/RiskPresentationTest.kt": 4,
+        "android/ParentApp/app/src/test/java/com/pes/parentmonitor/util/ServerOriginTest.kt": 3,
+        "android/ParentApp/app/src/test/java/com/pes/parentmonitor/util/ServerUrlTest.kt": 3
+      },
+      "docs_quoted": {
+        "TESTING.md": {
+          "total": 110,
+          "ChildApp": 79,
+          "ParentApp": 31
+        },
+        "README.md": {
+          "total": 110
+        }
+      },
+      "gradle_last_local_run": {
+        "ChildApp": {
+          "tests": 79,
+          "skipped": 0,
+          "failures": 0,
+          "errors": 0,
+          "run_at": "2026-08-18T14:22:16",
+          "sources_modified_since_run": false
+        },
+        "ParentApp": {
+          "tests": 31,
+          "skipped": 0,
+          "failures": 0,
+          "errors": 0,
+          "run_at": "2026-08-04T05:11:14",
+          "sources_modified_since_run": false
+        }
+      },
+      "cross_check": [
+        "TESTING.md quotes 110 (79 ChildApp, 31 ParentApp): matches the static count.",
+        "README.md quotes 110: matches the static count.",
+        "ChildApp: last local Gradle run (2026-08-18T14:22:16) executed 79 tests, 0 skipped: equals the static count.",
+        "ParentApp: last local Gradle run (2026-08-04T05:11:14) executed 31 tests, 0 skipped: equals the static count.",
+        "No custom runner, parameterisation, inherited tests or @Ignore in the test sources, so each @Test annotation is exactly one executed JVM test."
+      ]
+    },
+    "collection_environment": "DATABASE_URL and REQUIRE_DATABASE_URL removed (the SQLite CI leg); private TMPDIR/TEMP/TMP so conftest's throwaway DB cannot collide with a concurrent run",
+    "environment": {
+      "python": "3.11.9",
+      "pytest": "9.1.1",
+      "git_head": "95ae1c8",
+      "uncommitted_in_counted_paths": [
+        "backend/app.py",
+        "backend/openapi.yaml",
+        "backend/scripts/functional_sweep.py",
+        "backend/tests/test_api.py",
+        "backend/tests/test_backend_hardening.py",
+        "backend/tests/test_ml_units.py"
+      ]
+    }
+  },
+  "counted_on": "2026-11-23"
+}

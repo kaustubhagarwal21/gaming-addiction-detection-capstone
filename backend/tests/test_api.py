@@ -678,6 +678,125 @@ def test_session_chat_score_is_max_of_messages(client, monkeypatch):
     assert pred['chat_score'] == pytest.approx(0.9, abs=0.01)
 
 
+# ─── Score version 2: the genre multiplier left the served score ───
+
+class _FixedBehaviourModel:
+    """Stand-in behaviour RF with fixed class probabilities (casual, at_risk, addicted)
+    so the fusion arithmetic can be checked exactly. Use only with explain=False: SHAP
+    must never build its process-wide cached explainer from this fake."""
+    n_features_in_ = 10
+
+    def predict_proba(self, X):
+        return [[0.1, 0.3, 0.6]]          # behaviour score = 0.3*0.5 + 0.6*1.0 = 0.75
+
+
+def _identical_evidence_session(appmod, game, *, chat, voice):
+    """A brand-new child with one closed `game` session that carries the SAME
+    behaviour, chat and voice evidence whatever the game is."""
+    from datetime import datetime, timedelta
+    conn = appmod.get_db()
+    uid = appmod.insert_returning_id(
+        conn, 'INSERT INTO users (name, pin, parent_pin, age) VALUES (?,?,?,?)',
+        (f'Genre probe {game}', '', '', 14), pk='user_id')
+    end = datetime.now() - timedelta(minutes=5)
+    sid = appmod.insert_returning_id(
+        conn, 'INSERT INTO sessions (user_id, game_name, start_time, end_time, '
+              'duration_seconds) VALUES (?,?,?,?,?)',
+        (uid, game, (end - timedelta(hours=1)).isoformat(), end.isoformat(), 3600),
+        pk='session_id')
+    c = conn.cursor()
+    c.execute('INSERT INTO behavioral_data (session_id, daily_play_time_hours, '
+              'weekly_play_time_hours, sessions_per_day, timestamp) VALUES (?,?,?,?,?)',
+              (sid, 3.0, 20.0, 2.0, end.isoformat()))
+    if chat:
+        c.execute('INSERT INTO chat_messages (session_id, message, source, confidence, '
+                  'timestamp) VALUES (?,?,?,?,?)',
+                  (sid, 'same words in both games', 'keyboard', 0.6, end.isoformat()))
+    if voice:
+        c.execute('INSERT INTO voice_events (session_id, emotion, intensity, duration_s, '
+                  'timestamp, capture_valid) VALUES (?,?,?,?,?,1)',
+                  (sid, 'angry', 0.8, 10.0, end.isoformat()))
+    conn.commit()
+    conn.close()
+    return sid
+
+
+@pytest.mark.parametrize('chat, voice', [(True, True), (True, False)])
+def test_genre_no_longer_changes_the_served_score(client, monkeypatch, chat, voice):
+    """Score version 2. Identical behaviour/chat/voice evidence in a Battle Royale and a
+    Casual game must give the IDENTICAL result, and the score must be exactly the
+    weighted mean renormalised over the channels present. Under score v1 the same
+    inputs were multiplied by 1.25 and 0.70 respectively."""
+    import app as appmod
+    monkeypatch.setattr(appmod, 'behavior_model', _FixedBehaviourModel())
+    monkeypatch.setattr(appmod, 'behavior_calibrated', None)
+    monkeypatch.setattr(appmod, 'feature_scaler', None)
+    br_game, casual_game = 'PUBG Mobile', 'Candy Crush'
+    # The probe spans the retired multiplier's two extremes.
+    assert appmod.GENRE_RISK_WEIGHTS_V1[appmod.GAME_GENRES[br_game]] == 1.25
+    assert appmod.GENRE_RISK_WEIGHTS_V1[appmod.GAME_GENRES[casual_game]] == 0.70
+
+    br_sid = _identical_evidence_session(appmod, br_game, chat=chat, voice=voice)
+    casual_sid = _identical_evidence_session(appmod, casual_game, chat=chat, voice=voice)
+    br = appmod.run_prediction(br_sid, explain=False)
+    casual = appmod.run_prediction(casual_sid, explain=False)
+
+    channels = {'behavior': (0.40, 0.75), 'chat': (0.30, 0.6), 'voice': (0.30, 0.9 * 0.8)}
+    present = {'behavior': True, 'chat': chat, 'voice': voice}
+    used = [channels[name] for name, on in present.items() if on]
+    expected = sum(w * s for w, s in used) / sum(w for w, _ in used)
+    assert br['modalities'] == present
+    assert br['final_risk_score'] == pytest.approx(round(expected, 4), abs=1e-9)
+    assert casual == br                       # the game's genre changes nothing
+
+    # The result names its formula and no longer carries the v1-only genre fields...
+    assert br['score_version'] == appmod.SCORE_VERSION == 2
+    assert 'genre_weight' not in br and 'game_genre' not in br
+    # ...and so does every stored row.
+    conn = appmod.get_db()
+    stored = conn.execute('SELECT score_version FROM predictions WHERE session_id IN (?,?)',
+                          (br_sid, casual_sid)).fetchall()
+    conn.close()
+    assert [row['score_version'] for row in stored] == [2, 2]
+
+
+def test_live_end_and_replayed_predictions_carry_score_version(client):
+    """Through the API: live /predict, /end and an /end replay all report score
+    version 2 without the retired genre fields, every stored prediction row records
+    version 2, and a replayed legacy row (score_version NULL) reports version 1."""
+    from datetime import datetime, timedelta
+    import app as appmod
+
+    sid = client.post('/api/session/start',
+                      json={'user_id': 1, 'game_name': 'BGMI'}).get_json()['session_id']
+    live = client.post(f'/api/session/{sid}/predict').get_json()
+    ended = client.post(f'/api/session/{sid}/end').get_json()
+    replay = client.post(f'/api/session/{sid}/end').get_json()
+    assert live['success'] is True and replay['already_ended'] is True
+    for payload in (live, ended['prediction'], replay['prediction']):
+        assert payload['score_version'] == 2
+        assert 'genre_weight' not in payload and 'game_genre' not in payload
+
+    conn = appmod.get_db()
+    stored = [row['score_version'] for row in conn.execute(
+        'SELECT score_version FROM predictions WHERE session_id=?', (sid,)).fetchall()]
+    assert len(stored) >= 2 and set(stored) == {2}
+
+    # A row written before score v2 has no version; replaying it must say v1.
+    end = datetime.now() - timedelta(days=2)
+    legacy_sid = appmod.insert_returning_id(
+        conn, "INSERT INTO sessions (user_id, game_name, start_time, end_time, "
+              "duration_seconds, final_risk_score, risk_category, finalization_complete) "
+              "VALUES (1,'BGMI',?,?,600,0.5,'at_risk',1)",
+        ((end - timedelta(minutes=10)).isoformat(), end.isoformat()), pk='session_id')
+    conn.execute("INSERT INTO predictions (session_id, final_risk_score, risk_category, "
+                 "confidence, timestamp, behavior_present, chat_present, voice_present) "
+                 "VALUES (?,0.5,'at_risk',0.8,?,0,0,0)", (legacy_sid, end.isoformat()))
+    conn.commit()
+    conn.close()
+    assert appmod._latest_prediction(legacy_sid)['score_version'] == 1
+
+
 def test_voice_stt_not_counted_as_typed_chat(client):
     """Spoken transcripts (source=voice_stt) are the voice channel's words — chat_count
     and the chat-analysis totals must report TYPED chat only, while the labeled

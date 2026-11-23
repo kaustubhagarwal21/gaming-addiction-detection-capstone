@@ -185,6 +185,27 @@ def test_drift_population_gate_requires_both_windows():
     assert finite_mean([0, 1, None]) == pytest.approx(0.5)
 
 
+def test_drift_compares_fused_scores_within_one_score_version():
+    """Score v2 removed the genre multiplier from the FUSED score on 23 Nov 2026. A
+    reference window of v1 rows against a recent window of v2 rows differs by
+    construction; the monitor must compare like with like instead of reporting our
+    own formula change as drift (the 2026-08-24 red run was this failure class)."""
+    from monitor_drift import score_version_of, version_matched
+    assert score_version_of({'score_version': None}) == 1      # legacy row = v1
+    assert score_version_of({}) == 1
+    assert score_version_of({'score_version': 2}) == 2
+    ref = ([{'final_risk_score': 0.6, 'score_version': None}] * 40
+           + [{'final_risk_score': 0.4, 'score_version': 2}] * 35)
+    rec = [{'final_risk_score': 0.41, 'score_version': 2}] * 32
+    a, b, target, mixed = version_matched(ref, rec)
+    assert target == 2 and mixed is True
+    assert a == [0.4] * 35 and b == [0.41] * 32                # v1 rows never compared
+    # an all-v1 database (column absent -> NULL) is compared exactly as before
+    old = [{'final_risk_score': 0.5, 'score_version': None}] * 31
+    a, b, target, mixed = version_matched(old, old)
+    assert target == 1 and mixed is False and len(a) == len(b) == 31
+
+
 def test_fusion_weight_grid_includes_all_boundary_combinations():
     from analyze_fusion_sensitivity import served_band, weight_combos
     combos = weight_combos()
