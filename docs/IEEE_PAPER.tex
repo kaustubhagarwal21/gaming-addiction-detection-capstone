@@ -1,7 +1,8 @@
 % IEEE conference-format distillation of docs/PROJECT_PAPER.tex (the 48-page report).
 % Every number here is the same number as in the report and the committed JSONs
 % (docs/survey_validation.json, survey_extras.json, ablation_results.json,
-% asr_fairness.json, backend/models/model_metadata.json). Build: latexmk -pdf IEEE_PAPER.tex
+% asr_fairness.json, backend/models/model_metadata.json, genre_removal.json,
+% test_counts.json). Build: latexmk -pdf IEEE_PAPER.tex
 \documentclass[conference]{IEEEtran}
 \IEEEoverridecommandlockouts
 \usepackage[T1]{fontenc}
@@ -60,7 +61,10 @@ features over \emph{volume} features by a formally tested margin (paired composi
 difference $+0.199$, $95\%$ CI $[+0.019,+0.380]$) --- the design premise confirmed rather than
 assumed. The same study returns two results against the system (an unsupported genre
 multiplier; four of five parent-facing proxy names failing to track their namesake
-items), which we report and act on. An accent-fairness audit on 6{,}656 Indian-English
+items), which we report and act on: because the multiplier was never part of the
+computation the survey validated and its only test found no support, we removed it from the served score
+as a versioned change (score version~2) disclosed to parents. An accent-fairness
+audit on 6{,}656 Indian-English
 clips finds zero false toxicity alerts in every accent group but a coverage gap
 (WER $35\%$ Dravidian $\rightarrow$ $61\%$ Tibeto-Burman). Limits are stated plainly:
 behavioural training labels remain synthetic, caseness metrics are uncomputable at the
@@ -333,7 +337,8 @@ paired composite contrast: pattern $-$ volume $= +0.199$, $95\%$ CI $[+0.019,+0.
 \textbf{Results} (Table~\ref{tab:survey}, Fig.~\ref{fig:feat}). The
 construct-validity correlation was the pre-designated primary endpoint (stated in
 the analysis script's documentation before data collection); the remaining results
-are secondary. The served score tracks the instrument at $\rho{=}0.317$, CI
+are secondary. The secondary analyses are exploratory and are not corrected for
+multiple comparisons. The served score tracks the instrument at $\rho{=}0.317$, CI
 excluding zero. The screen-time baseline every commercial tool ships reaches
 $0.147$ with a CI spanning zero; a paired bootstrap puts the model ahead in
 $97.4\%$ of resamples ($\Delta\rho{=}{+}0.167$, one-sided $p{\approx}0.026$), but
@@ -349,12 +354,19 @@ $+0.199$ ($95\%$ CI $[+0.019,+0.380]$), and descriptively all five pattern
 features out-rank all five volume features ($0.330$ vs $0.128$ composites). Self-reported toxic-chat involvement tracks severity at
 $0.323$, replicating in this population the $r{=}{+}0.156$ premise borrowed
 from~\cite{igdslatam2024}.
-\textbf{Two results against the system.} The genre multiplier is unsupported
+\textbf{Two results against the system.} The genre multiplier, a hand-set per-genre
+weight ($0.70$--$1.25$) that score version~1 applied to the fused score, is unsupported
 (Kruskal--Wallis across seven genres, $H{=}4.59$, $p{=}0.598$ --- weakening at every
 growth of the sample, from $p{=}0.159$ at $n{=}80$ --- and the group ordering no
 longer matches the multiplier's assumption; power $32\%$, needing
-$n\!\approx\!400$), so it is retained-and-flagged rather than defended --- removing
-it flips $34\%$ of served bands. Four of five parent-facing proxies fail to track
+$n\!\approx\!400$). That null is underpowered, not disproven; but the multiplier also
+lay outside the validated computation (the survey scored the behaviour channel alone,
+with no genre factor), so rather than defend it we removed it from the served score.
+Removal changes the band of $34\%$ of the $131$ pilot sessions, so it shipped as a
+\emph{versioned} change (score version~2): every prediction now records its score
+version (legacy rows read as version~1), the analysis and drift tools are
+version-aware, and parents of children
+with version-1 history receive a one-time in-app note. Four of five parent-facing proxies fail to track
 the IGDS item they are named after (only ``craving'' holds, $\rho{=}0.322$; the
 rest read $+0.020$ to $+0.092$); we renamed the served labels to
 behaviour-descriptive wording. \textbf{Not established:} sensitivity /
@@ -404,9 +416,9 @@ equity issue is a recall gap on Northeast-Indian accents, named as the highest-l
 STT improvement.
 
 \subsection{System testing and on-device cost}
-291 automated tests run in CI (181 backend on SQLite \emph{and} Postgres~16; 110
-Android JVM; 7 research-integrity guards pinning the paper's numbers to the committed
-JSONs). A concurrency smoke of 288 mixed requests over 24 threads produced zero errors
+300 automated tests run in CI (190 backend on SQLite \emph{and} Postgres~16; 110
+Android JVM), plus 7 research-integrity guards pinning the paper's headline survey
+numbers to the committed JSONs. A concurrency smoke of 288 mixed requests over 24 threads produced zero errors
 (p50 66~ms); the API was property-fuzzed, CVE-audited, and both signed APKs passed a
 MobSF~\cite{mobsf} static audit. On a Galaxy M52 (two 15-min Roblox sessions, per-minute
 sampling), the default monitoring path costs $\approx$$14\%$ of one core and

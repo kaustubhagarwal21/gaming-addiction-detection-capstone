@@ -33,7 +33,7 @@
     "what_it_does_not_mean": "It does not mean the survey validated the whole served score. It validated one computation, the behaviour channel. Respondents were anonymous adults whose answers were self-reported and mapped to band midpoints; it used no device telemetry from children. The result is a construct-validity correlation with the IGDS9-SF (rho = 0.317), not diagnostic accuracy: caseness metrics are withheld because only 1 scored respondent reached the disordered range (36 or more). The chat and voice channels, the 40/30/30 fusion weights and their renormalisation, the 0.33/0.67 band thresholds and the observation-mode cap were never part of it. So removing the genre weight makes the served score identical to the validated computation only for sessions scored on behaviour alone. When chat or voice is present, the v2 score is still a fusion whose weights are priors: in the v1 pilot analysis, re-scoring from behaviour alone matched the served band in 67.7% of 130 sessions. Nor does it show that genre has no effect. The Kruskal-Wallis null (H = 4.59, p = 0.598, 7 genres) had about 32% power at n = 103, so it is underpowered, not disproven. The case for removal is that the multiplier sat outside the validated computation and the one test of it found no support."
   },
   "parent_notice": "We updated how the risk score is calculated (score version 2). The game-genre adjustment was removed because our validation study found no evidence that the type of game changes the risk. Earlier sessions were scored the old way, so the concern level from now on may differ from before even if play has not changed. Nothing else about monitoring has changed.",
-  "deployed": false,
+  "deployed": true,
   "parent_notice_delivery": "One informational alert (type 'score_update', severity 'low') per child, raised on the child's first v2 prediction only if the child has legacy v1 predictions; at most once per child, enforced by the partial unique index idx_alerts_one_score_update and INSERT ... ON CONFLICT DO NOTHING; not feedback-eligible in the ParentApp (AlertTriage), not counted in agreement statistics, never pushed.",
   "tests_added": [
     "backend/tests/test_api.py::test_genre_no_longer_changes_the_served_score",
@@ -51,5 +51,12 @@
     "ml_guards": "7 passed",
     "run_on": "2026-11-23"
   },
-  "migration_rehearsal": "2026-11-23, Postgres 16 in Docker: schema created by the pre-v2 backend (HEAD 95ae1c8) with one v1 prediction, then the v2 backend started against it: score_version column and partial unique index created; the v1 row stayed NULL, new rows stored 2; exactly one parent note, still one after a cold second worker scored again; a raw duplicate insert was refused (UniqueViolation)."
+  "migration_rehearsal": "2026-11-23, Postgres 16 in Docker: schema created by the pre-v2 backend (HEAD 95ae1c8) with one v1 prediction, then the v2 backend started against it: score_version column and partial unique index created; the v1 row stayed NULL, new rows stored 2; exactly one parent note, still one after a cold second worker scored again; a raw duplicate insert was refused (UniqueViolation).",
+  "deployment": {
+    "commit": "e9d16c8",
+    "pushed_on": "2026-11-23",
+    "ci": "GitHub Actions CI run on e9d16c8: success (SQLite + Postgres 16 backend suites, Android checks, research-integrity guards)",
+    "verified": "2026-11-23: https://gaming-addiction-api.onrender.com/api/model_card reports score_version 2",
+    "pending_human_step": "reseed the demo family (DEMO_RUNBOOK section 2) before any demo; needs DATABASE_URL + PIN_PEPPER"
+  }
 }

@@ -113,10 +113,12 @@ screen-time baseline it is meant to replace in $97.4\%$ of paired resamples
 that baseline out
 ($\rho = 0.303$, CI excluding zero), with the signal concentrated in the
 behavioural-pattern features rather than the volume ones --- the project's core premise, confirmed
-against real labels rather than assumed. Remaining limits are stated plainly ---
+against real labels rather than assumed. The one ensemble component the survey
+found no support for (genre weighting), which also lay outside the computation it
+validated, has been removed from the served score as a versioned change (score
+version~2) disclosed to parents. Remaining limits are stated plainly ---
 behavioural \emph{labels} remain synthetic screening priors, so caseness
-metrics at the clinical cut-off are still uncomputed, and one ensemble component
-(genre weighting) failed to reach significance --- and the output is framed
+metrics at the clinical cut-off are still uncomputed --- and the output is framed
 explicitly as \emph{screening and awareness, not clinical diagnosis}.
 \end{abstract}
 
@@ -222,9 +224,10 @@ rather than to maximise a headline accuracy number.
         ($\rho = 0.330$) separates cleanly from the \emph{volume} composite
         ($\rho = 0.128$, CI including zero). The same
         study reports two results \emph{against} the system --- the genre
-        multiplier reaches no significance, and four of five parent-facing
-        psychometric proxies fail to track the IGDS item they are named after ---
-        because a validation study that can only confirm is not one.
+        multiplier reaches no significance (it has since been removed from the
+        served score as a versioned change, score version~2), and four of five
+        parent-facing psychometric proxies fail to track the IGDS item they are
+        named after --- because a validation study that can only confirm is not one.
   \item Grounding in eleven real, open datasets (two behaviour-grounding surveys, five
         chat corpora, four speech corpora) --- each screened against explicit
         criteria, each adoption justified by a measured effect, and each rejection
@@ -818,10 +821,13 @@ on it would be circular; calibrating them from real labels is future work (via t
 feedback loop).
 
 The fused score re-normalises over only the modalities $P\subseteq\{b,c,v\}$ that
-actually produced data, then applies a game-genre risk multiplier $g$:
+actually produced data:
 \[
-\text{risk} \;=\; g \cdot \frac{\sum_{m\in P} w_m\, s_m}{\sum_{m\in P} w_m}.
+\text{risk} \;=\; \frac{\sum_{m\in P} w_m\, s_m}{\sum_{m\in P} w_m}.
 \]
+This is \emph{score version~2}, served since 23 Nov 2026. Score version~1 also
+multiplied this mean by a hand-set game-genre weight $g$; it was removed for the
+reasons given under \emph{Score versions} below.
 The score maps to bands \textbf{Casual} ($<0.33$), \textbf{At-Risk} ($0.33$--$0.67$) and
 \textbf{Addicted} ($\geq 0.67$). These cut-points are even tertiles of the $0$--$1$ score
 --- again a transparent prior, not a fitted cut-off --- and they align with the score's
@@ -833,16 +839,13 @@ awareness, not diagnostic cut-offs.
 
 \paragraph{Fixed priors, dynamic result.}
 The constants above never change at run time; what adapts to each session is the value
-\emph{computed from} them, through three mechanisms:
+\emph{computed from} them, through two mechanisms:
 \begin{itemize}[leftmargin=1.4em]
   \item \textbf{Availability re-weighting.} The weights are renormalised over only the
         modalities present, so an absent one contributes nothing (e.g.\ with no voice,
         behaviour and chat become $\approx$57\,\%/43\,\% for that session). This avoids a
         missing modality injecting a placeholder value and capping behaviour-only
         sessions below ``Addicted''.
-  \item \textbf{Game-genre multiplier ($g$).} The final score is scaled by a per-genre
-        risk factor (a competitive, chat-heavy game weighs more than a casual puzzle),
-        read from a fixed lookup.
   \item \textbf{Observation mode.} For the first few sessions ($<3$) the band is capped
         below ``Addicted'' regardless of score, so the system never over-calls on sparse
         data.
@@ -855,6 +858,33 @@ recommendations (a Beta-posterior on the false-alarm and ``too-late'' rates per 
 movement capped at $\pm 0.05$ per run and suppressed entirely below five verdicts, so a
 handful of labels nudges a threshold while only consistent evidence moves it
 decisively). The ensemble \emph{weights} still await real labels at pilot scale.
+
+\paragraph{Score versions.}
+\label{sec:scoreversion}
+Score version~1, served from launch until 23 Nov 2026, multiplied the fused mean
+by a hand-set per-genre weight $g$ read from a fixed lookup (Battle Royale $1.25$;
+FPS and MOBA $1.20$; MMO $1.15$; RPG $1.10$; Sandbox $0.95$; Strategy $0.90$;
+Casual $0.70$; $1.0$ for an unlisted game) and clipped the product to $[0,1]$.
+Score version~2 removes $g$, for two reasons. The IGDS9-SF survey
+(\S\ref{sec:survey}, Result~5) found no genre effect (Kruskal-Wallis $H = 4.59$,
+$p = 0.598$, seven genres) --- a null at about $32\%$ power that would need
+roughly $400$ respondents to reach $90\%$, so \emph{underpowered, not
+disproven}. And the computation that study validated --- the behaviour channel
+alone --- never included genre, so the multiplier sat outside what was validated
+while its one test found no support. On the pilot, removal changes the band of
+$34.4\%$ of the $131$ sessions ($45$ of them; \S\ref{sec:pilot}), so it shipped
+as a \emph{versioned} score rather than a silent swap: every prediction stores
+the \texttt{score\_version} that produced it (\texttt{NULL} marks version-1
+history, which is never back-filled); the parent of a child with version-1
+history receives a one-time, informational in-app note on that child's first
+version-2 score --- not a risk alert, and never pushed --- saying that concern
+levels may differ from before even if play has not; and the analysis and drift
+tools are version-aware: the fusion-sensitivity script reproduces every stored
+row with the formula that served it, and the drift monitor compares fused scores
+only within one version, so the formula change cannot register as model drift.
+The multiplier was never configurable at run time (no environment variable ever
+controlled it); bringing genre back would take new evidence, a code change and a
+new score version.
 
 \subsection{Evaluation strategy}
 Each model is evaluated on a held-out split it never trained on. For the chat model
@@ -1792,7 +1822,9 @@ alert path; std-based $z$ lets one past binge day mask the next; the priors have
 labels to fit and fitting them on synthetic data would be circular &
 Max aggregation wins on 707 real conversations (PR-AUC $0.916$ vs.\ $0.907$) and
 removes TF-IDF from the hot path; outlier-masking fix is unit-tested; the prior
-components remain env-/feedback-tunable rather than silently ``optimised'' \\
+components remain documented constants rather than silently ``optimised'' (the
+genre multiplier was later removed outright: score version~2,
+\S\ref{sec:scoreversion}) \\
 \addlinespace
 Evaluation methodology hardened: speaker-independent voice splits; ablation studies
 with bootstrap CIs; PR curves + confusion-matrix figures; PR-AUC/ROC-AUC/MCC/Brier
@@ -1816,11 +1848,15 @@ assumptions --- drive the next revision.
 \begin{itemize}[leftmargin=1.4em]
   \item Production-deployed cloud backend (HTTPS, token auth, consent, durable
         managed Postgres); both apps build as signed release APKs.
-  \item A layered test program, all passing: a 181-test API suite (isolated database;
-        includes ML-unit tests for the shared audio extractor, noisy-OR fusion,
-        threshold-tuner math and the session-streak alert; run automatically in CI
-        against \textbf{both} SQLite and PostgreSQL~16 --- the production dialect ---
-        on every push), an \textbf{82-check functional sweep run in production auth mode} with real
+  \item A layered test program, all passing: $300$ automated tests, namely a
+        190-test backend suite (isolated database; includes ML-unit tests for the
+        shared audio extractor, noisy-OR fusion, threshold-tuner math and the
+        session-streak alert; run automatically in CI against \textbf{both} SQLite
+        and PostgreSQL~16 --- the production dialect --- on every push) and the 110
+        Android JVM unit tests described below, plus $7$ research-integrity guards
+        (also in CI: the survey form's parsing contract, and the papers' headline
+        survey figures, checked against the committed aggregates); an
+        \textbf{82-check functional sweep run in production auth mode} with real
         parent/child tokens (registration and family joins, role guards on every
         parent-only endpoint, the full nudge lifecycle, a real WAV upload through the
         silence floor and late re-score, the watchdog's quiet hours, end-session
@@ -1999,20 +2035,25 @@ The pilot's findings, positive and negative alike:
         is exactly why the rerun mattered: weight perturbations of $\pm 0.15$ flip a
         median $0.8\%$ and worst-case $10.7\%$ of session bands (not $0.3\%$),
         removing the genre multiplier flips $34.4\%$, and $\pm 0.05$ threshold
-        shifts flip up to $26.7\%$. The stakes ranking stands --- thresholds and the
-        genre effect are the high-stakes priors, the weights moderate --- and is
+        shifts flip up to $26.7\%$. The stakes ranking held --- thresholds and the
+        genre effect were the high-stakes priors, the weights moderate --- which is
         precisely why the IGDS9-SF study targeted both first. It has since
-        returned a verdict on each, and neither changed the deployment:
-        the fitted thresholds are declined because the sample's missing severity
-        tail is what pins them, and the genre multiplier is retained-but-flagged
-        because its null is underpowered rather than decisive
-        (\S\ref{sec:survey}). A
+        returned a verdict on each, with different outcomes: the fitted
+        thresholds are declined because the sample's missing severity tail is
+        what pins them, while the genre multiplier --- unsupported by an
+        underpowered null and outside the computation the study validated --- was
+        removed from the served score in score version~2; because this analysis
+        shows the removal moving a third of session bands, it shipped as a
+        versioned score with a one-time note to affected parents, not a silent
+        swap (\S\ref{sec:survey}; \S\ref{sec:scoreversion}, \emph{Score
+        versions}). A
         prevalence-anchoring method for the top-band threshold is implemented and
         population-gated (\texttt{ml/calibrate\_thresholds\_prevalence.py}).
   \item \textbf{Channel contribution to the fused decision, measured on real
         traffic.} The same replication-gated analysis re-fuses each session using
-        only a subset of its captured channels (weights renormalised, genre and
-        observation-cap policy unchanged --- exactly what serving would have
+        only a subset of its captured channels (weights renormalised, the score
+        version~1 genre factor --- under which all 131 sessions were served ---
+        and observation-cap policy unchanged: exactly what serving would have
         produced had the other channels never been captured). On the pilot's 131
         sessions: behaviour alone agrees with the full decision in only $67.7\%$ of
         sessions --- i.e.\ \emph{removing voice changes the parent-visible band
@@ -2150,7 +2191,9 @@ the model's ten objective features by documented band midpoints, and are pushed
 through the \emph{deployed serving path} --- the same shared
 \texttt{derive\_psychometrics} derivation, the fitted scaler, the calibrated
 behaviour forest and the identical risk formula the backend uses --- so what is
-correlated is the score the system would actually have shown a parent. An
+correlated is the score the system would actually show a parent for a session
+scored on behaviour alone (exactly so since score version~2; version~1 also
+applied a genre weight this path never included, \S\ref{sec:scoreversion}). An
 embedded attention check (``select Often for this question'') and two
 eligibility gates screened responses. The instrument, protocol and analysis are
 in \texttt{docs/SURVEY\_IGDS9SF.md} and \texttt{docs/VALIDATION\_PLAN.md};
@@ -2201,7 +2244,7 @@ pre-batch $n{=}86$ it excluded zero), so superiority over the baseline is
 suggestive, not established, and we say so. (The construct-validity correlation
 of Result~1 was the pre-designated primary endpoint --- stated in the analysis
 script's documentation before data collection; the remaining results are
-secondary.) The partial correlation establishes \emph{non-redundancy}:
+secondary and exploratory, not corrected for multiple comparisons.) The partial correlation establishes \emph{non-redundancy}:
 partialling self-reported hours out of the model's correlation barely moves it
 ($\rho = 0.303$, $95\%$ CI $[0.110, 0.476]$, excluding zero), so the score is
 not screen time re-expressed in another unit --- though because hours is a
@@ -2269,21 +2312,30 @@ IGDS9-SF dataset (\S4.2). The justification for treating chat toxicity as a
 risk-relevant channel at all therefore holds in this population too, and no
 longer rests solely on a borrowed correlation.
 
-\textbf{Result 5 --- the genre multiplier is unsupported (a null we report).}
+\textbf{Result 5 --- the genre multiplier is unsupported (a null we report, and
+act on).}
 Across the seven genres with $n \geq 4$, mean IGDS totals now span $16.2$
 (RPG/open-world) to $19.3$ (``Other'') --- an ordering that no longer even
-matches the one the deployed multiplier assumes (Battle Royale sits mid-table)
---- and a Kruskal-Wallis test finds no significant difference ($H = 4.59$,
-$p = 0.598$). The null has weakened at every growth of the sample ($p = 0.159$
-at $n{=}80$, $0.491$ at $86$, $0.598$ at $103$). The honest reading remains
+matches the one the score-version-1 multiplier assumed (Battle Royale sits
+mid-table) --- and a Kruskal-Wallis test finds no significant difference
+($H = 4.59$, $p = 0.598$). The null has weakened at every growth of the sample
+(from $p = 0.159$ at $n{=}80$ to $0.598$ at $103$). The honest reading remains
 \emph{underpowered, not disproven}: resampling from the observed group
 distributions gives this test only $32\%$ power at the achieved $n$, reaching
-$90\%$ only near $n \approx 400$ scoreable respondents. Because the pilot's sensitivity analysis (\S\ref{sec:pilot}) ranks
-genre weighting among the parameters that measurably move served bands, we have
-neither removed the multiplier on a null this weak nor treated it as validated:
-it stays flagged as the ensemble's least-evidenced component, first in line for
-the larger cohort, and its magnitude remains an environment variable so a future
-result can retire it without a code change.
+$90\%$ only near $n \approx 400$ scoreable respondents. A null this weak cannot
+show that genre has no effect, and we do not claim it does. What decided the
+multiplier's fate is that it was never part of what this study validated: every
+respondent was scored through the behaviour channel alone, with no genre factor,
+no chat or voice channel and no fusion, yet score version~1 multiplied the
+served score by a hand-set genre weight ($0.70$ to $1.25$). It therefore sat
+outside the validated computation, and its one test found no support. Score
+version~2 (deployed 23 Nov 2026) removes it, so for sessions scored on behaviour
+alone the served score is now the computation this study validated. Because the
+pilot's sensitivity analysis (\S\ref{sec:pilot}) shows the removal changing
+$34.4\%$ of session bands, it shipped as a versioned score with a one-time note
+to affected parents (\S\ref{sec:scoreversion}, \emph{Score versions}). Bringing
+genre back would need new evidence --- the $n \approx 400$ cohort above --- a code
+change and a new score version.
 
 \textbf{Result 6 --- most parent-facing proxies do not track their namesake
 items.} The ten derived psychometric proxies are explanations, never model
@@ -2377,13 +2429,13 @@ formatted export.
 \midrule
 Detection & Any-game detection (UsageStats + category + parent overrides), session lifecycle with grace/ancillary handling \\
 Capture & Custom-keyboard (IME) + Accessibility typed-chat (canvas games included), on-device Vosk STT, voice features with silence floor, real behavioural metrics, offline chat retry queue \\
-ML & Calibrated RF behaviour (ten objective features, bake-off-confirmed, survey-grounded play time) + SHAP, \textbf{gaming-domain-trained} calibrated LogReg on word+char\_wb TF-IDF (3 real corpora incl.\ Davidson) with noisy-OR lexicon fusion (incl.\ Hinglish terms) + \textbf{session-level streak alert}, \textbf{real-audio HistGB voice on 36 acoustic features trained on 4 corpora / 154 speakers / 3 languages, speaker-independent evaluation} behind a VAD gate, availability-weighted fusion, valence--arousal voice/text fusion, genre weighting, late-voice re-score, env-tunable thresholds + feedback threshold tuner, in-domain evaluation on held-out CONDA \\
+ML & Calibrated RF behaviour (ten objective features, bake-off-confirmed, survey-grounded play time) + SHAP, \textbf{gaming-domain-trained} calibrated LogReg on word+char\_wb TF-IDF (3 real corpora incl.\ Davidson) with noisy-OR lexicon fusion (incl.\ Hinglish terms) + \textbf{session-level streak alert}, \textbf{real-audio HistGB voice on 36 acoustic features trained on 4 corpora / 154 speakers / 3 languages, speaker-independent evaluation} behind a VAD gate, availability-weighted fusion as a versioned score (v2 drops v1's genre weighting; one-time parent note), valence--arousal voice/text fusion, late-voice re-score, env-tunable thresholds + feedback threshold tuner, in-domain evaluation on held-out CONDA \\
 Credibility & Probability calibration, anomaly detection (robust median/MAD baselines), observation mode, limitations-forward model card --- surfaced to the parent in plain language, incl.\ the in-domain chat-alert precision and the real-speech voice accuracy (``why trust this'') --- child-local timezone for hour-of-day signals, \textbf{score-distribution drift monitor} (PSI + KS vs.\ a reference window, incl.\ modality-presence rates that separate capture regressions from model drift) \\
 Parent value & Per-day weighted risk + ``why'' (SHAP), live ``playing now'' + monitoring-health strip, 14-day trend, recently/most-played games, real-time alerts with friendly ages + feedback agreement rate, weekly report (true weekly numbers) + PDF, limits, send-nudge-to-child, parent-only child-profile editing (name/age/PIN reset; age is deliberately not child-editable --- it feeds the peer comparison and limit caps), switch child without re-login \\
 Child wellbeing & Mira check-in (typing indicator, double-send guard), gamified daily check-in + streak, reflections, breathing, break/limit nudges, today-vs-goal progress \\
 Reliability/anti-tamper & Heartbeat watchdog (uninstall/kill/offline alert, child-local quiet hours), optional Device Admin (uninstall block + instant disable alert), battery-optimisation exemption, double-start-safe services, consent-gated boot resume, parent-PIN lock on logout/settings (server-verified, constant-time), logout \emph{and} login alerts with truthful monitoring status, idempotent session-end, self-scoring stale-session guard, per-child risk notifications, multi-guardian FCM push (lazy-init) \\
 Privacy/Security & Token auth + \emph{role} checks on every parent-only endpoint, deleted-account tokens locked out despite the stateless 30-day TTL (TTL-cached existence probe), peppered PIN hashes (validated, family-wide PIN change), HTTPS-only, encrypted token store, consent (versioned), raw-audio deletion, retention purge, parent-controlled data export mirroring the deletion scope (credentials excluded), 16\,MB body cap, opt-in Sentry crash monitoring (stack traces only, no PII), family code always recoverable in PIN-gated Settings \\
-Engineering & Dual-dialect DB with pooled validated Postgres connections + composite indexes on the hot query paths, per-client rate limiting, hot-path caching/throttling + audio-concurrency cap + bounded throttle caches, thread-safe device-side shared state (concurrent cache, crash-safe confirm-then-delete offline queue, WorkManager network-aware retry), signed APKs, layered tests (181 API + 110 Android JVM + 82 production-mode + 25 live-cloud) + concurrency smoke + CI (pytest on SQLite \emph{and} PostgreSQL, Android lint + unit tests per push, weekly drift monitor against the production DB), real-device validated, lint-clean, deployed + durable DB \\
+Engineering & Dual-dialect DB with pooled validated Postgres connections + composite indexes on the hot query paths, per-client rate limiting, hot-path caching/throttling + audio-concurrency cap + bounded throttle caches, thread-safe device-side shared state (concurrent cache, crash-safe confirm-then-delete offline queue, WorkManager network-aware retry), signed APKs, layered tests (300 automated: 190 backend + 110 Android JVM; plus 7 research-integrity guards, 82 production-mode and 25 live-cloud checks) + concurrency smoke + CI (pytest on SQLite \emph{and} PostgreSQL, Android lint + unit tests per push, weekly drift monitor against the production DB), real-device validated, lint-clean, deployed + durable DB \\
 \bottomrule
 \end{tabularx}
 \end{center}
@@ -2483,8 +2535,9 @@ now on the curated detection list outright --- with the OS game category and
 the parent's manual overrides as the fallback for the rest --- and every
 behavioural feature is timing-based and therefore unaffected by where the game
 renders --- though sessions attribute to the launcher app rather than the
-title, the genre multiplier receives no signal for them (default weight), and
-streamed frames are opaque to the accessibility reader (the IME
+title (under score version~1 that also left them at the default genre weight;
+version~2 has no genre factor), and streamed frames are opaque to the
+accessibility reader (the IME
 path still captures typed chat). Games played \emph{inside another app},
 however, are invisible --- browser games of any kind (io games, web portals,
 cloud-streaming sites such as now.gg that stream even Roblox into a tab) and
@@ -2556,8 +2609,12 @@ design is cross-sectional. So the accuracy numbers in \S\ref{sec:behresults} are
 still synthetic-label numbers and are not upgraded by this study --- what is
 upgraded is the claim that the score means something, not the claim that it is
 accurate to a stated degree. The genre multiplier is the one ensemble component
-the study tested and failed to support ($p = 0.598$, at $32\%$ power); it is
-retained, flagged, and environment-tunable rather than defended.
+the study tested and failed to support ($p = 0.598$, at $32\%$ power); rather than
+defend it, score version~2 removed it from the served score, as a versioned change
+disclosed to affected parents (\S\ref{sec:scoreversion}). That aligns the served
+score with the validated computation only for sessions scored on behaviour alone:
+the $0.40/0.30/0.30$ fusion weights, the band cut-offs and the observation cap were
+never part of the study and remain priors.
 The voice channel's domain shift is measured live and its real influence on
 served bands quantified (\S\ref{sec:voiceresults}, \S\ref{sec:pilot}). The
 single-child pilot validates capture, delivery and instrumentation ---
@@ -2596,7 +2653,9 @@ replace in $97.4\%$ of paired resamples --- with the partial correlation
 in \emph{how} people play rather than \emph{how long} --- and, in the same
 study, failing to support the genre multiplier and most of the parent-facing
 proxy names. That is the shape of an honest result: the thesis survived
-contact with real labels; two of its components did not.
+contact with real labels; two of its components did not, and both were acted
+on --- the proxy labels renamed, and the multiplier removed from the served
+score as a versioned change (score version~2).
 Most importantly, the parent-feedback loop turns the platform from a
 frozen model into one that can learn from real verdicts --- and with the chat and
 voice channels already trained on real data, the behaviour generator's play-time
@@ -2632,15 +2691,20 @@ value depends on accumulating real usage data the prototype does not yet have:
         variables); what remains data-bound is calibrating the fusion parameters and
         retraining the models on real labels --- the change that converts synthetic
         accuracy into validated performance. The pilot's sensitivity analysis
-        (\S\ref{sec:pilot}) already \emph{prioritises} this agenda: genre weighting and band
-        thresholds measurably drive outcomes and go first; the ensemble weights
+        (\S\ref{sec:pilot}) already \emph{prioritised} this agenda: genre weighting and band
+        thresholds measurably drove outcomes and went first; the ensemble weights
         matter less (median $0.8\%$ of session bands across the weight simplex,
         though worst-case corners reach $10.7\%$) and can wait behind them. The
         adult IGDS9-SF study (\S\ref{sec:survey}) has now supplied the first
         external evidence on both: it \emph{confirms} the score's direction and
         its independence from screen time, and it \emph{declines to support} the
-        genre multiplier ($p = 0.598$ at $32\%$ power), which sharpens rather
-        than settles the priority. What remains needed is a pilot at scale plus
+        genre multiplier ($p = 0.598$ at $32\%$ power), which --- as it also sat
+        outside the computation the study validated --- score version~2 has
+        removed (\S\ref{sec:scoreversion}). That leaves the band
+        thresholds as the high-stakes prior still awaiting real labels; genre
+        would return only on new evidence (a cohort near $400$ respondents gives
+        the test $90\%$ power), and then as a new score version. What remains
+        needed is a pilot at scale plus
         the per-child form of the instrument --- parent-reported IGDS9-SF scores
         linked to \emph{measured} telemetry rather than adult self-report ---
         which is also the only route to caseness metrics at the clinical
