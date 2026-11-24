@@ -30,6 +30,6 @@ Khushee – demo (the deploy is already live, nothing to deploy):
 • Morning of, in the runbook's pre-flight order: phones online first, then reseed the demo family (runbook §2: SEED_DEMO_FORCE=1 + DATABASE_URL + PIN_PEPPER – get the values privately, never in this group), then run cloud_e2e.py (its logins prove the reseeded PINs), then the runbook's one-line cleanup of the 'e2e check' entry and the login alert, and clear the variables last
 • Wake the backend 30 min before and again 2 min before (/api/health → "models_loaded": true; cold start ~40 s)
 • Both phones charged, on the room Wi-Fi, latest apps, permissions on
-• Backup demo video on the laptop
+• Backup demo video on the laptop – record it from DEMO_VIDEO_SCRIPT.md (same beats as the live demo, after a fresh reseed)
 
-Attached: deck · cheat sheets (print your page) · report PDF · IEEE paper PDF · defense notes · demo runbook · team briefing
+Attached: deck · cheat sheets (print your page) · report PDF · IEEE paper PDF · defense notes · demo runbook · demo video script · team briefing
