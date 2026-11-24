@@ -1,0 +1,644 @@
+{
+  "model": "chat",
+  "protocol": "Reuses ml/ablation_studies.py unchanged (chat_sources, load_norm, train_chat, chat_scores, chat_row, boot_ci); only LogisticRegression's C and class_weight are overridden inside train_chat. Replication gate first. Selection uses a stratified 15% validation slice (seed 42) carved from the de-duplicated TRAINING corpora; every raw row whose cleaned text is in the slice is removed from training. The TF-IDF vectoriser is fitted once on the remaining rows and shared across configs (unsupervised, no label leakage). Metric: PR-AUC of the served score (isotonic-calibrated LR noisy-OR keyword score). CONDA_valid (never trained or selected on) is scored once, for the deployed config and the validation-best config, each refitted on all training corpora; paired bootstrap of the PR-AUC difference (1,000 resamples, seed 42).",
+  "search_space": {
+    "C": [
+      0.125,
+      0.25,
+      0.5,
+      1.0,
+      2.0,
+      4.0,
+      8.0
+    ],
+    "class_weight": [
+      "balanced",
+      null
+    ],
+    "fixed": "TF-IDF word 1-2 (20k) + char_wb 3-5 (30k), min_df=2, sublinear tf; max_iter=1000, lbfgs; isotonic calibration on the 15% calibration split; keyword noisy-OR fusion"
+  },
+  "n_configs": 14,
+  "cv": {
+    "scheme": "single stratified hold-out: 15% validation slice (seed 42) carved from the de-duplicated training corpora; vectoriser fitted once on the rest",
+    "folds": 1,
+    "metric": "PR-AUC of the served score (calibrated LR noisy-OR keyword)",
+    "std_definition": "bootstrap SD over 1,000 resamples of the validation slice (identical resamples for every config)",
+    "n_val": 35546,
+    "val_prevalence": 0.1376,
+    "n_val_from_conda_train": 2549,
+    "n_unique_training_texts": 236971,
+    "raw_rows_removed_from_training": 38530,
+    "vectoriser_fits": 1,
+    "vectoriser_fit_rows": 47103,
+    "n_features": 50000
+  },
+  "replication": {
+    "deployed_test": 0.8246,
+    "ablation_json": 0.8246,
+    "match": true,
+    "tolerance": 0.002,
+    "precision@alert": 0.9648,
+    "ablation_precision@alert": 0.9648,
+    "recall@alert": 0.363,
+    "ablation_recall@alert": 0.363
+  },
+  "cv_deployed": {
+    "mean": 0.7285,
+    "std": 0.0069
+  },
+  "cv_top10": [
+    {
+      "params": {
+        "C": 8.0,
+        "class_weight": "balanced"
+      },
+      "mean": 0.7483,
+      "std": 0.0067
+    },
+    {
+      "params": {
+        "C": 4.0,
+        "class_weight": null
+      },
+      "mean": 0.7472,
+      "std": 0.0067
+    },
+    {
+      "params": {
+        "C": 8.0,
+        "class_weight": null
+      },
+      "mean": 0.7472,
+      "std": 0.0066
+    },
+    {
+      "params": {
+        "C": 4.0,
+        "class_weight": "balanced"
+      },
+      "mean": 0.744,
+      "std": 0.0068
+    },
+    {
+      "params": {
+        "C": 2.0,
+        "class_weight": "balanced"
+      },
+      "mean": 0.7393,
+      "std": 0.0069
+    },
+    {
+      "params": {
+        "C": 2.0,
+        "class_weight": null
+      },
+      "mean": 0.7389,
+      "std": 0.0069
+    },
+    {
+      "params": {
+        "C": 1.0,
+        "class_weight": null
+      },
+      "mean": 0.7288,
+      "std": 0.0069
+    },
+    {
+      "params": {
+        "C": 1.0,
+        "class_weight": "balanced"
+      },
+      "mean": 0.7285,
+      "std": 0.0069
+    },
+    {
+      "params": {
+        "C": 0.5,
+        "class_weight": null
+      },
+      "mean": 0.7104,
+      "std": 0.0069
+    },
+    {
+      "params": {
+        "C": 0.5,
+        "class_weight": "balanced"
+      },
+      "mean": 0.7102,
+      "std": 0.0069
+    }
+  ],
+  "cv_spread": {
+    "min": 0.6751,
+    "median": 0.7286,
+    "max": 0.7483
+  },
+  "marginal": {
+    "C": {
+      "0.125": 0.6751,
+      "0.25": 0.6924,
+      "0.5": 0.7103,
+      "1": 0.7286,
+      "2": 0.7391,
+      "4": 0.7456,
+      "8": 0.7477
+    },
+    "class_weight": {
+      "balanced": 0.7197,
+      "None": 0.72
+    }
+  },
+  "best_params": {
+    "C": 8.0,
+    "class_weight": "balanced"
+  },
+  "test": {
+    "metric": "PR-AUC (average precision) of the served score on CONDA_valid",
+    "deployed": 0.8246,
+    "best": 0.8146,
+    "diff": -0.01,
+    "diff_ci95": [
+      -0.0167,
+      -0.0035
+    ],
+    "p_best_better": 0.002,
+    "deployed_ci95": [
+      0.8073,
+      0.8407
+    ],
+    "best_ci95": [
+      0.797,
+      0.8303
+    ],
+    "alert_threshold": 0.95,
+    "deployed_at_alert": {
+      "precision": 0.9648,
+      "recall": 0.363
+    },
+    "best_at_alert": {
+      "precision": 0.9688,
+      "recall": 0.3359
+    },
+    "n_test": 7721,
+    "test_prevalence": 0.2151
+  },
+  "conclusion": "On the training-only validation slice the 14 configs span PR-AUC 0.6751 to 0.7483 (range 0.0732). The deployed C=1, class_weight=balanced scores 0.7285 +/- 0.0069 and ranks 8 of 14. Validation selects C=8, class_weight=balanced. On CONDA_valid (scored once) it reaches PR-AUC 0.8146 against 0.8246 for the deployed config: a difference of -0.0100, paired 95% CI [-0.0167, -0.0035], better in 0% of resamples. At the 0.95 alert threshold, precision/recall go from 0.965/0.363 to 0.969/0.336. The validation-best config is worse on gaming chat, so selection on the pooled (mostly general-corpus) slice does not transfer to CONDA. The deployed C=1.0 stands. For scale, the ablation shows that removing the CONDA domain data costs 0.314 PR-AUC and removing char n-grams costs 0.030. Data and representation matter more than the regularisation strength.",
+  "runtime_s": 482.9,
+  "cv_all": [
+    {
+      "params": {
+        "C": 0.125,
+        "class_weight": "balanced"
+      },
+      "mean": 0.6751,
+      "std": 0.0071,
+      "diff_vs_deployed": -0.0534,
+      "diff_sd": 0.0031,
+      "p_better_than_deployed": 0.0,
+      "val_conda_part_pr_auc": 0.7717,
+      "lr_iterations": 16,
+      "converged": true
+    },
+    {
+      "params": {
+        "C": 0.125,
+        "class_weight": null
+      },
+      "mean": 0.6752,
+      "std": 0.0071,
+      "diff_vs_deployed": -0.0533,
+      "diff_sd": 0.0031,
+      "p_better_than_deployed": 0.0,
+      "val_conda_part_pr_auc": 0.7724,
+      "lr_iterations": 16,
+      "converged": true
+    },
+    {
+      "params": {
+        "C": 0.25,
+        "class_weight": "balanced"
+      },
+      "mean": 0.6925,
+      "std": 0.007,
+      "diff_vs_deployed": -0.0359,
+      "diff_sd": 0.0027,
+      "p_better_than_deployed": 0.0,
+      "val_conda_part_pr_auc": 0.7889,
+      "lr_iterations": 18,
+      "converged": true
+    },
+    {
+      "params": {
+        "C": 0.25,
+        "class_weight": null
+      },
+      "mean": 0.6923,
+      "std": 0.007,
+      "diff_vs_deployed": -0.0361,
+      "diff_sd": 0.0027,
+      "p_better_than_deployed": 0.0,
+      "val_conda_part_pr_auc": 0.7886,
+      "lr_iterations": 18,
+      "converged": true
+    },
+    {
+      "params": {
+        "C": 0.5,
+        "class_weight": "balanced"
+      },
+      "mean": 0.7102,
+      "std": 0.0069,
+      "diff_vs_deployed": -0.0183,
+      "diff_sd": 0.002,
+      "p_better_than_deployed": 0.0,
+      "val_conda_part_pr_auc": 0.7927,
+      "lr_iterations": 19,
+      "converged": true
+    },
+    {
+      "params": {
+        "C": 0.5,
+        "class_weight": null
+      },
+      "mean": 0.7104,
+      "std": 0.0069,
+      "diff_vs_deployed": -0.018,
+      "diff_sd": 0.002,
+      "p_better_than_deployed": 0.0,
+      "val_conda_part_pr_auc": 0.7943,
+      "lr_iterations": 19,
+      "converged": true
+    },
+    {
+      "params": {
+        "C": 1.0,
+        "class_weight": "balanced"
+      },
+      "mean": 0.7285,
+      "std": 0.0069,
+      "diff_vs_deployed": 0.0,
+      "diff_sd": 0.0,
+      "p_better_than_deployed": 0.0,
+      "val_conda_part_pr_auc": 0.8016,
+      "lr_iterations": 22,
+      "converged": true
+    },
+    {
+      "params": {
+        "C": 1.0,
+        "class_weight": null
+      },
+      "mean": 0.7288,
+      "std": 0.0069,
+      "diff_vs_deployed": 0.0003,
+      "diff_sd": 0.0002,
+      "p_better_than_deployed": 0.91,
+      "val_conda_part_pr_auc": 0.802,
+      "lr_iterations": 22,
+      "converged": true
+    },
+    {
+      "params": {
+        "C": 2.0,
+        "class_weight": "balanced"
+      },
+      "mean": 0.7393,
+      "std": 0.0069,
+      "diff_vs_deployed": 0.0108,
+      "diff_sd": 0.0015,
+      "p_better_than_deployed": 1.0,
+      "val_conda_part_pr_auc": 0.7961,
+      "lr_iterations": 19,
+      "converged": true
+    },
+    {
+      "params": {
+        "C": 2.0,
+        "class_weight": null
+      },
+      "mean": 0.7389,
+      "std": 0.0069,
+      "diff_vs_deployed": 0.0105,
+      "diff_sd": 0.0015,
+      "p_better_than_deployed": 1.0,
+      "val_conda_part_pr_auc": 0.7974,
+      "lr_iterations": 19,
+      "converged": true
+    },
+    {
+      "params": {
+        "C": 4.0,
+        "class_weight": "balanced"
+      },
+      "mean": 0.744,
+      "std": 0.0068,
+      "diff_vs_deployed": 0.0155,
+      "diff_sd": 0.0023,
+      "p_better_than_deployed": 1.0,
+      "val_conda_part_pr_auc": 0.7905,
+      "lr_iterations": 32,
+      "converged": true
+    },
+    {
+      "params": {
+        "C": 4.0,
+        "class_weight": null
+      },
+      "mean": 0.7472,
+      "std": 0.0067,
+      "diff_vs_deployed": 0.0188,
+      "diff_sd": 0.0023,
+      "p_better_than_deployed": 1.0,
+      "val_conda_part_pr_auc": 0.7891,
+      "lr_iterations": 23,
+      "converged": true
+    },
+    {
+      "params": {
+        "C": 8.0,
+        "class_weight": "balanced"
+      },
+      "mean": 0.7483,
+      "std": 0.0067,
+      "diff_vs_deployed": 0.0198,
+      "diff_sd": 0.0027,
+      "p_better_than_deployed": 1.0,
+      "val_conda_part_pr_auc": 0.7852,
+      "lr_iterations": 38,
+      "converged": true
+    },
+    {
+      "params": {
+        "C": 8.0,
+        "class_weight": null
+      },
+      "mean": 0.7472,
+      "std": 0.0066,
+      "diff_vs_deployed": 0.0187,
+      "diff_sd": 0.0028,
+      "p_better_than_deployed": 1.0,
+      "val_conda_part_pr_auc": 0.7855,
+      "lr_iterations": 33,
+      "converged": true
+    }
+  ],
+  "diagnostics": {
+    "class_weight_max_gap": 0.0033,
+    "conda_part_argmax_params": {
+      "C": 1.0,
+      "class_weight": null
+    },
+    "conda_part_note": "PR-AUC on the CONDA_train-origin rows of the validation slice; a diagnostic only, not used for selection",
+    "deployed_lr_iterations_full_data": 20
+  },
+  "in_domain_selection": {
+    "question": "Does selecting C / class_weight on in-domain gaming chat (CONDA_train only) instead of the pooled, mostly general-corpus slice change the pick or the CONDA_valid result?",
+    "protocol": "Steps 1-3 repeated with the validation slice drawn from CONDA_train only: de-duplicated by cleaned text (CONDA_train majority label, ties -> toxic), stratified 15% slice (seed 42); every raw row in any corpus whose cleaned text is in the slice removed from training; TF-IDF fitted once on the rest and shared. Same 14 configs, metric (PR-AUC of the served score) and tie rule. CONDA_valid takes no part in selection; it is scored once for the pick against the deployed config (paired bootstrap, 1,000 resamples, seed 42).",
+    "slice": {
+      "source": "CONDA_train only",
+      "n_val": 2427,
+      "val_prevalence": 0.253,
+      "n_unique_conda_train_texts": 16179,
+      "raw_rows_removed_from_training": 3035,
+      "vectoriser_fits": 1
+    },
+    "val_deployed": {
+      "mean": 0.8062,
+      "std": 0.0143,
+      "rank": 1
+    },
+    "val_spread": {
+      "min": 0.758,
+      "median": 0.8007,
+      "max": 0.8062
+    },
+    "val_all": [
+      {
+        "params": {
+          "C": 0.125,
+          "class_weight": "balanced"
+        },
+        "mean": 0.758,
+        "std": 0.0166,
+        "rank": 13,
+        "diff_vs_deployed": -0.0481,
+        "p_better_than_deployed": 0.0,
+        "lr_iterations": 16,
+        "converged": true
+      },
+      {
+        "params": {
+          "C": 0.125,
+          "class_weight": null
+        },
+        "mean": 0.758,
+        "std": 0.0166,
+        "rank": 13,
+        "diff_vs_deployed": -0.0481,
+        "p_better_than_deployed": 0.0,
+        "lr_iterations": 16,
+        "converged": true
+      },
+      {
+        "params": {
+          "C": 0.25,
+          "class_weight": "balanced"
+        },
+        "mean": 0.7844,
+        "std": 0.0156,
+        "rank": 9,
+        "diff_vs_deployed": -0.0218,
+        "p_better_than_deployed": 0.0,
+        "lr_iterations": 17,
+        "converged": true
+      },
+      {
+        "params": {
+          "C": 0.25,
+          "class_weight": null
+        },
+        "mean": 0.7844,
+        "std": 0.0156,
+        "rank": 9,
+        "diff_vs_deployed": -0.0218,
+        "p_better_than_deployed": 0.0,
+        "lr_iterations": 17,
+        "converged": true
+      },
+      {
+        "params": {
+          "C": 0.5,
+          "class_weight": "balanced"
+        },
+        "mean": 0.8024,
+        "std": 0.0147,
+        "rank": 5,
+        "diff_vs_deployed": -0.0037,
+        "p_better_than_deployed": 0.089,
+        "lr_iterations": 17,
+        "converged": true
+      },
+      {
+        "params": {
+          "C": 0.5,
+          "class_weight": null
+        },
+        "mean": 0.8024,
+        "std": 0.0147,
+        "rank": 5,
+        "diff_vs_deployed": -0.0037,
+        "p_better_than_deployed": 0.089,
+        "lr_iterations": 17,
+        "converged": true
+      },
+      {
+        "params": {
+          "C": 1.0,
+          "class_weight": "balanced"
+        },
+        "mean": 0.8062,
+        "std": 0.0143,
+        "rank": 1,
+        "diff_vs_deployed": 0.0,
+        "p_better_than_deployed": 0.0,
+        "lr_iterations": 22,
+        "converged": true
+      },
+      {
+        "params": {
+          "C": 1.0,
+          "class_weight": null
+        },
+        "mean": 0.8062,
+        "std": 0.0143,
+        "rank": 1,
+        "diff_vs_deployed": 0.0,
+        "p_better_than_deployed": 0.0,
+        "lr_iterations": 22,
+        "converged": true
+      },
+      {
+        "params": {
+          "C": 2.0,
+          "class_weight": "balanced"
+        },
+        "mean": 0.8051,
+        "std": 0.0138,
+        "rank": 3,
+        "diff_vs_deployed": -0.0011,
+        "p_better_than_deployed": 0.333,
+        "lr_iterations": 21,
+        "converged": true
+      },
+      {
+        "params": {
+          "C": 2.0,
+          "class_weight": null
+        },
+        "mean": 0.8051,
+        "std": 0.0138,
+        "rank": 3,
+        "diff_vs_deployed": -0.0011,
+        "p_better_than_deployed": 0.333,
+        "lr_iterations": 21,
+        "converged": true
+      },
+      {
+        "params": {
+          "C": 4.0,
+          "class_weight": "balanced"
+        },
+        "mean": 0.8007,
+        "std": 0.014,
+        "rank": 7,
+        "diff_vs_deployed": -0.0055,
+        "p_better_than_deployed": 0.064,
+        "lr_iterations": 28,
+        "converged": true
+      },
+      {
+        "params": {
+          "C": 4.0,
+          "class_weight": null
+        },
+        "mean": 0.8007,
+        "std": 0.014,
+        "rank": 7,
+        "diff_vs_deployed": -0.0055,
+        "p_better_than_deployed": 0.064,
+        "lr_iterations": 28,
+        "converged": true
+      },
+      {
+        "params": {
+          "C": 8.0,
+          "class_weight": "balanced"
+        },
+        "mean": 0.7819,
+        "std": 0.0146,
+        "rank": 11,
+        "diff_vs_deployed": -0.0243,
+        "p_better_than_deployed": 0.0,
+        "lr_iterations": 42,
+        "converged": true
+      },
+      {
+        "params": {
+          "C": 8.0,
+          "class_weight": null
+        },
+        "mean": 0.7819,
+        "std": 0.0146,
+        "rank": 11,
+        "diff_vs_deployed": -0.0243,
+        "p_better_than_deployed": 0.0,
+        "lr_iterations": 42,
+        "converged": true
+      }
+    ],
+    "best_params": {
+      "C": 1.0,
+      "class_weight": "balanced"
+    },
+    "pooled_pick_on_conda_slice": {
+      "params": {
+        "C": 8.0,
+        "class_weight": "balanced"
+      },
+      "mean": 0.7819,
+      "rank": 11
+    },
+    "test": {
+      "metric": "PR-AUC (average precision) of the served score on CONDA_valid",
+      "deployed": 0.8246,
+      "best": 0.8246,
+      "diff": 0.0,
+      "diff_ci95": [
+        0.0,
+        0.0
+      ],
+      "p_best_better": 0.0,
+      "deployed_ci95": [
+        0.8073,
+        0.8407
+      ],
+      "best_ci95": [
+        0.8073,
+        0.8407
+      ],
+      "alert_threshold": 0.95,
+      "deployed_at_alert": {
+        "precision": 0.9648,
+        "recall": 0.363
+      },
+      "best_at_alert": {
+        "precision": 0.9648,
+        "recall": 0.363
+      },
+      "n_test": 7721,
+      "scored_on_conda_valid": "deployed only (the pick is the deployed config)"
+    },
+    "conclusion": "Selected on a stratified 15% slice of CONDA_train alone (2,427 unique gaming-chat texts, prevalence 0.253; CONDA_valid untouched), the 14 configs span slice PR-AUC 0.7580 to 0.8062; the deployed C=1, class_weight=balanced scores 0.8062 +/- 0.0143 (rank 1 of 14). In-domain selection picks the deployed configuration itself, so CONDA_valid scores one model (0.8246) and there is nothing to switch to. The pooled slice's pick (C=8, class_weight=balanced) ranks 11 of 14 on the CONDA slice (0.7819), so its preference for weaker regularisation does not carry over to gaming chat. Selected in-domain, the hand-set C=1.0 is the tuned value.",
+    "runtime_s": 340.4
+  }
+}

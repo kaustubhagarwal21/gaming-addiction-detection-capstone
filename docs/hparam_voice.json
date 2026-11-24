@@ -1,0 +1,1193 @@
+{
+  "model": "voice: HistGradientBoostingClassifier on 36 acoustic features (CREMA-D, EMO-DB, RAVDESS, URDU; originals + 1 augmented copy per clip)",
+  "protocol": "Nested and speaker-independent. The ablation split is reused exactly (GroupShuffleSplit test_size=0.2, seed 42; fixed test set = un-augmented clips of unseen speakers). A replication gate comes first. Hyperparameters are searched by GroupKFold(5) over TRAINING speakers only, re-applying the balance-then-fit recipe inside each fold and scoring on fold-validation un-augmented clips, selecting on macro-F1. The test set is used once, for the deployed and the CV-best configs, with a paired bootstrap (1,000 resamples, seed 42).",
+  "search_space": {
+    "learning_rate": [
+      0.03,
+      0.1,
+      0.3
+    ],
+    "max_iter": [
+      150,
+      300,
+      600
+    ],
+    "max_leaf_nodes": [
+      15,
+      31,
+      63
+    ],
+    "l2_regularization": [
+      0.0,
+      1.0
+    ]
+  },
+  "fixed_params": {
+    "early_stopping": true,
+    "early_stopping_note": "'auto' in the deployed spec, which sklearn resolves to ON for the 10,528-row training set; fixed to True in CV so the ~8,400-row folds run the same procedure",
+    "validation_fraction": 0.1,
+    "n_iter_no_change": 10,
+    "min_samples_leaf": 20,
+    "max_depth": null,
+    "max_bins": 255,
+    "random_state": 42
+  },
+  "deployed_params": {
+    "learning_rate": 0.1,
+    "max_iter": 300,
+    "max_leaf_nodes": 31,
+    "l2_regularization": 0.0
+  },
+  "n_configs": 54,
+  "cv": {
+    "scheme": "GroupKFold over training speakers (augmented copies stay with their speaker). Fold-train = original + augmented rows of the fold-train speakers, class-balanced by downsampling (rng seed 42+k). Fold-validation = un-augmented clips of the fold-validation speakers. All configs see the same folds. std = population std over folds.",
+    "folds": 5,
+    "metric": "macro_f1 (selection); accuracy also recorded",
+    "fold_sizes": [
+      {
+        "fold": 0,
+        "train_speakers": 98,
+        "val_speakers": 25,
+        "train_rows_balanced": 8144,
+        "val_rows_original": 1579
+      },
+      {
+        "fold": 1,
+        "train_speakers": 99,
+        "val_speakers": 24,
+        "train_rows_balanced": 8496,
+        "val_rows_original": 1579
+      },
+      {
+        "fold": 2,
+        "train_speakers": 99,
+        "val_speakers": 24,
+        "train_rows_balanced": 8520,
+        "val_rows_original": 1581
+      },
+      {
+        "fold": 3,
+        "train_speakers": 98,
+        "val_speakers": 25,
+        "train_rows_balanced": 8424,
+        "val_rows_original": 1581
+      },
+      {
+        "fold": 4,
+        "train_speakers": 98,
+        "val_speakers": 25,
+        "train_rows_balanced": 8016,
+        "val_rows_original": 1580
+      }
+    ]
+  },
+  "data": {
+    "clips": 9817,
+    "rows_original_plus_aug": 19534,
+    "rows_original": 9780,
+    "skipped": 137,
+    "train_rows_balanced": 10528,
+    "test_rows": 1880,
+    "test_speakers": 31,
+    "train_speakers": 123,
+    "feature_cache": [
+      {
+        "n_aug": 1,
+        "hit": true,
+        "path": "data/voice/_cache/voice36_aug1_seed42_42a76b3340782d0b.npz"
+      },
+      {
+        "n_aug": 0,
+        "hit": true,
+        "path": "data/voice/_cache/voice36_aug0_seed42_4a32106082fcde8b.npz"
+      },
+      {
+        "n_aug": 1,
+        "hit": true,
+        "path": "data/voice/_cache/voice36_aug1_seed42_42a76b3340782d0b.npz"
+      },
+      {
+        "n_aug": 0,
+        "hit": true,
+        "path": "data/voice/_cache/voice36_aug0_seed42_4a32106082fcde8b.npz"
+      }
+    ]
+  },
+  "replication": {
+    "deployed_test": 0.5622,
+    "ablation_json": 0.5622,
+    "match": true,
+    "tolerance": 0.002,
+    "abs_diff": 3.4e-05,
+    "deployed_test_ci95": [
+      0.5399,
+      0.5835
+    ],
+    "ablation_json_ci95": [
+      0.5399,
+      0.5835
+    ],
+    "deployed_test_macro_f1": 0.557,
+    "unmodified_ablate_voice_rerun": 0.5622,
+    "split_identical_to_ablate_voice": true,
+    "predictions_identical_to_ablate_voice": true,
+    "deployed_early_stopping_active": true,
+    "deployed_n_iter_used": 100,
+    "all_voice_rows": [
+      {
+        "config": "full (36 feats, 4 corpora, aug x1)",
+        "json": 0.5622,
+        "rerun": 0.5622,
+        "abs_diff": 0.0
+      },
+      {
+        "config": "17-feature prefix",
+        "json": 0.4989,
+        "rerun": 0.4989,
+        "abs_diff": 0.0
+      },
+      {
+        "config": "- augmentation",
+        "json": 0.566,
+        "rerun": 0.566,
+        "abs_diff": 0.0
+      },
+      {
+        "config": "English-only training corpora",
+        "json": 0.5457,
+        "rerun": 0.5457,
+        "abs_diff": 0.0
+      }
+    ]
+  },
+  "cv_deployed": {
+    "mean": 0.5496,
+    "std": 0.018,
+    "acc_mean": 0.5568,
+    "acc_std": 0.0203,
+    "n_iter_mean": 65.8,
+    "rank": 29
+  },
+  "cv_top10": [
+    {
+      "params": {
+        "learning_rate": 0.03,
+        "max_iter": 300,
+        "max_leaf_nodes": 63,
+        "l2_regularization": 1.0
+      },
+      "mean": 0.5612,
+      "std": 0.0106,
+      "acc_mean": 0.5676,
+      "acc_std": 0.0122,
+      "n_iter_mean": 173.2,
+      "rank": 1
+    },
+    {
+      "params": {
+        "learning_rate": 0.03,
+        "max_iter": 600,
+        "max_leaf_nodes": 63,
+        "l2_regularization": 1.0
+      },
+      "mean": 0.5612,
+      "std": 0.0106,
+      "acc_mean": 0.5676,
+      "acc_std": 0.0122,
+      "n_iter_mean": 173.2,
+      "rank": 1
+    },
+    {
+      "params": {
+        "learning_rate": 0.1,
+        "max_iter": 150,
+        "max_leaf_nodes": 63,
+        "l2_regularization": 0.0
+      },
+      "mean": 0.5606,
+      "std": 0.0194,
+      "acc_mean": 0.5682,
+      "acc_std": 0.0217,
+      "n_iter_mean": 52.4,
+      "rank": 3
+    },
+    {
+      "params": {
+        "learning_rate": 0.1,
+        "max_iter": 300,
+        "max_leaf_nodes": 63,
+        "l2_regularization": 0.0
+      },
+      "mean": 0.5606,
+      "std": 0.0194,
+      "acc_mean": 0.5682,
+      "acc_std": 0.0217,
+      "n_iter_mean": 52.4,
+      "rank": 3
+    },
+    {
+      "params": {
+        "learning_rate": 0.1,
+        "max_iter": 600,
+        "max_leaf_nodes": 63,
+        "l2_regularization": 0.0
+      },
+      "mean": 0.5606,
+      "std": 0.0194,
+      "acc_mean": 0.5682,
+      "acc_std": 0.0217,
+      "n_iter_mean": 52.4,
+      "rank": 3
+    },
+    {
+      "params": {
+        "learning_rate": 0.03,
+        "max_iter": 300,
+        "max_leaf_nodes": 63,
+        "l2_regularization": 0.0
+      },
+      "mean": 0.5592,
+      "std": 0.0136,
+      "acc_mean": 0.5663,
+      "acc_std": 0.0161,
+      "n_iter_mean": 166.4,
+      "rank": 6
+    },
+    {
+      "params": {
+        "learning_rate": 0.03,
+        "max_iter": 600,
+        "max_leaf_nodes": 63,
+        "l2_regularization": 0.0
+      },
+      "mean": 0.5592,
+      "std": 0.0136,
+      "acc_mean": 0.5663,
+      "acc_std": 0.0161,
+      "n_iter_mean": 166.4,
+      "rank": 6
+    },
+    {
+      "params": {
+        "learning_rate": 0.03,
+        "max_iter": 150,
+        "max_leaf_nodes": 63,
+        "l2_regularization": 0.0
+      },
+      "mean": 0.5588,
+      "std": 0.014,
+      "acc_mean": 0.5663,
+      "acc_std": 0.0155,
+      "n_iter_mean": 142.4,
+      "rank": 8
+    },
+    {
+      "params": {
+        "learning_rate": 0.03,
+        "max_iter": 150,
+        "max_leaf_nodes": 63,
+        "l2_regularization": 1.0
+      },
+      "mean": 0.5583,
+      "std": 0.0119,
+      "acc_mean": 0.5647,
+      "acc_std": 0.0135,
+      "n_iter_mean": 147.4,
+      "rank": 9
+    },
+    {
+      "params": {
+        "learning_rate": 0.1,
+        "max_iter": 150,
+        "max_leaf_nodes": 63,
+        "l2_regularization": 1.0
+      },
+      "mean": 0.558,
+      "std": 0.0167,
+      "acc_mean": 0.5657,
+      "acc_std": 0.0194,
+      "n_iter_mean": 61.8,
+      "rank": 10
+    }
+  ],
+  "cv_spread": {
+    "min": 0.5402,
+    "median": 0.5514,
+    "max": 0.5612
+  },
+  "cv_spread_accuracy": {
+    "min": 0.5449,
+    "median": 0.5584,
+    "max": 0.5682
+  },
+  "cv_best_minus_deployed": {
+    "mean": 0.0116,
+    "per_fold": [
+      0.0026,
+      -0.0048,
+      0.0157,
+      0.0245,
+      0.0201
+    ],
+    "folds_best_ahead": 4
+  },
+  "cv_supplementary": {
+    "deployed_early_stopping_off": {
+      "mean": 0.5625,
+      "std": 0.007,
+      "acc_mean": 0.5691,
+      "acc_std": 0.0097,
+      "n_iter_mean": 300.0
+    },
+    "note": "CV only, never a selection candidate or tested"
+  },
+  "marginal": {
+    "learning_rate": {
+      "0.03": 0.5548,
+      "0.1": 0.5534,
+      "0.3": 0.5453
+    },
+    "max_iter": {
+      "150": 0.5502,
+      "300": 0.5515,
+      "600": 0.5517
+    },
+    "max_leaf_nodes": {
+      "15": 0.5457,
+      "31": 0.5515,
+      "63": 0.5562
+    },
+    "l2_regularization": {
+      "0.0": 0.55,
+      "1.0": 0.5523
+    }
+  },
+  "marginal_accuracy": {
+    "learning_rate": {
+      "0.03": 0.5613,
+      "0.1": 0.5607,
+      "0.3": 0.5539
+    },
+    "max_iter": {
+      "150": 0.5575,
+      "300": 0.5591,
+      "600": 0.5593
+    },
+    "max_leaf_nodes": {
+      "15": 0.5529,
+      "31": 0.559,
+      "63": 0.564
+    },
+    "l2_regularization": {
+      "0.0": 0.5576,
+      "1.0": 0.5596
+    }
+  },
+  "marginal_range": {
+    "learning_rate": 0.0095,
+    "max_iter": 0.0015,
+    "max_leaf_nodes": 0.0105,
+    "l2_regularization": 0.0023
+  },
+  "best_params": {
+    "learning_rate": 0.03,
+    "max_iter": 300,
+    "max_leaf_nodes": 63,
+    "l2_regularization": 1.0
+  },
+  "test": {
+    "metric": "accuracy (fixed speaker-independent test set: un-augmented clips, unseen speakers)",
+    "deployed": 0.5622,
+    "best": 0.5644,
+    "diff": 0.0021,
+    "diff_ci95": [
+      -0.0117,
+      0.0154
+    ],
+    "p_best_better": 0.627,
+    "p_best_worse": 0.339,
+    "n_resamples": 1000,
+    "deployed_ci95": [
+      0.5399,
+      0.5835
+    ],
+    "best_ci95": [
+      0.5415,
+      0.5872
+    ],
+    "deployed_macro_f1": 0.557,
+    "best_macro_f1": 0.5579,
+    "discordant": {
+      "best_only_correct": 90,
+      "deployed_only_correct": 86
+    },
+    "n_iter_used": {
+      "deployed": 100,
+      "best": 219
+    }
+  },
+  "cv_all": [
+    {
+      "params": {
+        "learning_rate": 0.03,
+        "max_iter": 300,
+        "max_leaf_nodes": 63,
+        "l2_regularization": 1.0
+      },
+      "mean": 0.5612,
+      "std": 0.0106,
+      "acc_mean": 0.5676,
+      "acc_std": 0.0122,
+      "n_iter_mean": 173.2,
+      "rank": 1
+    },
+    {
+      "params": {
+        "learning_rate": 0.03,
+        "max_iter": 600,
+        "max_leaf_nodes": 63,
+        "l2_regularization": 1.0
+      },
+      "mean": 0.5612,
+      "std": 0.0106,
+      "acc_mean": 0.5676,
+      "acc_std": 0.0122,
+      "n_iter_mean": 173.2,
+      "rank": 1
+    },
+    {
+      "params": {
+        "learning_rate": 0.1,
+        "max_iter": 150,
+        "max_leaf_nodes": 63,
+        "l2_regularization": 0.0
+      },
+      "mean": 0.5606,
+      "std": 0.0194,
+      "acc_mean": 0.5682,
+      "acc_std": 0.0217,
+      "n_iter_mean": 52.4,
+      "rank": 3
+    },
+    {
+      "params": {
+        "learning_rate": 0.1,
+        "max_iter": 300,
+        "max_leaf_nodes": 63,
+        "l2_regularization": 0.0
+      },
+      "mean": 0.5606,
+      "std": 0.0194,
+      "acc_mean": 0.5682,
+      "acc_std": 0.0217,
+      "n_iter_mean": 52.4,
+      "rank": 3
+    },
+    {
+      "params": {
+        "learning_rate": 0.1,
+        "max_iter": 600,
+        "max_leaf_nodes": 63,
+        "l2_regularization": 0.0
+      },
+      "mean": 0.5606,
+      "std": 0.0194,
+      "acc_mean": 0.5682,
+      "acc_std": 0.0217,
+      "n_iter_mean": 52.4,
+      "rank": 3
+    },
+    {
+      "params": {
+        "learning_rate": 0.03,
+        "max_iter": 300,
+        "max_leaf_nodes": 63,
+        "l2_regularization": 0.0
+      },
+      "mean": 0.5592,
+      "std": 0.0136,
+      "acc_mean": 0.5663,
+      "acc_std": 0.0161,
+      "n_iter_mean": 166.4,
+      "rank": 6
+    },
+    {
+      "params": {
+        "learning_rate": 0.03,
+        "max_iter": 600,
+        "max_leaf_nodes": 63,
+        "l2_regularization": 0.0
+      },
+      "mean": 0.5592,
+      "std": 0.0136,
+      "acc_mean": 0.5663,
+      "acc_std": 0.0161,
+      "n_iter_mean": 166.4,
+      "rank": 6
+    },
+    {
+      "params": {
+        "learning_rate": 0.03,
+        "max_iter": 150,
+        "max_leaf_nodes": 63,
+        "l2_regularization": 0.0
+      },
+      "mean": 0.5588,
+      "std": 0.014,
+      "acc_mean": 0.5663,
+      "acc_std": 0.0155,
+      "n_iter_mean": 142.4,
+      "rank": 8
+    },
+    {
+      "params": {
+        "learning_rate": 0.03,
+        "max_iter": 150,
+        "max_leaf_nodes": 63,
+        "l2_regularization": 1.0
+      },
+      "mean": 0.5583,
+      "std": 0.0119,
+      "acc_mean": 0.5647,
+      "acc_std": 0.0135,
+      "n_iter_mean": 147.4,
+      "rank": 9
+    },
+    {
+      "params": {
+        "learning_rate": 0.1,
+        "max_iter": 150,
+        "max_leaf_nodes": 63,
+        "l2_regularization": 1.0
+      },
+      "mean": 0.558,
+      "std": 0.0167,
+      "acc_mean": 0.5657,
+      "acc_std": 0.0194,
+      "n_iter_mean": 61.8,
+      "rank": 10
+    },
+    {
+      "params": {
+        "learning_rate": 0.1,
+        "max_iter": 300,
+        "max_leaf_nodes": 63,
+        "l2_regularization": 1.0
+      },
+      "mean": 0.558,
+      "std": 0.0167,
+      "acc_mean": 0.5657,
+      "acc_std": 0.0194,
+      "n_iter_mean": 61.8,
+      "rank": 10
+    },
+    {
+      "params": {
+        "learning_rate": 0.1,
+        "max_iter": 600,
+        "max_leaf_nodes": 63,
+        "l2_regularization": 1.0
+      },
+      "mean": 0.558,
+      "std": 0.0167,
+      "acc_mean": 0.5657,
+      "acc_std": 0.0194,
+      "n_iter_mean": 61.8,
+      "rank": 10
+    },
+    {
+      "params": {
+        "learning_rate": 0.03,
+        "max_iter": 300,
+        "max_leaf_nodes": 31,
+        "l2_regularization": 0.0
+      },
+      "mean": 0.5569,
+      "std": 0.0165,
+      "acc_mean": 0.5634,
+      "acc_std": 0.0192,
+      "n_iter_mean": 214.6,
+      "rank": 13
+    },
+    {
+      "params": {
+        "learning_rate": 0.03,
+        "max_iter": 600,
+        "max_leaf_nodes": 31,
+        "l2_regularization": 0.0
+      },
+      "mean": 0.5569,
+      "std": 0.0165,
+      "acc_mean": 0.5634,
+      "acc_std": 0.0192,
+      "n_iter_mean": 214.6,
+      "rank": 13
+    },
+    {
+      "params": {
+        "learning_rate": 0.1,
+        "max_iter": 150,
+        "max_leaf_nodes": 31,
+        "l2_regularization": 1.0
+      },
+      "mean": 0.5569,
+      "std": 0.0147,
+      "acc_mean": 0.5641,
+      "acc_std": 0.0149,
+      "n_iter_mean": 90.4,
+      "rank": 15
+    },
+    {
+      "params": {
+        "learning_rate": 0.1,
+        "max_iter": 300,
+        "max_leaf_nodes": 31,
+        "l2_regularization": 1.0
+      },
+      "mean": 0.5569,
+      "std": 0.0147,
+      "acc_mean": 0.5641,
+      "acc_std": 0.0149,
+      "n_iter_mean": 90.4,
+      "rank": 15
+    },
+    {
+      "params": {
+        "learning_rate": 0.1,
+        "max_iter": 600,
+        "max_leaf_nodes": 31,
+        "l2_regularization": 1.0
+      },
+      "mean": 0.5569,
+      "std": 0.0147,
+      "acc_mean": 0.5641,
+      "acc_std": 0.0149,
+      "n_iter_mean": 90.4,
+      "rank": 15
+    },
+    {
+      "params": {
+        "learning_rate": 0.03,
+        "max_iter": 150,
+        "max_leaf_nodes": 31,
+        "l2_regularization": 0.0
+      },
+      "mean": 0.5555,
+      "std": 0.0179,
+      "acc_mean": 0.5623,
+      "acc_std": 0.0217,
+      "n_iter_mean": 150.0,
+      "rank": 18
+    },
+    {
+      "params": {
+        "learning_rate": 0.03,
+        "max_iter": 300,
+        "max_leaf_nodes": 31,
+        "l2_regularization": 1.0
+      },
+      "mean": 0.5552,
+      "std": 0.0131,
+      "acc_mean": 0.5619,
+      "acc_std": 0.0172,
+      "n_iter_mean": 223.0,
+      "rank": 19
+    },
+    {
+      "params": {
+        "learning_rate": 0.03,
+        "max_iter": 600,
+        "max_leaf_nodes": 31,
+        "l2_regularization": 1.0
+      },
+      "mean": 0.5552,
+      "std": 0.0131,
+      "acc_mean": 0.5619,
+      "acc_std": 0.0172,
+      "n_iter_mean": 223.0,
+      "rank": 19
+    },
+    {
+      "params": {
+        "learning_rate": 0.3,
+        "max_iter": 150,
+        "max_leaf_nodes": 63,
+        "l2_regularization": 1.0
+      },
+      "mean": 0.555,
+      "std": 0.0165,
+      "acc_mean": 0.5644,
+      "acc_std": 0.0175,
+      "n_iter_mean": 23.2,
+      "rank": 21
+    },
+    {
+      "params": {
+        "learning_rate": 0.3,
+        "max_iter": 300,
+        "max_leaf_nodes": 63,
+        "l2_regularization": 1.0
+      },
+      "mean": 0.555,
+      "std": 0.0165,
+      "acc_mean": 0.5644,
+      "acc_std": 0.0175,
+      "n_iter_mean": 23.2,
+      "rank": 21
+    },
+    {
+      "params": {
+        "learning_rate": 0.3,
+        "max_iter": 600,
+        "max_leaf_nodes": 63,
+        "l2_regularization": 1.0
+      },
+      "mean": 0.555,
+      "std": 0.0165,
+      "acc_mean": 0.5644,
+      "acc_std": 0.0175,
+      "n_iter_mean": 23.2,
+      "rank": 21
+    },
+    {
+      "params": {
+        "learning_rate": 0.03,
+        "max_iter": 600,
+        "max_leaf_nodes": 15,
+        "l2_regularization": 1.0
+      },
+      "mean": 0.5544,
+      "std": 0.0109,
+      "acc_mean": 0.5605,
+      "acc_std": 0.0144,
+      "n_iter_mean": 353.6,
+      "rank": 24
+    },
+    {
+      "params": {
+        "learning_rate": 0.03,
+        "max_iter": 150,
+        "max_leaf_nodes": 31,
+        "l2_regularization": 1.0
+      },
+      "mean": 0.5536,
+      "std": 0.0137,
+      "acc_mean": 0.56,
+      "acc_std": 0.0179,
+      "n_iter_mean": 150.0,
+      "rank": 25
+    },
+    {
+      "params": {
+        "learning_rate": 0.03,
+        "max_iter": 300,
+        "max_leaf_nodes": 15,
+        "l2_regularization": 1.0
+      },
+      "mean": 0.5527,
+      "std": 0.0135,
+      "acc_mean": 0.559,
+      "acc_std": 0.0156,
+      "n_iter_mean": 300.0,
+      "rank": 26
+    },
+    {
+      "params": {
+        "learning_rate": 0.03,
+        "max_iter": 600,
+        "max_leaf_nodes": 15,
+        "l2_regularization": 0.0
+      },
+      "mean": 0.5518,
+      "std": 0.0172,
+      "acc_mean": 0.5594,
+      "acc_std": 0.0193,
+      "n_iter_mean": 346.4,
+      "rank": 27
+    },
+    {
+      "params": {
+        "learning_rate": 0.03,
+        "max_iter": 300,
+        "max_leaf_nodes": 15,
+        "l2_regularization": 0.0
+      },
+      "mean": 0.551,
+      "std": 0.0176,
+      "acc_mean": 0.5579,
+      "acc_std": 0.02,
+      "n_iter_mean": 282.2,
+      "rank": 28
+    },
+    {
+      "params": {
+        "learning_rate": 0.1,
+        "max_iter": 300,
+        "max_leaf_nodes": 31,
+        "l2_regularization": 0.0
+      },
+      "mean": 0.5496,
+      "std": 0.018,
+      "acc_mean": 0.5568,
+      "acc_std": 0.0203,
+      "n_iter_mean": 65.8,
+      "rank": 29
+    },
+    {
+      "params": {
+        "learning_rate": 0.1,
+        "max_iter": 150,
+        "max_leaf_nodes": 31,
+        "l2_regularization": 0.0
+      },
+      "mean": 0.5496,
+      "std": 0.018,
+      "acc_mean": 0.5568,
+      "acc_std": 0.0203,
+      "n_iter_mean": 65.8,
+      "rank": 29
+    },
+    {
+      "params": {
+        "learning_rate": 0.1,
+        "max_iter": 600,
+        "max_leaf_nodes": 31,
+        "l2_regularization": 0.0
+      },
+      "mean": 0.5496,
+      "std": 0.018,
+      "acc_mean": 0.5568,
+      "acc_std": 0.0203,
+      "n_iter_mean": 65.8,
+      "rank": 29
+    },
+    {
+      "params": {
+        "learning_rate": 0.1,
+        "max_iter": 150,
+        "max_leaf_nodes": 15,
+        "l2_regularization": 1.0
+      },
+      "mean": 0.5489,
+      "std": 0.0185,
+      "acc_mean": 0.5558,
+      "acc_std": 0.0196,
+      "n_iter_mean": 121.2,
+      "rank": 32
+    },
+    {
+      "params": {
+        "learning_rate": 0.1,
+        "max_iter": 300,
+        "max_leaf_nodes": 15,
+        "l2_regularization": 1.0
+      },
+      "mean": 0.5485,
+      "std": 0.0183,
+      "acc_mean": 0.5555,
+      "acc_std": 0.0194,
+      "n_iter_mean": 124.6,
+      "rank": 33
+    },
+    {
+      "params": {
+        "learning_rate": 0.1,
+        "max_iter": 600,
+        "max_leaf_nodes": 15,
+        "l2_regularization": 1.0
+      },
+      "mean": 0.5485,
+      "std": 0.0183,
+      "acc_mean": 0.5555,
+      "acc_std": 0.0194,
+      "n_iter_mean": 124.6,
+      "rank": 33
+    },
+    {
+      "params": {
+        "learning_rate": 0.1,
+        "max_iter": 150,
+        "max_leaf_nodes": 15,
+        "l2_regularization": 0.0
+      },
+      "mean": 0.5467,
+      "std": 0.018,
+      "acc_mean": 0.5538,
+      "acc_std": 0.02,
+      "n_iter_mean": 105.4,
+      "rank": 35
+    },
+    {
+      "params": {
+        "learning_rate": 0.1,
+        "max_iter": 300,
+        "max_leaf_nodes": 15,
+        "l2_regularization": 0.0
+      },
+      "mean": 0.5466,
+      "std": 0.018,
+      "acc_mean": 0.5538,
+      "acc_std": 0.02,
+      "n_iter_mean": 107.0,
+      "rank": 36
+    },
+    {
+      "params": {
+        "learning_rate": 0.1,
+        "max_iter": 600,
+        "max_leaf_nodes": 15,
+        "l2_regularization": 0.0
+      },
+      "mean": 0.5466,
+      "std": 0.018,
+      "acc_mean": 0.5538,
+      "acc_std": 0.02,
+      "n_iter_mean": 107.0,
+      "rank": 36
+    },
+    {
+      "params": {
+        "learning_rate": 0.3,
+        "max_iter": 150,
+        "max_leaf_nodes": 31,
+        "l2_regularization": 1.0
+      },
+      "mean": 0.5464,
+      "std": 0.0115,
+      "acc_mean": 0.5539,
+      "acc_std": 0.0162,
+      "n_iter_mean": 31.6,
+      "rank": 38
+    },
+    {
+      "params": {
+        "learning_rate": 0.3,
+        "max_iter": 300,
+        "max_leaf_nodes": 31,
+        "l2_regularization": 1.0
+      },
+      "mean": 0.5464,
+      "std": 0.0115,
+      "acc_mean": 0.5539,
+      "acc_std": 0.0162,
+      "n_iter_mean": 31.6,
+      "rank": 38
+    },
+    {
+      "params": {
+        "learning_rate": 0.3,
+        "max_iter": 600,
+        "max_leaf_nodes": 31,
+        "l2_regularization": 1.0
+      },
+      "mean": 0.5464,
+      "std": 0.0115,
+      "acc_mean": 0.5539,
+      "acc_std": 0.0162,
+      "n_iter_mean": 31.6,
+      "rank": 38
+    },
+    {
+      "params": {
+        "learning_rate": 0.3,
+        "max_iter": 150,
+        "max_leaf_nodes": 31,
+        "l2_regularization": 0.0
+      },
+      "mean": 0.5452,
+      "std": 0.0126,
+      "acc_mean": 0.5546,
+      "acc_std": 0.016,
+      "n_iter_mean": 28.6,
+      "rank": 41
+    },
+    {
+      "params": {
+        "learning_rate": 0.3,
+        "max_iter": 300,
+        "max_leaf_nodes": 31,
+        "l2_regularization": 0.0
+      },
+      "mean": 0.5452,
+      "std": 0.0126,
+      "acc_mean": 0.5546,
+      "acc_std": 0.016,
+      "n_iter_mean": 28.6,
+      "rank": 41
+    },
+    {
+      "params": {
+        "learning_rate": 0.3,
+        "max_iter": 600,
+        "max_leaf_nodes": 31,
+        "l2_regularization": 0.0
+      },
+      "mean": 0.5452,
+      "std": 0.0126,
+      "acc_mean": 0.5546,
+      "acc_std": 0.016,
+      "n_iter_mean": 28.6,
+      "rank": 41
+    },
+    {
+      "params": {
+        "learning_rate": 0.3,
+        "max_iter": 150,
+        "max_leaf_nodes": 63,
+        "l2_regularization": 0.0
+      },
+      "mean": 0.5443,
+      "std": 0.0153,
+      "acc_mean": 0.5528,
+      "acc_std": 0.0161,
+      "n_iter_mean": 21.4,
+      "rank": 44
+    },
+    {
+      "params": {
+        "learning_rate": 0.3,
+        "max_iter": 300,
+        "max_leaf_nodes": 63,
+        "l2_regularization": 0.0
+      },
+      "mean": 0.5443,
+      "std": 0.0153,
+      "acc_mean": 0.5528,
+      "acc_std": 0.0161,
+      "n_iter_mean": 21.4,
+      "rank": 44
+    },
+    {
+      "params": {
+        "learning_rate": 0.3,
+        "max_iter": 600,
+        "max_leaf_nodes": 63,
+        "l2_regularization": 0.0
+      },
+      "mean": 0.5443,
+      "std": 0.0153,
+      "acc_mean": 0.5528,
+      "acc_std": 0.0161,
+      "n_iter_mean": 21.4,
+      "rank": 44
+    },
+    {
+      "params": {
+        "learning_rate": 0.03,
+        "max_iter": 150,
+        "max_leaf_nodes": 15,
+        "l2_regularization": 1.0
+      },
+      "mean": 0.5443,
+      "std": 0.0173,
+      "acc_mean": 0.549,
+      "acc_std": 0.0197,
+      "n_iter_mean": 150.0,
+      "rank": 47
+    },
+    {
+      "params": {
+        "learning_rate": 0.3,
+        "max_iter": 150,
+        "max_leaf_nodes": 15,
+        "l2_regularization": 0.0
+      },
+      "mean": 0.5405,
+      "std": 0.0237,
+      "acc_mean": 0.5489,
+      "acc_std": 0.0251,
+      "n_iter_mean": 33.8,
+      "rank": 48
+    },
+    {
+      "params": {
+        "learning_rate": 0.3,
+        "max_iter": 300,
+        "max_leaf_nodes": 15,
+        "l2_regularization": 0.0
+      },
+      "mean": 0.5405,
+      "std": 0.0237,
+      "acc_mean": 0.5489,
+      "acc_std": 0.0251,
+      "n_iter_mean": 33.8,
+      "rank": 48
+    },
+    {
+      "params": {
+        "learning_rate": 0.3,
+        "max_iter": 600,
+        "max_leaf_nodes": 15,
+        "l2_regularization": 0.0
+      },
+      "mean": 0.5405,
+      "std": 0.0237,
+      "acc_mean": 0.5489,
+      "acc_std": 0.0251,
+      "n_iter_mean": 33.8,
+      "rank": 48
+    },
+    {
+      "params": {
+        "learning_rate": 0.03,
+        "max_iter": 150,
+        "max_leaf_nodes": 15,
+        "l2_regularization": 0.0
+      },
+      "mean": 0.5404,
+      "std": 0.0162,
+      "acc_mean": 0.5449,
+      "acc_std": 0.019,
+      "n_iter_mean": 150.0,
+      "rank": 51
+    },
+    {
+      "params": {
+        "learning_rate": 0.3,
+        "max_iter": 150,
+        "max_leaf_nodes": 15,
+        "l2_regularization": 1.0
+      },
+      "mean": 0.5402,
+      "std": 0.0138,
+      "acc_mean": 0.5489,
+      "acc_std": 0.0167,
+      "n_iter_mean": 44.8,
+      "rank": 52
+    },
+    {
+      "params": {
+        "learning_rate": 0.3,
+        "max_iter": 300,
+        "max_leaf_nodes": 15,
+        "l2_regularization": 1.0
+      },
+      "mean": 0.5402,
+      "std": 0.0138,
+      "acc_mean": 0.5489,
+      "acc_std": 0.0167,
+      "n_iter_mean": 44.8,
+      "rank": 52
+    },
+    {
+      "params": {
+        "learning_rate": 0.3,
+        "max_iter": 600,
+        "max_leaf_nodes": 15,
+        "l2_regularization": 1.0
+      },
+      "mean": 0.5402,
+      "std": 0.0138,
+      "acc_mean": 0.5489,
+      "acc_std": 0.0167,
+      "n_iter_mean": 44.8,
+      "rank": 52
+    }
+  ],
+  "conclusion": "Replication passed: the deployed config refit on the ablation split scores 0.5622 against 0.5622 in ablation_results.json, on a training matrix bit-identical to ablate_voice's. Across the 54-config grid (GroupKFold(5) over training speakers only), CV macro-F1 runs from 0.5402 to 0.5612 (median 0.5514). The deployed config scores 0.5496 +/- 0.0180 and ranks 29/54. max_leaf_nodes moves the marginal mean most (0.0105), yet every hyperparameter's marginal range, that one included, is smaller than one fold-std of the deployed config (0.0180). Early stopping is active, so the deployed model uses 100 of its 300-iteration cap and max_iter is not the binding setting. Early stopping itself was held at its deployed value (ON); a CV-only row with it OFF scores 0.5625 +/- 0.0070, above the CV-best 0.5612, but it was never a selection candidate, so the test set says nothing about it. On the fixed test set, the CV-best config (learning_rate=0.03, max_iter=300, max_leaf_nodes=63, l2_regularization=1.0; 219 iterations) scores 0.5644 against 0.5622 for the deployed config: a paired difference of +0.0021, 95% CI [-0.0117, +0.0154], with the best config ahead in 62.7% of resamples. No detectable gain: the CI includes 0, so the hand-set values of the searched hyperparameters cost no measurable accuracy and the deployed model stays as it is.",
+  "env": {
+    "sklearn": "1.8.0",
+    "numpy": "2.4.3"
+  },
+  "runtime_s": 103.5
+}
