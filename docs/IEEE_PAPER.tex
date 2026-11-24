@@ -48,7 +48,7 @@ chat toxicity across English, romanised Hindi and Devanagari, and on-device
 speech-to-text plus acoustic emotion. All models are lightweight, calibrated and
 SHAP-explainable; raw audio is never retained. Each channel is evaluated on real
 held-out data with bootstrap confidence intervals and one-component ablations
-(chat PR-AUC $0.825$ in-domain, $\geq$$0.95$ alert precision on every register;
+(chat PR-AUC $0.821$ in-domain as served, $\geq$$0.95$ alert precision on every register;
 voice $0.574$ speaker-independent, exposing an 8.3-point leakage inflation in random splits).
 Critically, we then validate the served risk score \emph{externally}: in an anonymous
 adult IGDS9-SF survey ($134$ raw; $104$ usable, $103$ scoreable), the score correlates with the clinical
@@ -221,7 +221,8 @@ Fig.~\ref{fig:rel}). Ablation (Table~\ref{tab:abl}): an hours-only model reaches
 $0.702$ and commits two-band errors every richer set avoids; the five pattern features
 alone recover $0.902$ versus $0.871$ for the five volume features.
 
-\textbf{Chat.} In-domain PR-AUC $0.825$ $[0.807,0.841]$; at the alert threshold,
+\textbf{Chat.} In-domain PR-AUC $0.821$ as served ($0.825$ $[0.807,0.841]$ for the
+recipe under the ablation protocol); at the alert threshold, the served model's
 precision $0.956$, recall $0.428$, MCC $0.589$ (Fig.~\ref{fig:pr}). Off-the-shelf
 toxic-BERT~\cite{detoxify2020} scores $0.709$ on the same split. On the HASOC held-out
 Hindi set (933 rows) the deployed pipeline reaches precision $0.968$ / recall $0.425$
@@ -234,9 +235,17 @@ under the ablation protocol.
 \textbf{Voice.} Speaker-independent accuracy $0.574$, macro-F1 $0.568$ (chance
 $0.25$); random splits had reported $0.657$, an 8.3-point speaker-leakage inflation we
 corrected. The channel is deliberately tied-lowest in the fusion prior (0.3, with chat) and an optional
-witness in fusion; frozen wav2vec~2.0 embeddings reach $0.776$ on the identical
-split, so a distilled on-device encoder is the identified next step rather than a
-claim of this paper.
+witness in fusion. On one matched speaker-independent split without augmentation,
+frozen wav2vec~2.0 embeddings reach $0.776$ where our 36 features reach $0.553$, so a
+distilled on-device encoder is the identified next step rather than a claim of this paper.
+
+\textbf{Tuning.} A grid search of the hand-set hyperparameters on training data only
+(188 settings; each test set scored once, deployed vs.\ winner, paired bootstrap)
+changed nothing: voice gains $+0.0021$ $[-0.0117, +0.0154]$; chat's winner ($C{=}8$,
+picked on a pool only 7\% gaming chat) loses $-0.0100$ $[-0.0167, -0.0035]$ PR-AUC,
+and in-domain selection picks the deployed $C{=}1$; behaviour's winner adds $+0.0113$
+accuracy on generated labels but not on the survey ($\rho=0.295$ vs.\ $0.317$,
+difference $-0.022$ $[-0.073, +0.027]$).
 
 \begin{table}[t]
 \centering\footnotesize
@@ -426,7 +435,8 @@ $288$/$301$~MB mean/peak PSS with no thermal throttling --- one-fifteenth of the
 own $215\%$ --- whereas the dual Hindi+English STT toggle costs $51$--$72\%$ and
 $399$/$419$~MB, \emph{failing} our acceptance gate on two of three criteria; it
 therefore ships default-off. A consented single-family pilot ran 23 days in production
-(60 alerts across all eight types; the fail-closed consent rotation exercised live).
+(60 alerts across all eight types in the first 12 days; the fail-closed consent rotation
+exercised live).
 
 % =====================================================================
 \section{Ethics and Limitations}\label{sec:ethics}

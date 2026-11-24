@@ -78,8 +78,8 @@ routine in adolescents, yet most existing tools track only raw screen time and
 miss the patterns that distinguish healthy play from problematic use. We present
 a deployed, multimodal screening platform that fuses three signals collected
 during real gameplay --- objective play behaviour, in-game chat toxicity, and
-voice emotion --- into a single risk band (Casual / At-Risk / Addicted; surfaced
-to families as Low / Some / High concern), with the behaviour and chat
+voice emotion --- into a single risk band (Low / Some / High concern; internal
+class keys \texttt{casual} / \texttt{at\_risk} / \texttt{addicted}), with the behaviour and chat
 probabilities isotonic-calibrated. Two native Android applications (a Child
 monitoring app and a Parent dashboard) talk to a cloud Flask backend serving a
 weighted ensemble of three classical machine-learning models, favoured \emph{a
@@ -828,8 +828,9 @@ actually produced data:
 This is \emph{score version~2}, served since 23 Nov 2026. Score version~1 also
 multiplied this mean by a hand-set game-genre weight $g$; it was removed for the
 reasons given under \emph{Score versions} below.
-The score maps to bands \textbf{Casual} ($<0.33$), \textbf{At-Risk} ($0.33$--$0.67$) and
-\textbf{Addicted} ($\geq 0.67$). These cut-points are even tertiles of the $0$--$1$ score
+The score maps to bands \textbf{Low concern} ($<0.33$), \textbf{Some concern}
+($0.33$--$0.67$) and \textbf{High concern} ($\geq 0.67$), stored under the internal class
+keys Casual, At-Risk and Addicted used below. These cut-points are even tertiles of the $0$--$1$ score
 --- again a transparent prior, not a fitted cut-off --- and they align with the score's
 own anchor points: a confidently-Casual prediction scores $\approx 0$, a
 confidently-At-Risk one $\approx 0.5$ (the behaviour score is $P(\text{at-risk})\cdot 0.5
@@ -845,9 +846,9 @@ The constants above never change at run time; what adapts to each session is the
         modalities present, so an absent one contributes nothing (e.g.\ with no voice,
         behaviour and chat become $\approx$57\,\%/43\,\% for that session). This avoids a
         missing modality injecting a placeholder value and capping behaviour-only
-        sessions below ``Addicted''.
+        sessions below High concern.
   \item \textbf{Observation mode.} For the first few sessions ($<3$) the band is capped
-        below ``Addicted'' regardless of score, so the system never over-calls on sparse
+        below High concern regardless of score, so the system never over-calls on sparse
         data.
 \end{itemize}
 Thus the same fixed priors yield a context-sensitive result. The cut-points themselves
@@ -1705,6 +1706,32 @@ $103$ respondents, the pattern composite reaches $\rho = 0.330$ and the volume
 composite only $0.128$ with a CI including zero --- the same ordering, obtained
 without the generator that could have manufactured it.)
 
+\paragraph{Hyperparameter sensitivity.}\label{sec:hparam}
+The deployed hyperparameters were set by hand. Three studies
+(\texttt{ml/hparam\_behaviour.py}, \texttt{ml/hparam\_chat.py},
+\texttt{ml/hparam\_voice.py}; results in \texttt{docs/hparam\_*.json}) asked whether
+that cost accuracy, under one protocol: grids searched on training data only
+(five-fold stratified CV for the behaviour forest; five folds grouped by speaker for
+voice; for chat a 15\% validation slice of the de-duplicated training corpora, every
+duplicate of a slice text removed from training); a replication gate requiring each
+study first to reproduce the ablation score of the deployed setting; and each test set
+scored exactly once for two settings, deployed and search winner, with a paired
+bootstrap of the difference ($1{,}000$ resamples). Across $188$ settings the hand-set
+values sit mid-grid (ranks $69/120$, $8/14$ and $29/54$). \emph{Voice:} no detectable
+gain ($+0.0021$, 95\% CI $[-0.0117, +0.0154]$). \emph{Chat:} the validation winner
+($C = 8$) is \emph{worse} on the CONDA validation split ($-0.0100$ PR-AUC,
+$[-0.0167, -0.0035]$). Only $2{,}549$ of the $35{,}546$ validation texts were gaming
+chat; repeating the selection on $2{,}427$ texts from CONDA's training split alone ranks
+the deployed $C = 1$ first of $14$ and the pooled winner $11$th, so selected in-domain
+the hand-set value is the tuned value. \emph{Behaviour:} the winner (unlimited depth,
+minimum leaf 1) adds $+0.0113$ $[+0.0063, +0.0165]$ accuracy on the generator's
+held-out rows, but scored on the $103$ IGDS9-SF respondents exactly as the served model
+is scored it correlates $\rho = 0.295$ $[0.115, 0.456]$ with the IGDS9-SF total against
+$0.317$ $[0.137, 0.478]$ for the deployed forest (paired difference $-0.022$,
+$[-0.073, +0.027]$): the gain is fit to the generator, not to people, and it would cost
+a $24\times$ larger model. No setting was changed. Set beside the ablations above, data
+and features, not hyperparameters, decide how good these models are.
+
 \subsection{ML pipeline revisions: what changed, why, and the measured effect}
 \label{sec:mlrevisions}
 This iteration revised the ML pipeline in six ways. Each row states the motivation
@@ -1856,7 +1883,7 @@ assumptions --- drive the next revision.
         Android JVM unit tests described below, plus $7$ research-integrity guards
         (also in CI: the survey form's parsing contract, and the papers' headline
         survey figures, checked against the committed aggregates); an
-        \textbf{82-check functional sweep run in production auth mode} with real
+        \textbf{89-check functional sweep run in production auth mode} with real
         parent/child tokens (registration and family joins, role guards on every
         parent-only endpoint, the full nudge lifecycle, a real WAV upload through the
         silence floor and late re-score, the watchdog's quiet hours, end-session
@@ -2435,7 +2462,7 @@ Parent value & Per-day weighted risk + ``why'' (SHAP), live ``playing now'' + mo
 Child wellbeing & Mira check-in (typing indicator, double-send guard), gamified daily check-in + streak, reflections, breathing, break/limit nudges, today-vs-goal progress \\
 Reliability/anti-tamper & Heartbeat watchdog (uninstall/kill/offline alert, child-local quiet hours), optional Device Admin (uninstall block + instant disable alert), battery-optimisation exemption, double-start-safe services, consent-gated boot resume, parent-PIN lock on logout/settings (server-verified, constant-time), logout \emph{and} login alerts with truthful monitoring status, idempotent session-end, self-scoring stale-session guard, per-child risk notifications, multi-guardian FCM push (lazy-init) \\
 Privacy/Security & Token auth + \emph{role} checks on every parent-only endpoint, deleted-account tokens locked out despite the stateless 30-day TTL (TTL-cached existence probe), peppered PIN hashes (validated, family-wide PIN change), HTTPS-only, encrypted token store, consent (versioned), raw-audio deletion, retention purge, parent-controlled data export mirroring the deletion scope (credentials excluded), 16\,MB body cap, opt-in Sentry crash monitoring (stack traces only, no PII), family code always recoverable in PIN-gated Settings \\
-Engineering & Dual-dialect DB with pooled validated Postgres connections + composite indexes on the hot query paths, per-client rate limiting, hot-path caching/throttling + audio-concurrency cap + bounded throttle caches, thread-safe device-side shared state (concurrent cache, crash-safe confirm-then-delete offline queue, WorkManager network-aware retry), signed APKs, layered tests (300 automated: 190 backend + 110 Android JVM; plus 7 research-integrity guards, 82 production-mode and 25 live-cloud checks) + concurrency smoke + CI (pytest on SQLite \emph{and} PostgreSQL, Android lint + unit tests per push, weekly drift monitor against the production DB), real-device validated, lint-clean, deployed + durable DB \\
+Engineering & Dual-dialect DB with pooled validated Postgres connections + composite indexes on the hot query paths, per-client rate limiting, hot-path caching/throttling + audio-concurrency cap + bounded throttle caches, thread-safe device-side shared state (concurrent cache, crash-safe confirm-then-delete offline queue, WorkManager network-aware retry), signed APKs, layered tests (300 automated: 190 backend + 110 Android JVM; plus 7 research-integrity guards, 89 production-mode and 25 live-cloud checks) + concurrency smoke + CI (pytest on SQLite \emph{and} PostgreSQL, Android lint + unit tests per push, weekly drift monitor against the production DB), real-device validated, lint-clean, deployed + durable DB \\
 \bottomrule
 \end{tabularx}
 \end{center}
