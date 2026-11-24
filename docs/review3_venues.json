@@ -1,0 +1,365 @@
+{
+  "checked_on": "2026-11-23",
+  "method": "Official call-for-papers pages were read on 2026-11-23. A deadline appears only if it was read on an official page, and deadline.source_url names that page. Otherwise the status is 'not yet announced', with last year's deadline as a labelled hint for planning only. Fees are the most recent published figures; they are 2027 figures only where stated.",
+  "paper": {
+    "file": "docs/IEEE_PAPER.tex",
+    "title": "Measuring How People Play, Not Just How Long: A Multimodal, Privacy-Conscious Gaming-Risk Monitor for Guardians, with Construct-Validity Evidence",
+    "shape": "{ieee_pp} pages in the IEEEtran conference format, with 31 references (docs/ieee_refs.tex). The source already has an anonymous-build switch (\\anontrue) for double-blind venues.",
+    "profile": "Applied ML plus mobile health. It describes a deployed system (two Android apps and a cloud backend), held-out evaluation with ablations, and an external validity check on {n_scored} adult survey respondents (moderate rank correlation {rho} with IGDS9-SF; the pattern-minus-volume contrast {contrast} {contrast_ci} excludes zero). Known weak points: behaviour accuracy ({beh_acc}) is measured on synthetic labels, the survey cohort is adults, and the survey had no ethics-committee review. The only record is a documented notification to the guide, which was sent while the form was still open."
+  },
+  "venues": [
+    {
+      "id": "compsac2027_dgh",
+      "name": "IEEE COMPSAC 2027 - Symposium on Digital Health (DGH)",
+      "full_name": "51st IEEE International Conference on Computers, Software, and Applications (COMPSAC 2027)",
+      "kind": "conference",
+      "tier": "primary",
+      "sponsor_indexing": "The IEEE Computer Society's signature annual conference. Accepted papers go into the COMPSAC proceedings on IEEE Xplore, with open access optional.",
+      "dates_location": "13-16 July 2027, Tokyo, Japan. COMPSAC 2026 allowed in-person presentations only, with no virtual option. The 2027 rule is not yet posted.",
+      "deadline": {
+        "status": "official",
+        "submission": "2027-01-31",
+        "notification": "2027-04-07",
+        "camera_ready": "2027-06-01",
+        "days_left": 69,
+        "source_url": "https://ieeecompsac.computer.org/2027/call-for-papers/",
+        "note": "This deadline covers symposium (main-conference) papers. Workshop papers are due 2027-04-15. In 2026 the same deadline was extended by three weeks, but do not plan on that."
+      },
+      "format": "Up to 10 pages for a full paper and 6 pages for a short paper, with references included in the count. Up to 2 extra pages cost USD 125 each. The IEEE two-column template on US-letter paper is required. The {ieee_pp}-page draft fits as it stands, and the project report has enough material to grow it to 10 pages. COMPSAC accepts roughly the top 25-30% of submissions as full papers and may offer borderline papers a 6-page short-paper slot (per the COMPSAC wiki).",
+      "review": "Double-blind. Remove names, affiliation, the repo link and self-identifying references by building with \\anontrue.",
+      "fit": "Strong. The DGH call lists 'Telemedicine and mobile health for Smart and Connected Health', 'Data Analytics in Smart and Connected Health', socio-behavioural models, and 'Ethics, privacy, and research regulations in Smart and Connected Health'. Our deployed phone-plus-cloud screening system, with its privacy design and external validity check, matches these well. COMPSAC is a computing venue, so reviewers judge the engineering and the evaluation, not clinical accuracy. A second option within COMPSAC is the Human Computing & Social Computing (HCSC) symposium ('Health and Wellness Through Wearable and Affective Technology'; 'Ethical Frontiers in Technology').",
+      "risk": "Ethics: only IEEE's general rule applies. The paper must either name the ethics committee or explain why no review took place, and it must say how consent was obtained. Our Ethics section already says plainly that there was no review and how consent was shown. It does not yet say why no review was sought, so add that sentence. Even then, a reviewer can still mark the paper down for it. Selectivity: about 1 in 4 papers is accepted as a full paper. Cost and travel: the conference is in person in Tokyo, which needs a Japan visa, and fees are not yet published. Scope: the 2027 theme is agentic AI, so submit to the DGH symposium rather than pitching to the theme.",
+      "registration_cost": "2027 fees are not yet published, and the 2026 fee table is inside a Cvent form we could not read. Rules from the COMPSAC wiki: one full registration per paper, though a student registration 'may also be an option' when the presenter is a student. Open access is optional: USD 640 for IEEE members, USD 800 for non-members.",
+      "urls": [
+        "https://ieeecompsac.computer.org/2027/call-for-papers/",
+        "https://ieeecompsac.computer.org/2027/compsac-2027-symposium-on-smart-connected-health-sch/",
+        "https://ieeecompsac.computer.org/2027/compsac-2027-symposium-on-human-computing-social-computing-hcsc/",
+        "https://ieeecompsac.computer.org/2027/information-for-authors/",
+        "https://ieeecompsac.computer.org/2027/all-symposia/",
+        "https://rm.compsac.net/projects/public/wiki/Wiki"
+      ]
+    },
+    {
+      "id": "healthcom2027",
+      "name": "IEEE HealthCom 2027",
+      "full_name": "IEEE International Conference on E-health Networking, Application & Services (HealthCom 2027)",
+      "kind": "conference",
+      "tier": "backup",
+      "sponsor_indexing": "Run by the IEEE Communications Society as a ComSoc portfolio event. The 2025 call says accepted and presented papers are submitted to IEEE Xplore and the proceedings are indexed by Scopus and Web of Science.",
+      "dates_location": "1-3 November 2027, London, United Kingdom, in person.",
+      "deadline": {
+        "status": "official",
+        "submission": "2027-06-08",
+        "notification": "not yet posted",
+        "days_left": 197,
+        "source_url": "https://www.comsoc.org/conferences-events/ieee-international-conference-e-health-networking-application-services-2027",
+        "note": "Read on ComSoc's official event listing. The conference site (healthcom2027.ieee-healthcom.org) blocks automated reading, so re-check the date there before relying on it."
+      },
+      "format": "The 2027 page limit is not yet posted. As a hint (HealthCom 2024 call, read from a mailing-list copy and unverified): 6 IEEE pages including references, plus 1 paid extra page. The {ieee_pp}-page draft would fit.",
+      "review": "Not stated yet.",
+      "fit": "Good. HealthCom is an e-health applications venue. Its 2025 symposia included 'Service, Applications and Security for eHealth', 'Privacy Enhancing Technology in eHealth', 'AI and ML for Imaging & Health Applications', and 'Serious Games and XR technologies for eHealth'.",
+      "risk": "As a health venue, it will probably ask more about the missing ethics-committee review than COMPSAC would. It needs London travel and a UK visa. The event comes after graduation (November 2027), so one author must still be free to travel. Fees are not yet posted.",
+      "registration_cost": "Not yet published.",
+      "urls": [
+        "https://www.comsoc.org/conferences-events/ieee-international-conference-e-health-networking-application-services-2027",
+        "https://healthcom2027.ieee-healthcom.org/",
+        "https://eng.auburn.edu/~szm0001/papers/CFP%20HealthCom%202025.pdf"
+      ]
+    },
+    {
+      "id": "icdh2027",
+      "name": "IEEE ICDH 2027",
+      "full_name": "IEEE International Conference on Digital Health (ICDH), part of the IEEE World Congress on SERVICES",
+      "kind": "conference",
+      "tier": "watch",
+      "sponsor_indexing": "IEEE Computer Society (Technical Community on Services Computing). The 2026 proceedings were published by IEEE Computer Society Press and are stated to be indexed by PubMed and DBLP.",
+      "dates_location": "The 2027 edition is not yet announced; the SERVICES 2027 site shows only a 'coming soon' page. ICDH 2026 ran 13-18 July 2026 in Sydney.",
+      "deadline": {
+        "status": "not yet announced",
+        "last_year_hint": "LAST YEAR, for planning only: ICDH 2026 had a deadline of 8 Mar 2026, extended to 11 Apr 2026 ('extended and firm').",
+        "source_url": "https://services.conferences.computer.org/2026/icdh/icdh-call-for-papers/"
+      },
+      "format": "2026 rules: short papers have 4-6 pages of main text and regular papers 7-10 pages, with references extra in both. The draft fits.",
+      "review": "Double-blind, as in all SERVICES conferences (2026).",
+      "fit": "Very good on topic. The 2026 call listed digital mental-health assessment, substance use disorders, wellness, and multi-modal sensing.",
+      "risk": "This is the most expensive option: in 2026 each paper needed its own registration, with no student discount. If 2027 repeats the 8 March deadline, it falls inside COMPSAC's review period, and IEEE forbids having one paper under review at two venues. Only an April extension like 2026's would leave room after COMPSAC's 7 April decision. As a health venue, it also brings closer scrutiny of the ethics review.",
+      "registration_cost": "2026: USD 1,250 per paper for members and USD 1,500 for non-members, with students paying the same; the banquet is included. Open access is optional: USD 640 / 800.",
+      "urls": [
+        "https://services.conferences.computer.org/2026/icdh/icdh-call-for-papers/",
+        "https://services.conferences.computer.org/2026/info-for-authors/",
+        "https://services.conferences.computer.org/2026/registration-information/",
+        "https://services.conferences.computer.org/2027/"
+      ]
+    },
+    {
+      "id": "indicon2027",
+      "name": "IEEE INDICON 2027",
+      "full_name": "IEEE India Council International Conference (INDICON 2027)",
+      "kind": "conference",
+      "tier": "budget fallback",
+      "sponsor_indexing": "The IEEE India Council's flagship annual conference. Under the 2025 rules, accepted and presented papers are submitted for inclusion in IEEE Xplore.",
+      "dates_location": "Not yet announced. The usual pattern is mid-December in India: 18-20 Dec 2025 at IIIT Bangalore, and 18-20 Dec 2026 at Sri Sai Ram Engineering College, Chennai.",
+      "deadline": {
+        "status": "not yet announced",
+        "last_year_hint": "LAST YEAR, for planning only: INDICON 2026 had a deadline of 31 Aug 2026. This was read through the search index because the India Council page blocks automated reading. INDICON 2025 also had 31 Aug.",
+        "source_url": "https://ieeeindiacouncil.org/ieee-india-council-international-conference-indicon-2026/"
+      },
+      "format": "2025 rules: 4-6 pages including references, and papers over 6 pages are rejected. The {ieee_pp}-page draft is exactly at the limit.",
+      "review": "Double-blind, through Microsoft CMT (2025).",
+      "fit": "Fair. INDICON is a broad IEEE conference with an India focus, and the code-mixed Hindi chat channel and India-ready design are a local strength. It carries less prestige than COMPSAC.",
+      "risk": "Visibility is lower. The 2025 guidelines say 'Papers violating ethics will be desk-rejected and the parent organizations of all the authors informed'. IEEE's rule lets a paper explain why there was no review instead of naming a committee, so give that explanation plainly. Decisions come in November, after graduation.",
+      "registration_cost": "2025, for Indian authors: INR 12,000 for an IEEE student member up to INR 20,000 for a non-member, plus 18% GST.",
+      "urls": [
+        "https://ieeeindiacouncil.org/ieee-india-council-international-conference-indicon-2026/",
+        "https://indicon.ieeebangalore.org/guidelines-and-policies/",
+        "https://indicon.ieeebangalore.org/register/"
+      ]
+    },
+    {
+      "id": "conecct2027",
+      "name": "IEEE CONECCT 2027 (Bengaluru)",
+      "full_name": "IEEE International Conference on Electronics, Computing and Communication Technologies (CONECCT), IEEE Bangalore Section",
+      "kind": "conference",
+      "tier": "watch",
+      "sponsor_indexing": "The IEEE Bangalore Section's flagship conference. Under the 2026 rules, accepted and presented papers are submitted for possible inclusion in IEEE Xplore.",
+      "dates_location": "The 2027 edition is not announced on any official page. CONECCT 2026 ran 2-5 July 2026 at The Chancery Pavilion, Bengaluru.",
+      "deadline": {
+        "status": "not yet announced",
+        "last_year_hint": "LAST YEAR, for planning only: the CONECCT 2026 main deadline was 9 Feb 2026 (official 2026 call). A third-party aggregator (myhuiban) lists 15 Dec 2026 for an event on 13 Mar 2027, which is unverified; on 23 Nov 2026, 2027.connect.ieeebangalore.org returned HTTP 403.",
+        "source_url": "https://2026.connect.ieeebangalore.org/?page_id=37"
+      },
+      "format": "2026 research track: 6-8 pages including references, in IEEE two-column format. The draft fits.",
+      "review": "Double-blind, through Microsoft CMT. The 2026 rules say 'papers which are in arxiv like sites will be desk rejected'.",
+      "fit": "Fair, and strong on practicality: it is local, cheap, and in IEEE Xplore. The relevant 2026 tracks were 2.2 'AI & Emerging Technologies in MedTech' and 4.1 'Computer Engineering & AI'. It carries less prestige than COMPSAC.",
+      "risk": "Timing: a deadline in mid-December or early February would overlap COMPSAC's review (31 Jan to 7 Apr), and IEEE forbids having one paper under review at two venues, so pick one. Do not post the paper on arXiv first.",
+      "registration_cost": "2026: from INR 10,000 (IEEE student member, early) to INR 20,000 (non-member, regular), plus 18% GST. Each paper needs its own registration.",
+      "urls": [
+        "https://2026.connect.ieeebangalore.org/?page_id=37",
+        "https://2026.connect.ieeebangalore.org/?page_id=52",
+        "https://2026.connect.ieeebangalore.org/?page_id=42",
+        "https://www.myhuiban.com/conference/4809"
+      ]
+    },
+    {
+      "id": "tencon2027",
+      "name": "IEEE TENCON 2027",
+      "full_name": "2027 IEEE Region 10 Conference (TENCON 2027)",
+      "kind": "conference",
+      "tier": "watch",
+      "sponsor_indexing": "IEEE Region 10 (Asia-Pacific) flagship conference. In 2026, accepted and presented papers were submitted to IEEE Xplore.",
+      "dates_location": "Not officially announced. A listing site gives 7-10 Nov 2027, A Region 10 meeting agenda (seen only in search results) lists a TENCON 2027 presentation by the Seoul Section, but the host city is unconfirmed. TENCON 2026 ran 10-13 Oct 2026 in Bali and was in-person only.",
+      "deadline": {
+        "status": "not yet announced",
+        "last_year_hint": "LAST YEAR, for planning only: TENCON 2026 had a deadline of 17 Mar 2026, extended to 28 Apr and then to 19 May 2026 (official 2026 site).",
+        "source_url": "https://tencon2026.ieee.id/"
+      },
+      "format": "2026: 3-5 pages in IEEE two-column format on A4. The draft would need to lose one page.",
+      "review": "Not stated.",
+      "fit": "Fair. TENCON is a broad regional flagship, and we found no specific digital-health track.",
+      "risk": "The paper must be cut to 5 pages, and the 2026 edition was in-person only. A March-May deadline could overlap COMPSAC's review.",
+      "registration_cost": "2026: USD 450 early for an IEEE student member; the page does not say outright whether a student registration covers a paper. USD 620 for an IEEE member and USD 750 for a non-member (early). One registration covers one paper of up to 5 pages.",
+      "urls": [
+        "https://tencon2026.ieee.id/",
+        "https://tencon2026.ieee.id/registration-fee/",
+        "https://www.conferencelists.org/event/tencon-2027-2027-ieee-region-10-conference-tencon/"
+      ]
+    },
+    {
+      "id": "ichi2027",
+      "name": "IEEE ICHI 2027",
+      "full_name": "15th IEEE International Conference on Healthcare Informatics (ICHI 2027)",
+      "kind": "conference",
+      "tier": "avoid for now",
+      "sponsor_indexing": "IEEE. The ICHI 2026 proceedings are on IEEE Xplore, and selected papers can go on to the Journal of Healthcare Informatics Research.",
+      "dates_location": "21-24 June 2027, Washington, DC, USA.",
+      "deadline": {
+        "status": "official",
+        "abstract": "2027-01-25",
+        "submission": "2027-02-01",
+        "notification": "2027-03-15",
+        "camera_ready": "2027-04-19",
+        "days_left": 70,
+        "source_url": "https://ichi2027.github.io/ICHI2027/",
+        "note": "Regular track. The early-bird track closed on 14 Oct 2026."
+      },
+      "format": "The 2027 regular-track limits are not yet posted. In 2026: regular papers 10 pages and short papers 6 pages, references included, in IEEE proceedings format.",
+      "review": "The 2027 early-bird track used double-blind review on OpenReview; regular-track rules are not yet posted. One author must register at the author rate and present.",
+      "fit": "The topic fits (patient-facing systems, analytics, explainability), but this is a health-informatics venue where reviewers expect clinical-grade evidence.",
+      "risk": "High. Health-informatics reviewers will expect an ethics-committee review for the survey and will discount accuracy measured on synthetic labels. The deadline is one day after COMPSAC's, so it has to be one or the other. US travel and visa lead times add further risk.",
+      "registration_cost": "Not yet published.",
+      "urls": [
+        "https://ichi2027.github.io/ICHI2027/",
+        "https://ichi2027.github.io/ICHI2027/call-for-early-submission.html",
+        "https://zhang-informatics.github.io/ICHI2026/call-for-papers.html"
+      ]
+    },
+    {
+      "id": "embc2027",
+      "name": "IEEE EMBC 2027",
+      "full_name": "49th Annual International Conference of the IEEE Engineering in Medicine and Biology Society (EMBC 2027)",
+      "kind": "conference",
+      "tier": "avoid for now",
+      "sponsor_indexing": "Flagship of the IEEE Engineering in Medicine and Biology Society (EMBS). Full papers are eligible for IEEE Xplore and PubMed/MEDLINE.",
+      "dates_location": "11-15 July 2027, Suntec Singapore Convention & Exhibition Centre, Singapore.",
+      "deadline": {
+        "status": "official",
+        "submission": "2027-01-24",
+        "notification": "2027-04-16",
+        "camera_ready": "2027-04-30",
+        "days_left": 62,
+        "source_url": "https://embc.embs.org/2027/papers/",
+        "note": "Stated as final and not extendable."
+      },
+      "format": "A strict 4 + 1 page limit: 4 pages of content, with the 5th page for references only, and at most 20 references. The draft has {ieee_pp} pages and 31 references, so it needs to lose about a third.",
+      "review": "Not stated.",
+      "fit": "The topic fits the Biomedical & Health Informatics track, but the length limit would remove most of the evaluation.",
+      "risk": "This is the highest ethics risk. EMBS has published this rule for its conferences (EMBC 2016 proceedings page; BHI-BSN 2018 ethics page): papers reporting human-subject data need 'formal review and approval, or formal review and waiver, by an appropriate institutional review board or ethics committee', stated in the paper. The 2027 pages do not repeat it; they only require compliance with the EMBS Code of Ethics. Our survey had a documented guide notification, not that review. EMBS also enforces a no-show policy: authors who do not present stay on a list for at least two years.",
+      "registration_cost": "2026: each paper needs a Full Author Registration, and student rates do not cover papers. Early rates: USD 995 (EMBS member), 1,095 (IEEE member), 1,350 (non-member). Lower-income-country rates of USD 500-550 apply to countries on IEEE's eligible list; check whether India qualifies.",
+      "urls": [
+        "https://embc.embs.org/2027/papers/",
+        "https://embc.embs.org/2027/author-guidelines/",
+        "https://embc.embs.org/2016/conference-proceedings-information/",
+        "https://embc.embs.org/2026/registration/"
+      ]
+    },
+    {
+      "id": "bhi2027",
+      "name": "IEEE BHI 2027",
+      "full_name": "IEEE EMBS International Conference on Biomedical and Health Informatics (BHI 2027)",
+      "kind": "conference",
+      "tier": "avoid for now",
+      "sponsor_indexing": "IEEE EMBS. In 2026, selected papers were invited to IEEE J-BHI and T-BME, and every accepted regular paper was invited to IEEE OJEMB with a 50% fee discount.",
+      "dates_location": "Not yet announced. BHI 2026 runs 12-15 Dec 2026 at The Chinese University of Hong Kong.",
+      "deadline": {
+        "status": "not yet announced",
+        "last_year_hint": "LAST YEAR, for planning only: the BHI 2026 round-1 deadline for regular papers was 3 Jul 2026, followed by a two-round review.",
+        "source_url": "https://bhi.embs.org/2026/papers/"
+      },
+      "format": "2026: regular papers 4-7 pages including references, plus a 1-page abstract option. The draft fits.",
+      "review": "Double-blind (2026).",
+      "fit": "Good on topic: wearable and pervasive health monitoring, HCI in healthcare, and explainable AI for health.",
+      "risk": "The same EMBS ethics rule as EMBC applies, so the risk is high without an ethics-committee approval or waiver.",
+      "registration_cost": "2026 early rates: USD 360 (EMBS student member), 460 (IEEE student member), 560 (non-member student). One student registration covers one paper.",
+      "urls": [
+        "https://bhi.embs.org/2026/papers/",
+        "https://bhi.embs.org/2026/author-instructions/",
+        "https://bhi.embs.org/2026/registration-2/",
+        "https://bhi-bsn.embs.org/2018/ethics/"
+      ]
+    },
+    {
+      "id": "cog2027",
+      "name": "IEEE CoG 2027",
+      "full_name": "IEEE Conference on Games (CoG 2027)",
+      "kind": "conference",
+      "tier": "weak fit",
+      "sponsor_indexing": "IEEE Computational Intelligence Society. The 2026 proceedings are on IEEE Xplore.",
+      "dates_location": "Not yet announced. CoG 2026 ran 1-4 Sep 2026 in Madrid.",
+      "deadline": {
+        "status": "not yet announced",
+        "last_year_hint": "LAST YEAR, for planning only: CoG 2026 full papers were due 17 Mar 2026 and auxiliary (short) papers 14 May 2026.",
+        "source_url": "https://cog2026.org/cfp"
+      },
+      "format": "2026: full technical papers 8 pages and short (auxiliary) papers 4 pages, references included. The {ieee_pp}-page draft would have to grow to 8 pages or shrink to 4.",
+      "review": "Double-anonymous.",
+      "fit": "Partial. Player modelling and game analytics fit the behaviour channel. The 2026 'Games for Health and Wellbeing' special session covered 'Games for mental health', meaning games used as therapy, not screening of players.",
+      "risk": "Games-research reviewers will want insight into games rather than a guardian app, and the page length does not match.",
+      "registration_cost": "2026: EUR 300 (IEEE student member, early) to EUR 730 (non-member, regular), VAT included. The page does not say which registration covers a paper.",
+      "urls": [
+        "https://cog2026.org/cfp",
+        "https://cog2026.org/cfp-health",
+        "https://cog2026.org/registration"
+      ]
+    },
+    {
+      "id": "ieee_access",
+      "name": "IEEE Access (journal)",
+      "full_name": "IEEE Access - multidisciplinary, gold open-access IEEE journal",
+      "kind": "journal",
+      "tier": "journal follow-on",
+      "sponsor_indexing": "IEEE. The journal's About page lists an impact factor of 4.2 and an average acceptance rate of 20%.",
+      "dates_location": "Rolling submission; online only.",
+      "deadline": {
+        "status": "rolling",
+        "submission": null,
+        "source_url": "https://ieeeaccess.ieee.org/about/"
+      },
+      "format": "No page limit, though staying under 20 pages is recommended. It accepts expanded versions of the authors' own conference papers if similarity is under 35%.",
+      "review": "Binary peer review: accept or reject. Submission to publication takes 4-6 weeks.",
+      "fit": "Good for a full-length version built from the project report, covering the complete ablations, the accent-fairness audit, on-device cost, and the survey.",
+      "risk": "The IEEE journal ethics rule applies: name the ethics committee or explain why no review took place, and report consent. Reviewers will expect the extension to add real content beyond the conference paper.",
+      "registration_cost": "APC of USD 2,160 plus taxes. India is in IEEE's 2026 Country Group C, which gives 25% off (USD 1,620) only when every author is at an Indian institution. IEEE-member discounts (5% / 20%) exclude student members, and discounts cannot be combined.",
+      "urls": [
+        "https://ieeeaccess.ieee.org/about/",
+        "https://ieeeaccess.ieee.org/authors/submission-guidelines/",
+        "https://ieeeaccess.ieee.org/authors/preparing-your-article/",
+        "https://ieeeaccess.ieee.org/about/article-processing-charges/",
+        "https://open.ieee.org/wp-content/uploads/2026-GEO-Countries.pdf"
+      ]
+    },
+    {
+      "id": "ieee_tog",
+      "name": "IEEE Transactions on Games (journal)",
+      "full_name": "IEEE Transactions on Games (ToG)",
+      "kind": "journal",
+      "tier": "stretch",
+      "sponsor_indexing": "An IEEE journal that welcomes extended versions of conference papers, including those from IEEE CoG.",
+      "dates_location": "Rolling submission.",
+      "deadline": {
+        "status": "rolling",
+        "submission": null,
+        "source_url": "https://www.transactions.games/submit/submission-guidelines",
+        "note": "The special issue 'Responsible and Human-Centered AI in Games' lists both 31 Oct 2026 and 30 Nov 2026, apparently an extension. That is one week away, too tight, and its topic is governance of AI inside games."
+      },
+      "format": "Short papers 6 pages and full papers 10 pages, in the journal's two-column format. Over-length pages cost USD 200 each.",
+      "review": "Double-anonymous since 1 Jan 2025. The journal aims to send a decision within 3 months.",
+      "fit": "Partial. Player modelling, game analytics and in-game chat moderation are in scope, but parental screening sits at the edge.",
+      "risk": "The bar is higher. Reviewers will press on the synthetic behaviour labels ({beh_acc} is separability on simulated labels) and on the adults-only survey.",
+      "registration_cost": "No APC for standard publication, and a voluntary page charge of USD 110 per page. We did not check the open-access option.",
+      "urls": [
+        "https://www.transactions.games/submit/submission-guidelines",
+        "https://transactions.games/special-issue/special-issue-on-responsible-and-human-centered-ai-in-games-from-autonomy-to-accountability"
+      ]
+    }
+  ],
+  "recommendation": {
+    "primary": {
+      "venue": "IEEE COMPSAC 2027 - Symposium on Digital Health (DGH), Tokyo, 13-16 July 2027",
+      "deadline": "2027-01-31 (official; 69 days from 2026-11-23); decision 2027-04-07",
+      "why": [
+        "It matches the panel's verdict: a solid IEEE international conference, neither a flagship nor a clinical venue.",
+        "The DGH call asks for mobile-health systems, health data analytics, and ethics/privacy, which are the paper's three strengths.",
+        "It is a computing venue governed by IEEE's general ethics rule (name the committee or explain why there was none), which our Ethics section already meets honestly.",
+        "The {ieee_pp}-page draft fits now, and the decision arrives before graduation."
+      ]
+    },
+    "backup": {
+      "venue": "IEEE HealthCom 2027, London, 1-3 November 2027",
+      "deadline": "2027-06-08 (official ComSoc listing; 197 days from 2026-11-23)",
+      "why": [
+        "Its deadline falls after COMPSAC's decision, so a rejected paper can be revised with the reviews and resubmitted without breaking IEEE's rule against submitting one paper to two venues at once.",
+        "It is an e-health applications venue with privacy, AI and serious-games symposia.",
+        "Its 6-page format (2024 hint) matches the draft."
+      ]
+    },
+    "rationale": "COMPSAC first, because its fit, format, timing and ethics rule all line up for this paper. EMBS venues (EMBC, BHI) require a formal ethics-committee approval or waiver that the survey does not have, and EMBC's 4-page, 20-reference limit would also gut the evaluation. ICHI's deadline is one day after COMPSAC's, and its health-informatics reviewers will weigh the missing ethics review and the synthetic behaviour labels most heavily. HealthCom is the backup because the order works: COMPSAC decides on 7 Apr, and HealthCom closes on 8 Jun. Expect COMPSAC to be competitive, since about a quarter of papers are accepted as full papers. If cost decides, INDICON 2027 (India; INR 12,000 + GST for a student author in 2025; deadline likely late August, by the pattern of the last two years) is the budget fallback. IEEE Access (USD 1,620 after India's 25% discount) is the journal route for a longer version once a conference paper is accepted.",
+    "sequence": [
+      "Submit to COMPSAC DGH by 2027-01-31; the decision comes 2027-04-07.",
+      "If rejected, revise using the reviews and submit to HealthCom by 2027-06-08.",
+      "If that is rejected too, submit to INDICON 2027 (deadline to be announced; late August by pattern).",
+      "After any acceptance, extend the paper from the project report for IEEE Access (under 35% similarity, citing the conference paper)."
+    ],
+    "before_submitting": [
+      "Build the double-blind version with \\anontrue, which removes names, affiliation, the repo URL and the acknowledgement. Then check the figures and text for anything else that identifies the team.",
+      "Keep the ethics paragraph IEEE requires: the survey had no ethics-committee review, why there was none, and that a consent statement was shown before the first item. Never describe the guide notification as an approval.",
+      "Ask the guide whether the university ethics committee could issue a written determination for the finished anonymous adult survey. Many committees will not review retrospectively, so do not plan on it. If a determination is issued, name the committee in the paper; that would also reopen EMBC/BHI as options.",
+      "Keep the paper at one venue at a time, and do not post an arXiv preprint before decisions: CONECCT desk-rejects papers posted on arXiv, and most of these venues review double-blind."
+    ],
+    "not_recommended_now": [
+      "IEEE EMBC 2027: the EMBS ethics rule, the 4 + 1 page and 20-reference limits, and a strict no-show policy.",
+      "IEEE BHI 2027: the same EMBS ethics rule.",
+      "IEEE ICHI 2027: health-informatics reviewers, a deadline that collides with COMPSAC, and US travel.",
+      "IEEE Transactions on Games special issue: it closes 2026-11-30 and its topic is AI governance inside games."
+    ]
+  }
+}

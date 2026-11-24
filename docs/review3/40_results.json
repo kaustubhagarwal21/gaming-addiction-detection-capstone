@@ -1,0 +1,244 @@
+[
+  {
+    "order": 500,
+    "id": "results_summary",
+    "heading": "Results and Discussion",
+    "subheading": "Behaviour and survey size met estimates; three misses have measured causes",
+    "presenter": "Kaustubh",
+    "kind": "table",
+    "seconds": 60,
+    "skip_if_short": false,
+    "table": {
+      "header": [
+        "Module",
+        "Initial estimate (source)",
+        "Actual result",
+        "Deviation and reason"
+      ],
+      "rows": [
+        [
+          "Behaviour model",
+          "80–90% accuracy, by game type (Phase-1 deck)",
+          "{beh_acc} on held-out simulated labels",
+          "Met only on simulated labels; real accuracy unknown"
+        ],
+        [
+          "Survey validation",
+          "≥ 50 adults; ~6% in disordered range (Validation Plan)",
+          "{n_scored} adults; ρ {rho} {rho_ci}; {prevalence_k} disordered case",
+          "Size met; too few cases for cut-off accuracy"
+        ],
+        [
+          "Genre weight",
+          "Genre changes risk: weights 0.70 to 1.25 (Review 2)",
+          "No genre difference: p {genre_p} at {genre_power} power",
+          "Not in the validated score: removed in score version {score_version}"
+        ],
+        [
+          "Chat alerts",
+          "No prior target",
+          "Precision {chat_p_deployed}, recall {chat_r_deployed} at {alert_threshold}",
+          "Chosen trade: rare false accusations, many misses"
+        ],
+        [
+          "Voice emotion",
+          "No prior target",
+          "{voice_acc} on unseen speakers, 4 emotions",
+          "Random split read {voice_random_split} by memorising voices"
+        ],
+        [
+          "Hindi + English speech-to-text",
+          "< 2× default CPU, < 400 MB (gate set 7 Aug)",
+          "{cpu_dual} CPU, {mem_dual}",
+          "Two recognisers per clip: kept off by default"
+        ]
+      ],
+      "col_widths_in": [
+        1.9,
+        3.4,
+        3.2,
+        3.6
+      ]
+    },
+    "notes": "Did our results match our estimates? We list an estimate only where one was written down before measuring. Our Phase-1 deck expected 80 to 90 percent accuracy, depending on game type; the behaviour model reaches {beh_acc}, but on simulated labels, so it checks the method, not real children. The validation plan asked for at least 50 adults; we scored {n_scored}, with a correlation of {rho}. It also expected about six percent in the disordered range; we found {prevalence_k} person, so accuracy at a clinical cut-off cannot be computed. Two misses changed the product. Our Review 2 score weighted genres from 0.70 to 1.25; the survey found no evidence of a genre effect, so score version {score_version} drops the weight. And Hindi plus English speech-to-text failed a phone gate we fixed before measuring, so it stays off. Chat and voice had no written targets; the next slide compares them with other methods.\n\nNUMBERS BEHIND THIS SLIDE: Phase-1 approval deck (UE23CS320A, page 17; capstone/Phase 1-review1 PDF): 'Expected Accuracy: 85–90%' for competitive games with chat and voice, 80–85% for casual games, a whole-system guess made before any data existed. Behaviour: {beh_acc} (95% CI {beh_acc_ci}), macro-F1 {beh_f1}, 5-fold cross-validation {beh_cv}, on held-out synthetic labels. docs/VALIDATION_PLAN.md: target N ≥ 50, 100+ good; at the ~6% base rate, 50–100 responses hold only ~3–6 disordered cases; the script refuses cut-off metrics below 10 cases. Survey: {n_raw} raw, {n_usable} usable, {n_scored} scored; ρ {rho} {rho_ci}; {prevalence_k} respondent at 36 or more; about 157 usable responses give 10 cases at the 6.4% base rate (open Latin-American IGDS9-SF data, n = 11,191). Genre: the Review 2 pseudocode multiplied the score by genre_weight(game), 0.70 to 1.25; Kruskal-Wallis H {genre_H}, p {genre_p} across {genre_groups} genres, power {genre_power}; removal moves {genre_band_shift} of {pilot_sessions} pilot bands. Chat, deployed model on held-out real gaming chat: precision {chat_p_deployed}, recall {chat_r_deployed} at {alert_threshold}. Voice: {voice_acc} on unseen speakers, {voice_random_split} under a random split, a {voice_leak_gap}-point leak. Phone gate written into TESTING.md on 7 Aug 2026, before the 18 Aug drill: CPU under 2× the default, RAM under ~400 MB, no thermal throttling; Hindi plus English ({cpu_dual}, {mem_dual}) failed the first two. Not on the slide: the plan also refitted the band cut-offs on the survey; agreement was weak (κ {kappa}) and the upper cut-off ({t2_refit}) moved 0.12 when a late batch of 22 arrived, so it was measured, not applied.\n\nLIKELY QUESTIONS:\nQ: You beat your 80–90% estimate, so is the model accurate? A: Only on labels we simulated, which shows the model learns the simulation. Accuracy on real children is unknown; the survey shows the score carries meaning in adults (ρ {rho}).\nQ: Why only one respondent in the disordered range? A: It was a convenience sample of adult volunteers, about 80% aged 18 to 24, while the 6% expectation came from a large population survey. About 157 usable responses would give the 10 cases needed.\nQ: The plan also refitted the band cut-offs from the survey. Why not use them? A: Agreement was weak (κ {kappa}) and the upper cut-off moved 0.12 when one late batch of 22 arrived, so we measured it and did not ship it."
+  },
+  {
+    "order": 510,
+    "id": "results_comparative",
+    "heading": "Results and Discussion",
+    "subheading": "Our models beat simpler and bigger baselines, except on voice",
+    "presenter": "Kaustubh",
+    "kind": "chart",
+    "seconds": 50,
+    "skip_if_short": false,
+    "chart": {
+      "image": "docs/figures/review3/results_comparative.png",
+      "caption": "Behaviour: held-out simulated labels. Chat: held-out real gaming chat. Voice: one unseen-speaker split, no augmentation."
+    },
+    "side_bullets": [
+      "**Behaviour** (simulated labels): screen time alone {beh_screen_only}; volume features {beh_volume_only}; pattern features {beh_pattern_only}; all 10 {beh_acc}.",
+      "**Chat** (PR-AUC, 1 = perfect): ours {chat_prauc}; toxic-BERT, 110M parameters, {toxic_bert}; our first model {chat_original}. Domain data beat size.",
+      "**Voice** (same unseen speakers): wav2vec2 embeddings {voice_emb} vs our 36 features 0.553; too big for our 512 MB server.",
+      "**Deployed voice:** {voice_acc} on unseen speakers; a random split would claim {voice_random_split} by memorising voices."
+    ],
+    "notes": "The template asks for comparison with other methods; here are three. Behaviour, on simulated labels: screen-time hours alone reach {beh_screen_only}; our ten features {beh_acc}; the five pattern features alone {beh_pattern_only}, ahead of the five volume features at {beh_volume_only}. Chat, on held-out real gaming chat, measured as PR-AUC, ranking quality when toxic lines are rare: our small TF-IDF model scores {chat_prauc}; toxic-BERT, a 110-million-parameter transformer trained on Wikipedia comments, {toxic_bert}; our own first, general-data model {chat_original}. Data from the right domain beat model size. Voice is where we lose: on the same unseen speakers, wav2vec2 speech embeddings reach {voice_emb} against 0.553 for our 36 hand-made features, but they do not fit our 512 MB server. The deployed voice model scores {voice_acc}; a random split would have claimed {voice_random_split}.\n\nNUMBERS BEHIND THIS SLIDE: Behaviour (docs/ablation_results.json; held-out synthetic labels; bootstrap 95% CIs): all 10 features {beh_acc} {beh_acc_ci}; pattern only {beh_pattern_only}; volume only {beh_volume_only}; screen-time hours only {beh_screen_only}; all 20 including derived proxies {beh_all20}. Chat (CONDA held-out validation split, ablation protocol): ours PR-AUC {chat_prauc} {chat_prauc_ci}, ROC-AUC {chat_roc}; toxic-BERT (unitaryai/detoxify, Jigsaw-trained, about 110M parameters) {toxic_bert}, and at a precision of at least 0.95 its recall is only 0.12; original general-only, word-only recipe {chat_original}. Keep the chat views apart: deployed alerts are precision {chat_p_deployed} / recall {chat_r_deployed} at {alert_threshold}; the ablation protocol's own operating point is {chat_p_alert_abl} / {chat_r_alert_abl}. Voice headroom (docs/voice_headroom.json): one speaker-independent split, original clips, no augmentation for either model: 36 features 0.553 (no key), frozen 1024-d wav2vec2 embeddings {voice_emb}; not served because of the 512 MB server (PROJECT_PAPER.tex, Representation headroom). Deployed voice: {voice_acc} on unseen speakers ({voice_corpora} corpora, {voice_speakers} speakers, {voice_languages} languages); random split {voice_random_split}, a {voice_leak_gap}-point leak. The voice ablation protocol reads {voice_acc_abl}; never swap these three voice numbers.\n\nLIKELY QUESTIONS:\nQ: Isn't toxic-BERT handicapped, since it never saw gaming chat? A: Deliberately: it is the off-the-shelf model we could have deployed, and the question was whether size beats domain data. A transformer fine-tuned on gaming chat is untested future work, and it would still have to fit a 512 MB, CPU-only server.\nQ: The behaviour baselines are scored on labels you simulated. Doesn't the simulator pick the winner? A: It could, so we asked the same question of real adults: pattern features beat volume features there too ({pattern} vs {volume}, two slides on).\nQ: Why ship voice at {voice_acc}? A: Voice only corroborates, with weight 0.30, and the parent app calls emotions rough estimates. A distilled speech model small enough for the server is the named next step."
+  },
+  {
+    "order": 520,
+    "id": "results_ablation",
+    "heading": "Results and Discussion",
+    "subheading": "Gaming-chat data is worth more than all other parts combined",
+    "presenter": "Kaustubh",
+    "kind": "chart",
+    "seconds": 40,
+    "skip_if_short": false,
+    "chart": {
+      "image": "docs/figures/review3/results_ablation.png",
+      "caption": "Chat model retrained with one part removed; PR-AUC on held-out real gaming chat (CONDA validation split)."
+    },
+    "side_bullets": [
+      "**− gaming chat (CONDA):** {chat_prauc} → {no_conda}, our first model's level. In-domain data outweighs all other parts.",
+      "**− character n-grams, − slang tweets:** about 0.03 each; they catch misspellings and slang.",
+      "**− keyword list:** 0.011; kept because a matched word is easy to explain and new slang is added fast.",
+      "**− calibration, − Hindi sets:** 0.007–0.012 higher here; kept for an honest {alert_threshold} cut-off and working Hindi alerts."
+    ],
+    "notes": "An ablation retrains the chat model with one part removed and re-tests it on the same held-out gaming chat. The full recipe scores {chat_prauc}. Without the gaming-chat corpus, CONDA, it drops to {no_conda}, our first model's level: that one dataset outweighs every other part combined. Character n-grams and the Davidson slang tweets are worth about 0.03 each; they catch misspellings and slang. The keyword list adds 0.011; we keep it because a matched word is easy to explain. Three removals score slightly higher, and we keep them on purpose: calibration keeps the {alert_threshold} cut-off honest, and the two Hindi sets are what make Hindi alerts work.\n\nNUMBERS BEHIND THIS SLIDE: docs/ablation_results.json, chat rows: CONDA validation split, which no configuration trains on; bootstrap 95% CIs over 1,000 resamples. Full recipe {chat_prauc} {chat_prauc_ci}. Removing CONDA: {no_conda} (−0.31). Davidson: {no_davidson} (−0.031; alert precision also drops from {chat_p_alert_abl} to 0.895). Character n-grams: {no_charwb} (−0.030). Keyword list: {no_keyword} (−0.011; alert recall drops from {chat_r_alert_abl} to 0.278). HASOC Hindi: 0.832 (+0.007). Clean-Hindi Wikipedia: 0.835 (+0.010). Calibration: 0.837 (+0.012), because isotonic calibration makes flat steps that coarsen ranking. The two Hindi deltas sit inside the CIs. Original general-only recipe {chat_original}. The Hindi value shows only on the Hindi held-out sets ({hindi_heldout_rows} rows): alert precision {hindi_p_deva} Devanagari and {hindi_p_roman} romanised; before the Wikipedia counterweight, friendly Hindi chat scored 0.78–0.88. Behaviour and voice ablations, same method: 20 features {beh_all20} vs 10 features {beh_acc}; voice full {voice_acc_abl}, 17 features {voice_17feat}, English-only training {voice_english_only} (ablation protocol, 1,880 clips from 31 unseen speakers).\n\nLIKELY QUESTIONS:\nQ: Removing calibration scores higher. Why keep it? A: It costs 0.012 of ranking but makes the alert cut-off mean what it says: deployed alerts at {alert_threshold} were right {chat_p_deployed} of the time on held-out gaming chat. Parents see alerts, not rankings.\nQ: Why would adding Hindi data lower the score? A: An English test set cannot reward Hindi ability; the two Hindi sets cost under 0.01 here, inside the noise. Before them Hindi alerts barely worked; now held-out Hindi alerts are right {hindi_p_roman} (romanised) and {hindi_p_deva} (Devanagari) of the time.\nQ: Did you ablate behaviour and voice too? A: Yes, same method: ten derived proxy scores add only 0.3 points ({beh_all20} vs {beh_acc}), so the model uses the ten measured features; voice with 17 instead of 36 features falls from {voice_acc_abl} to {voice_17feat}."
+  },
+  {
+    "order": 522,
+    "id": "results_ablation_all",
+    "heading": "Results and Discussion",
+    "subheading": "Ablation across all models: features and real data carry accuracy",
+    "presenter": "Kaustubh",
+    "kind": "chart",
+    "seconds": 40,
+    "skip_if_short": false,
+    "chart": {
+      "image": "docs/figures/review3/ablation_all.png",
+      "caption": "One part removed at a time; fixed held-out sets (docs/ablation_results.json)"
+    },
+    "side_bullets": [
+      "**Behaviour:** screen time alone {beh_screen_only}, pattern features alone {beh_pattern_only}, the 10 deployed features {beh_acc}; 10 derived proxies on top: {beh_all20}.",
+      "**Voice:** 36 tone features beat the earlier 17 ({voice_acc_abl} vs {voice_17feat}); English-only data {voice_english_only}; noise augmentation: no measurable change.",
+      "**Chat** (previous slide): without real gaming chat, PR-AUC falls from {chat_prauc} to {no_conda}, the largest single effect we measured.",
+      "**Fused score:** behaviour alone agrees with the full decision in only {beh_only_agree} of pilot sessions, so chat and voice change outcomes."
+    ],
+    "footer": "Behaviour labels are simulated; voice is tested on unseen speakers; every value carries a 95% bootstrap interval.",
+    "notes": "This slide answers the ablation question for every model, not just chat. For behaviour, screen-time hours alone get {beh_screen_only}; how the child plays, the pattern features, gets {beh_pattern_only} on its own, and the ten deployed features reach {beh_acc}. The ten derived proxy scores add almost nothing, because they are computed from the same ten features, which is why they are not model inputs. For voice, the move from 17 to 36 tone features is what lifted accuracy; English-only training is slightly worse, and noise augmentation neither helps nor hurts. The chat result is on the previous slide: real gaming chat is the part that matters most. And at the level of the fused score, the pilot shows behaviour alone matches the full decision in only {beh_only_agree} of sessions, so the extra channels genuinely change what parents see.\n\nNUMBERS BEHIND THIS SLIDE: Behaviour accuracy (held-out simulated labels): screen-time only {beh_screen_only}, volume features only {beh_volume_only}, pattern features only {beh_pattern_only}, deployed 10 features {beh_acc} {beh_acc_ci}, all 20 incl. proxies {beh_all20}. Voice accuracy, speaker-independent, 4 classes (chance 0.25): deployed recipe {voice_acc_abl} [0.540, 0.584], 17-feature prefix {voice_17feat}, English-only corpora {voice_english_only}, without augmentation 0.566 (inside the deployed interval). Chat PR-AUC: full {chat_prauc}, without CONDA {no_conda}. Pilot fusion: behaviour-only band agreement {beh_only_agree} (docs/fusion_sensitivity.json). Source: docs/ablation_results.json, ml/ablation_studies.py.\n\nLIKELY QUESTIONS: (1) Removing augmentation scores slightly higher, so why keep it? The difference is inside the 95% interval, so it is noise; augmentation is kept because the deployed model was validated with it, and it has no measurable cost. (2) Why do the proxies add nothing? They are deterministic functions of the ten features, so they carry no new information; feeding them in would make SHAP cite disguised copies of real reasons. (3) Behaviour labels are simulated, so what does this prove? It shows which inputs the model relies on; the real-people check is the survey slide, where pattern features beat volume features by {contrast} {contrast_ci}."
+  },
+  {
+    "order": 525,
+    "id": "results_hparam",
+    "heading": "Results and Discussion",
+    "subheading": "Tuning helps only where labels are simulated; deployed settings stay",
+    "presenter": "Kaustubh",
+    "kind": "chart",
+    "seconds": 40,
+    "skip_if_short": false,
+    "chart": {
+      "image": "docs/figures/review3/hparam_sensitivity.png",
+      "caption": "Paired bootstrap, 1,000 test resamples (docs/hparam_*.json)"
+    },
+    "side_bullets": [
+      "**Behaviour:** {hp_beh_configs} settings, CV macro-F1 {hp_beh_cv_min}–{hp_beh_cv_max}. The best adds {hp_beh_gain} {hp_beh_gain_ci} accuracy on simulated labels, but not on real people: survey ρ {hp_beh_survey_rho_best} vs our {hp_beh_survey_rho_dep}. Not adopted.",
+      "**Chat:** {hp_chat_configs} settings. The pick, C = {hp_chat_best_c}, came from mostly non-gaming text and is worse on gaming chat: PR-AUC {hp_chat_gain} {hp_chat_gain_ci}. Selected on gaming chat, the search picks our C = {hp_chat_id_best_c}.",
+      "**Voice:** {hp_voice_configs} settings, CV macro-F1 {hp_voice_cv_min}–{hp_voice_cv_max}. Best vs deployed: {hp_voice_gain} {hp_voice_gain_ci}, no detectable gain."
+    ],
+    "footer": "Searched on training data only; each test set scored once, for two settings.",
+    "notes": "Did we tune our hyperparameters? Until this study they were set by hand, so we searched a grid for every model, on training data only: five-fold cross-validation for behaviour, speaker-grouped folds for voice, and a held-out slice of the training corpora for chat. Each test set was then scored once, for two settings, the deployed one and the search winner, and a paired bootstrap tells us whether the difference is real. Behaviour: the winner, unlimited-depth trees, adds {hp_beh_gain} accuracy, a real but small gain on simulated labels. On real people it does not carry over: scored on our IGDS9-SF survey exactly like the served model, the tuned forest correlates {hp_beh_survey_rho_best} with the survey score against {hp_beh_survey_rho_dep} for ours, a difference of {hp_beh_survey_diff} {hp_beh_survey_diff_ci}. So we report it and do not adopt it: the model would also be {hp_beh_size_x} times larger and need re-validation, and depth 6 with a minimum leaf of 20 is deliberate regularisation. Chat: the validation pick, C = {hp_chat_best_c}, is worse on gaming chat, because only {hp_chat_val_conda_pct} of the validation texts were gaming chat; when we select on gaming chat alone, the search picks our own C = {hp_chat_id_best_c}, so C = {hp_chat_deployed_c} stays. Voice: no detectable gain. The hand-set values hold up; data and features matter far more.\n\nNUMBERS BEHIND THIS SLIDE: {hp_total_configs} settings in all. Behaviour (docs/hparam_behaviour.json; simulated labels): replication gate passed (deployed setting retrained: test accuracy {hp_beh_deployed}; ablation table {beh_acc}). Five-fold stratified CV on the 80% training split: macro-F1 {hp_beh_cv_min}–{hp_beh_cv_max}; deployed ({hp_beh_dep_cfg}) {hp_beh_cv_deployed}, rank {hp_beh_rank} of {hp_beh_configs}; best ({hp_beh_best_cfg}) {hp_beh_cv_max}. Tree depth moves the CV mean by {hp_beh_depth_effect}, every other setting by at most {hp_beh_other_effect}. Test ({hp_beh_n_test} rows, scored once): {hp_beh_deployed} vs {hp_beh_best}, difference {hp_beh_gain} {hp_beh_gain_ci}, best ahead in {hp_beh_p_better} of 1,000 paired resamples. Pickled model {hp_beh_size_deployed} vs {hp_beh_size_best}. Survey check (real people; selects nothing): {hp_beh_survey_n} IGDS9-SF respondents scored exactly as the served model is scored; Spearman ρ deployed {hp_beh_survey_rho_dep} {hp_beh_survey_ci_dep} vs best {hp_beh_survey_rho_best} {hp_beh_survey_ci_best}; paired difference {hp_beh_survey_diff} {hp_beh_survey_diff_ci} over {hp_beh_survey_boot} paired resamples, best ahead in {hp_beh_survey_p_better}. Chat (docs/hparam_chat.json): replication {hp_chat_deployed} (ablation table {chat_prauc}). Seven values of C from 0.125 to 8, class weighting on or off. Validation slice of {hp_chat_n_val} de-duplicated training texts, of which {hp_chat_val_conda_n} ({hp_chat_val_conda_pct}) are gaming chat: PR-AUC {hp_chat_cv_min}–{hp_chat_cv_max}; deployed C = {hp_chat_deployed_c} {hp_chat_cv_deployed}, rank {hp_chat_rank} of {hp_chat_configs}; C moves it by {hp_chat_c_effect}, class weighting by at most {hp_chat_cw_gap}. CONDA validation split ({hp_chat_n_test} lines, scored once): {hp_chat_deployed} vs {hp_chat_best}, difference {hp_chat_gain} {hp_chat_gain_ci}. In-domain variant (selection on {hp_chat_id_n} CONDA_train texts only; CONDA validation untouched): PR-AUC {hp_chat_id_min}–{hp_chat_id_max}; deployed C = {hp_chat_deployed_c} {hp_chat_id_dep}, rank {hp_chat_id_rank} of {hp_chat_configs}; the pooled pick C = {hp_chat_best_c} ranks {hp_chat_id_pooled_rank} ({hp_chat_id_pooled_val}). At {alert_threshold}, ablation-protocol view only: precision {chat_p_alert_abl} to {hp_chat_best_p_alert}, recall {chat_r_alert_abl} to {hp_chat_best_r_alert}; the deployed view ({chat_p_deployed} / {chat_r_deployed}) is another protocol, never mix the two. Voice (docs/hparam_voice.json): replication {hp_voice_deployed} (ablation table {voice_acc_abl}). GroupKFold(5) over training speakers: macro-F1 {hp_voice_cv_min}–{hp_voice_cv_max}; deployed {hp_voice_cv_deployed}, rank {hp_voice_rank} of {hp_voice_configs}; no setting moves the mean by more than {hp_voice_lever}, under the deployed fold SD of {hp_voice_cv_std}; early stopping uses {hp_voice_iters_deployed} of {hp_voice_iter_cap} iterations. Test ({hp_voice_test_clips} clips from {hp_voice_test_speakers} unseen speakers; the ablation protocol's split, not the deployed {voice_acc}): {hp_voice_deployed} vs {hp_voice_best}, difference {hp_voice_gain} {hp_voice_gain_ci} ({hp_voice_net_clips} more clips right), best ahead in {hp_voice_p_better} of resamples.\n\nLIKELY QUESTIONS:\nQ: Why not deploy the tuned model? A: For chat and voice there is nothing better to deploy: the chat pick is worse on gaming chat and the voice gain is not detectable. For behaviour the gain is real but small, {hp_beh_gain} accuracy against simulated labels. Taking it means unlimited-depth trees that fit the training rows perfectly, a model {hp_beh_size_x} times larger ({hp_beh_size_best}) and a fairness re-audit, and on the real survey it is no better: ρ {hp_beh_survey_rho_best} against {hp_beh_survey_rho_dep} for ours. Reported as an option, not adopted.\nQ: Does the tuned behaviour model work better on real people? A: No. We scored both forests on the {hp_beh_survey_n} IGDS9-SF respondents exactly as the served model is scored. The tuned one correlates {hp_beh_survey_rho_best} with the survey score, ours {hp_beh_survey_rho_dep}; the paired difference is {hp_beh_survey_diff} {hp_beh_survey_diff_ci}. The interval includes zero, so the survey cannot separate them, and the point estimate favours ours.\nQ: Why did the chat search pick C = {hp_chat_best_c}? A: Its validation slice pooled every training corpus, and only {hp_chat_val_conda_pct} of it was gaming chat. When we select on gaming chat alone, our C = {hp_chat_id_best_c} ranks {hp_chat_id_rank} of {hp_chat_configs} and C = {hp_chat_best_c} ranks {hp_chat_id_pooled_rank}. So the hand-set value is the tuned value for gaming chat.\nQ: Why so few hyperparameters for chat? A: In a linear model on TF-IDF features the regularisation strength C is the setting that matters; we searched seven values over a 64-fold range, with and without class weighting. C moves validation PR-AUC by {hp_chat_c_effect}, class weighting by at most {hp_chat_cw_gap}. Data matters more: without the gaming-chat corpus PR-AUC falls from {chat_prauc} to {no_conda}.\nQ: Isn't tuning on simulated labels meaningless? A: For choosing a model, largely yes, which is why the behaviour gain is not adopted: it measures fit to our simulator, not to children. What it does show is robustness: across {hp_beh_configs} settings CV macro-F1 stays within {hp_beh_cv_min}–{hp_beh_cv_max}, so no conclusion rests on one lucky setting. The real-data check for behaviour is the IGDS9-SF survey, and on it the tuned forest is no better ({hp_beh_survey_rho_best} against {hp_beh_survey_rho_dep}); the chat and voice studies used real recordings and real chat throughout."
+  },
+  {
+    "order": 530,
+    "id": "results_validation",
+    "heading": "Results and Discussion",
+    "subheading": "How adults play tracks the IGDS9-SF; hours alone show no clear link",
+    "presenter": "Kaustubh",
+    "kind": "chart",
+    "seconds": 55,
+    "skip_if_short": false,
+    "chart": {
+      "image": "docs/figures/review3/results_validation.png",
+      "caption": "Anonymous adult survey: answers mapped to the 10 features, scored by the deployed model; Spearman ρ, 95% bootstrap intervals."
+    },
+    "side_bullets": [
+      "**Score vs IGDS9-SF** (9-item gaming-disorder questionnaire): ρ {rho} {rho_ci}; {partial} with hours held fixed.",
+      "**Strong claim:** pattern minus volume {contrast} {contrast_ci}; the interval excludes zero.",
+      "**Suggestive only:** score minus hours {delta} {delta_ci} just touches zero.",
+      "**Not shown:** clinical cut-off accuracy ({prevalence_k} disordered-range respondent), children, chat and voice."
+    ],
+    "footer": "Honest reading: the score carries meaning in adults; its clinical accuracy is still unknown.",
+    "notes": "This is our external check on real people. {n_scored} anonymous adult gamers answered the IGDS9-SF, the standard nine-item gaming-disorder questionnaire, and described how they play. We mapped their answers to our ten features and scored them with the deployed behaviour model, unchanged. The score correlates with their questionnaire total at {rho}, a moderate rank correlation, and holding screen time fixed barely moves it: {partial}. The strongest result is the paired one at the bottom: the five pattern features, like late-night play and quick re-logins, beat the five volume features, like daily hours, by {contrast}, and that interval excludes zero. Our lead over plain hours, {delta}, just touches zero, so we call it suggestive. What this does not show: accuracy at a clinical cut-off, with only {prevalence_k} respondent in the disordered range; anything about children; or the chat and voice channels.\n\nNUMBERS BEHIND THIS SLIDE: docs/survey_validation.json and docs/survey_extras.json (ml/eval_behavior_survey.py, ml/eval_survey_extras.py). {n_raw} raw, {n_usable} usable, {n_scored} scored. Served behaviour score ρ {rho} {rho_ci}; screen time partialled out {partial} {partial_ci}; pattern composite {pattern} {pattern_ci}; volume composite {volume} {volume_ci}; screen-time hours {rho_hours} {rho_hours_ci}. Paired bootstrap on the same respondents: pattern minus volume {contrast} {contrast_ci}, pattern ahead in {p_pattern_better} of resamples; score minus hours {delta} {delta_ci}, ahead in {p_model_better}. Robustness: dropping 9 straight-liners gives {robust_rho} (n {robust_n}). Chat premise: toxic-chat involvement vs IGDS9-SF ρ {chat_premise}. {prevalence_k} respondent at 36 or more, so no sensitivity or specificity (about 157 usable responses needed at the 6.4% base rate). A late batch of 22 arrived after active recruiting stopped; a rule fixed in advance folded it in, it lowered the headline, and the lower value is the one we report. The validated computation is the behaviour channel only: no genre weight, no chat or voice, no band cut-offs. Pattern = late-night share, longest streak, binge sessions, average break, rapid re-logins; volume = daily hours, weekly hours, sessions per day, average session length, days played per week.\n\nLIKELY QUESTIONS:\nQ: Is ρ {rho} strong enough to matter? A: It is moderate: enough to say the score carries meaning, not enough to judge any individual. Hours alone give {rho_hours}, and that interval includes zero.\nQ: These are self-reports mapped to features, not phone data. Does it count? A: It tests the deployed model, unchanged, on real people's play patterns, but without device telemetry; pairing parents' IGDS9-SF answers with measured play is the next study, and it needs ethics approval first.\nQ: Did the survey have ethics approval? A: No ethics-committee review. It was anonymous and adults-only, and its design was notified to our guide in writing on 14 Aug 2026, while the form was open; we claim nothing more."
+  },
+  {
+    "order": 540,
+    "id": "results_device",
+    "heading": "Results and Discussion",
+    "subheading": "Default capture is light; Hindi + English speech-to-text failed our gate",
+    "presenter": "Khushee",
+    "kind": "chart",
+    "seconds": 40,
+    "skip_if_short": true,
+    "chart": {
+      "image": "docs/figures/review3/results_device.png",
+      "caption": "Galaxy M52 5G, two 15-minute Roblox sessions, sampled each minute (18 Aug 2026); gate fixed on 7 Aug."
+    },
+    "side_bullets": [
+      "**Default, English only:** {cpu_default} of one core, {mem_default}, no thermal throttling; Roblox itself uses ~215%.",
+      "**Hindi + English:** {cpu_dual}, {mem_dual}: fails 2 of 3 gate checks, so it stays a parent-only beta.",
+      "**Responsive:** cold start {cold_start}; sessions open within {session_autostart} and close {session_autoend} after play.",
+      "**Cost of the choice:** spoken Hindi is not transcribed by default; voice tone and typed Hindi are still scored."
+    ],
+    "notes": "We measured the ChildApp's cost on a mid-range Galaxy M52 during two 15-minute Roblox sessions. The default, English-only speech-to-text uses {cpu_default} of one core and {mem_default}, with no thermal throttling; Roblox itself uses about 215 percent. Hindi plus English costs {cpu_dual} and {mem_dual}, four to five times the CPU, and over the 400 MB line. That fails two of the three checks in a gate we set before measuring, so it stays a parent-only beta, and spoken Hindi is not transcribed by default. The app stays responsive: cold start {cold_start}, and sessions open within {session_autostart}.\n\nIf time is short, skip this slide and say: the default costs {cpu_default} of one core; Hindi plus English failed our own gate, so it stays off.\n\nNUMBERS BEHIND THIS SLIDE: TESTING.md device drill, 18 Aug 2026: Samsung Galaxy M52 5G (Android 13, 4 GB class), ChildApp 2.4.0-beta3 release build, two back-to-back 15-minute Roblox sessions, per-minute dumpsys meminfo, top, cpuinfo and thermalservice. CPU averaged over the run: {cpu_default} vs {cpu_dual}, about 4–5×; RAM (PSS) mean to peak {mem_default} vs {mem_dual}, on or over 400 MB for 8 of 15 minutes; battery temperature 37.5 → 39.2 °C vs 39.0 → 40.6 °C; thermal status 0 in both runs. Gate fixed 7 Aug, before measuring: CPU under 2× the default (so 28%), RAM under ~400 MB, no thermal throttling; Hindi plus English fails CPU and RAM, passes thermal. Cold start {cold_start} true-cold, about 230 ms warm. Session auto-start {session_autostart}, auto-end {session_autoend}; nudges reach the child within {nudge_latency}. Upload: 7.16 MB per 15-minute session (WAV segments). Open finding: memory rises in a sawtooth within a session; a Recognizer.reset() patch did not flatten it; it stays under 400 MB in the default mode.\n\nLIKELY QUESTIONS:\nQ: Why CPU instead of battery percentage? A: The phone was on USB for adb, and Android reports zero battery use while charging, so we report per-app CPU time, the input Android's own battery estimate uses.\nQ: So Hindi speech is ignored? A: Spoken Hindi is not transcribed by default, but voice tone is still analysed on the server and typed Hindi chat is still scored. A parent can switch on the beta, knowing it costs battery.\nQ: Was the gate set after seeing the numbers? A: No: it was written into TESTING.md on 7 Aug, and the drill ran on 18 Aug."
+  },
+  {
+    "order": 550,
+    "id": "results_system_pilot",
+    "heading": "Results and Discussion",
+    "subheading": "Weights barely move bands; dropping genre moved a third, hence versioning",
+    "presenter": "Kanak",
+    "kind": "chart",
+    "seconds": 45,
+    "skip_if_short": true,
+    "chart": {
+      "image": "docs/figures/review3/results_pilot.png",
+      "caption": "{pilot_sessions} sessions from the consented {pilot_days}-day family pilot, re-scored offline under each change."
+    },
+    "side_bullets": [
+      "**Fusion rule:** a maximum would move 32.1% of bands, a noisy-OR 45.0%, all upward; the mean stays conservative.",
+      "**Weights ±0.15:** median {weight_flip_median} of bands change, worst {weight_flip_max}. **Cut-offs ±0.05:** up to {threshold_flip_max}.",
+      "**Behaviour alone:** 32.3% change, all from dropping voice; dropping chat changed no band.",
+      "**Genre removed:** {genre_band_shift} change, so each prediction stores score version {score_version}; parents get a one-time note."
+    ],
+    "notes": "We re-scored all {pilot_sessions} pilot sessions under other settings. Shifting the 40/30/30 weights by up to 0.15 changes a median {weight_flip_median} of bands, at worst {weight_flip_max}. Moving a cut-off by 0.05 changes up to {threshold_flip_max}, so cut-offs get tuned first. Behaviour alone changes 32.3 percent, all from dropping voice, and replacing the mean with a maximum or a noisy-OR would raise a third to nearly half of all bands. Removing the genre weight changes {genre_band_shift}, the most of all. A silent change would make a child's trend jump with no change in play, so each prediction stores its score version, now {score_version}, and affected parents get a one-time note.\n\nIf time is short, skip this slide and say: shifting the fusion weights barely moves bands, but dropping the genre weight moved {genre_band_shift} of pilot bands, so every score now stores its version.\n\nNUMBERS BEHIND THIS SLIDE: Fusion sensitivity (docs/fusion_sensitivity.json, ml/analyze_fusion_sensitivity.py): unit = the latest stored prediction of each completed pilot session, {pilot_sessions} sessions over {pilot_days} days; the script first reproduced every stored score within 6e-05. Weights: 37 combinations within ±0.15, median {weight_flip_median}, worst {weight_flip_max} at 0.50 / 0.35 / 0.15. Cut-offs ±0.05: worst {threshold_flip_max}, from raising the lower cut-off; moving only the upper cut-off changed nothing, as no session scored near it. Channels: behaviour alone 32.3% of 130 usable sessions (agreement {beh_only_agree}); dropping voice alone 32.3%; dropping chat alone 0%. Fusion rule: taking the maximum would move 32.1% of bands and noisy-OR 45.0%, all upward. The genre sweep at factor 0 is exactly score version {score_version}: {genre_band_shift} = 45 of {pilot_sessions} sessions; served bands before the change: 63 Low, 68 Some, 0 High concern. Versioning: predictions store score_version, the drift monitor compares scores within one version, and each child with older scores gets one in-app note (docs/genre_removal.json; {backend_tests} backend tests pass on SQLite; on Postgres 16, 189 pass and the one SQLite-only migration test is skipped).\n\nLIKELY QUESTIONS:\nQ: Why a weighted mean, not the maximum or a noisy-OR across channels? A: On the pilot, the maximum would have raised 32.1% of bands and noisy-OR 45.0%, all upward, letting one noisy channel dominate; the mean of the channels present is the conservative choice.\nQ: Why not learn the weights from data? A: Behaviour labels are simulated and the survey validated only behaviour, so fitting weights now would be circular. Parents' Accurate and False-alarm verdicts are real labels; they will tune cut-offs first, then weights. Kaustubh has the statistics.\nQ: Did removing the genre weight raise or lower bands? A: The sweep recorded only the share that changed. By construction, battle-royale, shooter, MOBA, MMO and RPG sessions can only move down (Some to Low concern) and strategy, sandbox and casual sessions only up; the analysis script now records the split for future runs."
+  },
+  {
+    "order": 560,
+    "id": "results_fairness_limits",
+    "heading": "Results and Discussion",
+    "subheading": "No false alerts for any accent; claims stay within stated limits",
+    "presenter": "Vidisha",
+    "kind": "twocol",
+    "seconds": 50,
+    "skip_if_short": false,
+    "cols": [
+      {
+        "title": "Fairness and limits",
+        "bullets": [
+          "**Accents:** {false_alerts} false alerts in {speech_hours} h; word errors {wer_drav} Dravidian, {wer_ia} Indo-Aryan, {wer_tb} Tibeto-Burman.",
+          "**Evidence:** {beh_acc} on simulated labels; survey of adults only, no cut-off accuracy.",
+          "**Priors:** fusion weights and cut-offs set by hand.",
+          "**Blind spots:** browser games; spoken Hindi by default."
+        ]
+      },
+      {
+        "title": "Implications",
+        "bullets": [
+          "**Parents:** a band opens a conversation; no alert does not mean no abuse.",
+          "**Researchers:** measure how children play, not just how long; split by speaker.",
+          "**Deployment:** version every score change; test every accent group."
+        ]
+      }
+    ],
+    "notes": "First, fairness. Our speech-to-text and chat scorer heard {speech_hours} hours of harmless Indian-English speech from {speakers} speakers and raised {false_alerts} false alerts: no accent group was falsely accused. But word errors run from {wer_drav} for Dravidian-language speakers to {wer_tb} for Tibeto-Burman speakers from the Northeast, so abuse in those accents is missed more often. Our limits: {beh_acc} is on simulated labels; the survey covered adults, without clinical cut-off accuracy; fusion weights and cut-offs are set by hand; browser games and spoken Hindi are blind spots. What follows? For parents, a band opens a conversation, and no alert does not mean no abuse. For researchers, measure how children play, not just how long. For deployment, version every score change and test every accent group.\n\nNUMBERS BEHIND THIS SLIDE: docs/asr_fairness.json (ml/eval_asr_fairness.py): Svarah (AI4Bharat) Indian-English speech, {clips} clips, {speech_hours} h, {speakers} speakers, run through the served speech-to-text and chat scorer. Word error rate {wer_overall} overall; Dravidian {wer_drav} (1,798 clips), Indo-Aryan {wer_ia} (4,456 clips), Tibeto-Burman {wer_tb} (402 clips, 0.63 h, the smallest group). {false_alerts} alerts on our transcripts and on the human reference transcripts; zero in {clips} bounds the false-alert rate near 0.045% (rule of three). Chat alerts, deployed: precision {chat_p_deployed}, recall {chat_r_deployed} at {alert_threshold}, so most toxic lines raise no alert. Limits: behaviour {beh_acc} on synthetic labels; the survey had {prevalence_k} respondent in the disordered range, adults only, self-reported; a 0.05 cut-off shift moves up to {threshold_flip_max} of pilot bands; Hindi plus English speech-to-text ({cpu_dual}, {mem_dual}) failed the phone gate; browser and in-app games are not detected. Voice: split by speaker, {voice_acc}; a random split would claim {voice_random_split}. Future work (report Chapter 9): guardian-answered IGDS9-SF linked to measured play after ethics approval; cut-offs and weights fitted from parents' verdicts; a genre study of about 400 people; a lighter voice model.\n\nLIKELY QUESTIONS:\nQ: Zero false alerts sounds too good. A: The clips are ordinary, harmless speech, so zero is what a sound scorer should give; it bounds the false-alert rate near 0.045%. The real fairness cost is missed abuse for Tibeto-Burman speakers. Kaustubh ran the audit.\nQ: Why not fix the accent gap now? A: A bigger or second recogniser breaks the phone budget; Khushee's drill measured {cpu_dual} CPU for Hindi plus English. The fix is a lighter, accent-robust model, tested per accent group.\nQ: Could a parent over-read a band? A: The apps show only Low, Some or High concern, with the reasons and a screening disclaimer, and the child sees a permanent monitoring notification. A band starts a conversation; it is not a clinical judgement."
+  }
+]

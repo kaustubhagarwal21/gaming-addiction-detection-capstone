@@ -1,0 +1,35 @@
+Review 3 – PW26_SAS-03
+Window 23–27 Nov 2026 · our slot: [slot: fill in]
+Everyone presents and is graded individually.
+
+Deck: PES_REVIEW3_DECK.pptx (42 slides). Open it in Presenter View – every slide's notes start with [Presenter: name], then what to say, the numbers and likely questions.
+
+Who presents:
+• Vidisha: 1–4, 16, 30–32, 35 + narrates the ParentApp in the demo
+• Khushee: 5, 8–9, 13, 17 + drives the live demo, 20, 28
+• Kanak: 6–7, 14–15, 18–19, 21, 29, 33–34, 41–42
+• Kaustubh: 10–12, 22–27, 36–40
+
+Timing (assume 30 min): ~22 min slides + ~6 min demo + ~2 min questions. That only works if we skip 12, 13, 14, 28, 29, 32 and 41 – the owner says one line instead (it's in the slide notes and the briefing). Talk time: Kaustubh ~7½ min, Kanak ~5½, Vidisha ~5 + narrating the demo, Khushee ~4 + driving it.
+
+Before the review:
+• Show the PPT and the full report draft to Prof. Sawant first, make her corrections, get her OK – all before our slot
+• Slide 4, row 7 is the panel's Gemini Nano remark. Remember any other Review 2 remark? Post it here today
+• Learn your slides and every pseudocode line on your algorithm slides (the function names are under each code box)
+• Read your cheat-sheet page and the question table in the briefing
+• The report PDF stays private – don't upload it anywhere public before the PESU plagiarism check
+
+New questions this time: is it complete · test plan, why these tests · test environment, who tested what · walk me through this code · explain the architecture · what each ablation shows · did you tune hyperparameters · results vs expectations · compared against what · limitations and implications · why the genre change took so long · Gemini Nano · where you'll publish · plagiarism status · what changed since Review 2. One-line answers + owners are in the briefing.
+
+Same answer from all four:
+• Genre weight: "Done – removed on 23 Nov, score version 2, live, with a one-time note to parents." Why so late: it slipped past our 19 Oct–2 Nov window – [team: reason]. No excuses.
+• Gemini Nano: "We studied Gemini Nano against Google's own documentation and it is genuinely good for privacy, but today its terms exclude apps used by children, it only works while its own app is on screen, and it does not run on our test phone or on Samsung's A, M and F phones – so we keep our validated models and will benchmark Nano as soon as that changes." Never say we tested it on a phone.
+• Never "addicted" or "diagnosis" – say screening, concern.
+
+Khushee – demo (the deploy is already live, nothing to deploy):
+• Morning of, in the runbook's pre-flight order: phones online first, then reseed the demo family (runbook §2: SEED_DEMO_FORCE=1 + DATABASE_URL + PIN_PEPPER – get the values privately, never in this group), then run cloud_e2e.py (its logins prove the reseeded PINs), then the runbook's one-line cleanup of the 'e2e check' entry and the login alert, and clear the variables last
+• Wake the backend 30 min before and again 2 min before (/api/health → "models_loaded": true; cold start ~40 s)
+• Both phones charged, on the room Wi-Fi, latest apps, permissions on
+• Backup demo video on the laptop
+
+Attached: deck · cheat sheets (print your page) · report PDF · IEEE paper PDF · defense notes · demo runbook · team briefing

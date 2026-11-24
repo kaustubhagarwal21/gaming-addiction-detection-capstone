@@ -1,0 +1,134 @@
+[
+  {
+    "order": 240,
+    "id": "ml_algo2_behaviour",
+    "heading": "Implementation Details",
+    "subheading": "Algorithm 2 - Behaviour score: ten measured habits, calibrated and explained",
+    "presenter": "Kaustubh",
+    "kind": "pseudocode",
+    "seconds": 45,
+    "skip_if_short": false,
+    "code": {
+      "title": "Behaviour risk score for one session",
+      "lines": [
+        "# Runs on every scored snapshot: live updates and session end",
+        "if session ended with 0 s played: skip behaviour  # not evidence",
+        "f = compute_behavioral_features(session)  # 10 habits + 10 formulas",
+        "  history = sessions started in the 30 days before it (max 200)",
+        "  week    = the part of history from the last 7 days",
+        "  daily_play_time_hours   = earlier play today + this session",
+        "  sessions_per_day        = (sessions this week + 1) / 7",
+        "  late_night_play_ratio   = share of starts 22:00-06:00, child time",
+        "  binge_sessions_per_week = sessions this week of 3 hours or more",
+        "  rapid_relogin_ratio     = share of breaks under 15 minutes",
+        "  # + weekly hours, days played, streak, avg session, avg break",
+        "x = scaler.transform(f[:10])            # formula scores never enter",
+        "p_low, p_some, p_high = calibrated_rf.predict_proba(x)",
+        "b_score = 0.5 * p_some + 1.0 * p_high   # 0 Low, 0.5 Some, 1 High",
+        "if explain:                             # session end, not live",
+        "  sv = TreeExplainer(raw_rf).shap_values(x)",
+        "  impact = 0.5 * sv[Some] + 1.0 * sv[High]  # same weights",
+        "  reasons = top 4 habits by abs(impact), tagged raises/lowers",
+        "return b_score, reasons                 # enters fusion, weight 0.40"
+      ]
+    },
+    "side_title": "In plain words",
+    "side_bullets": [
+      "**Module:** behaviour scorer on the Flask server. **Tools:** scikit-learn StandardScaler and RandomForest, isotonic calibration, SHAP TreeExplainer.",
+      "**Random forest:** 200 decision trees vote Low, Some or High concern. **Isotonic calibration** adjusts the votes so stated chances match how often each band occurs.",
+      "**SHAP** shows which habits raised or lowered this score. Formula scores like 'Gaming cravings' never enter the model, so every reason is a real measurement.",
+      "**Limit:** the {beh_acc} test accuracy is on synthetic labels; only play-time levels come from a real survey. A screening signal, not a diagnosis."
+    ],
+    "code_ref": "backend/app.py: compute_behavioral_features(), run_prediction(), _shap_explain_impl()",
+    "notes": "Here is how one session becomes a behaviour score. We look back thirty days at sessions that started before this one, so re-scoring an old session gives the same answer. From their start and end times we measure ten habits, such as late-night starts on the child's own clock, three-hour binges, and restarting within fifteen minutes of stopping. The ten numbers are scaled and passed to a random forest of two hundred decision trees. Isotonic calibration then adjusts its probabilities to match how often each band really occurs. The score counts High concern fully and Some concern at half. At session end, SHAP names the four habits that moved the score most, up or down.\n\nNUMBERS BEHIND THIS SLIDE: Look-back 30 days, latest 200 sessions, only sessions that began before this one; week = last 7 days; late night = 22:00-06:00 on the child's clock; binge = 3 hours or more; quick restart = a break under 15 minutes. A break counts only if it lasts more than 0 and less than 1,440 minutes, and the break just before this session is included; with no breaks the average break defaults to 120 minutes (backend/app.py compute_behavioral_features()). A closed 0-second session gets no behaviour score (run_prediction(), _save_behavioral_snapshot()). Forest: 200 trees, depth 6, at least 20 rows per leaf, balanced class weights; 23,000 training and 5,750 test rows, all simulated (ml/retrain_models.py train_behavior_model(); IEEE paper, Results). Test accuracy {beh_acc} {beh_acc_ci}, macro-F1 {beh_f1}, 5-fold CV {beh_cv}, all on synthetic labels. Calibration: top-label ECE, the average gap between stated confidence and observed accuracy, falls from {beh_ece_before} to {beh_ece_after}; the isotonic layer is fitted on one half of the held-out split and scored on the other (ml/calibrate_behavior.py; PROJECT_PAPER Results, behaviour model). b_score = 0.5 × P(Some) + 1.0 × P(High) (run_prediction()); fusion prior weight 0.40 (PROJECT_PAPER Methodology, fusion priors). SHAP: top 4 habits by absolute impact with the same 0.5 and 1.0 weights, only at session end, so frequent live updates stay inside the 512 MB server (_shap_explain_impl(); run_prediction() docstring). The parent dashboard lists all 4 with up or down arrows; the weekly PDF shows 3. Ablation on the same synthetic test set: screen-time hours only {beh_screen_only}, pattern habits only {beh_pattern_only}, volume habits only {beh_volume_only}, all 20 features {beh_all20}. Real-world anchor: survey rho {rho} {rho_ci}, n = {n_scored}; pattern minus volume {contrast} {contrast_ci}. Doc note: PROJECT_PAPER (Methodology, features) calls 'Gaming cravings' late-night ratio × re-login ratio; the code adds them, 3 × (late-night ratio + re-login ratio), clipped to 0-10. Quote the code.\n\nLIKELY QUESTIONS:\nQ: Your labels are synthetic. What does {beh_acc} tell us? A: Only that ten measured habits separate the simulated bands; it is not clinical accuracy. The survey shows the score means something (a moderate rank correlation, rho {rho}, and pattern habits beat volume habits by {contrast} {contrast_ci}, which excludes zero), but with only {prevalence_k} respondent in the disordered range we have no sensitivity or specificity yet.\nQ: Why a random forest, not gradient boosting or a neural network? A: In our five-family bake-off every model, even plain logistic regression, landed within 0.6 points on cross-validation, because the simulation itself caps accuracy (PROJECT_PAPER Methodology, model selection). The forest keeps exact SHAP reasons and our calibration layer, so we kept it on evidence.\nQ: You store 20 features. Why does the model see only 10? A: The other ten are formulas of these ten; 'Gaming cravings', for example, is 3 × (late-night ratio + re-login ratio) (backend/behavior_features.py derive_psychometrics()). They add no information (all 20 give {beh_all20}) and would let SHAP cite a disguised copy of a real reason."
+  },
+  {
+    "order": 250,
+    "id": "ml_algo3_chat",
+    "heading": "Implementation Details",
+    "subheading": "Algorithm 3 - Chat: score every line, alert only when near-certain",
+    "presenter": "Kaustubh",
+    "kind": "pseudocode",
+    "seconds": 50,
+    "skip_if_short": false,
+    "code": {
+      "title": "Chat scoring and alerts: one line, then the session",
+      "lines": [
+        "# save_chat(): runs for every chat line the phone uploads",
+        "text = line trimmed; reject if empty or over 2000 characters",
+        "# Detector 1: word list, English + Hindi in both scripts",
+        "kw = min(0.2*strong + 0.1*mild + 0.3*phrases, 0.9)  # distinct hits",
+        "# Detector 2: model, with the same cleaning as in training",
+        "clean = clean_text(text)   # lowercase, expand slang, strip noise",
+        "X  = tfidf(clean)          # word 1-2 grams + char_wb 3-5 grams",
+        "ml = calibrated_logreg(X)  # P(toxic), isotonic-calibrated",
+        "fused = 1 - (1 - kw) * (1 - ml)                   # noisy-OR",
+        "if same text in this session in last 8 s: stop    # duplicate",
+        "save (text, source, fused) in chat_messages",
+        "if fused >= CHAT_ALERT_T ({alert_threshold}):",
+        "  alert parents: high if fused >= 0.97 else medium",
+        "  nudge child, unless a language nudge is still pending",
+        "if fused >= 0.6 and 3+ lines this session scored >= 0.6:",
+        "  ONE high 'repeated language' alert per session  # streak",
+        "# Later, run_prediction() builds the session chat score",
+        "chat_score = max(fused of typed lines)  # spoken -> voice channel",
+        "# chat_score enters fusion with weight 0.30"
+      ]
+    },
+    "side_title": "In plain words",
+    "side_bullets": [
+      "**Module:** chat scorer on the Flask server. **Tools:** scikit-learn TF-IDF and LogisticRegression, isotonic calibration, a curated word list.",
+      "**TF-IDF** turns a line into weighted counts of its words and 3-5 letter pieces; pieces catch misspellings. **Logistic regression** turns these into a toxicity chance.",
+      "**Noisy-OR:** a line counts as clean only if both detectors say clean. **Hindi:** both detectors cover Devanagari and romanised Hinglish.",
+      "**Alert bar {alert_threshold}:** on held-out real game chat, precision {chat_p_deployed} (alerts right), recall {chat_r_deployed} (toxic lines caught). Three lines at 0.6 or more raise one streak alert."
+    ],
+    "code_ref": "backend/app.py: save_chat(), fuse_toxicity(), run_prediction(); backend/text_utils.py: keyword_toxicity()",
+    "notes": "Every chat line passes two detectors. The first is a word list of clear abuse in English and Hindi, in both scripts. The second is a model: we clean the text as in training, build TF-IDF features from words and letter pieces, and logistic regression gives a calibrated chance the line is toxic. Noisy-OR joins the two: a line counts as clean only if both say clean. One line alerts parents only at {alert_threshold} or above, because false alarms cost parents' trust. At that bar, on held-out real game chat, {chat_p_deployed} precision means alerts are nearly always right, but {chat_r_deployed} recall means we catch fewer than half. So three lines at 0.6 or more in one session raise one repeated-language alert. The session's chat score is its worst typed line.\n\nNUMBERS BEHIND THIS SLIDE: Input: a trimmed line of 1 to 2,000 characters from keyboard, ime_keystroke, ocr or voice_stt (backend/app.py save_chat()). Word list: 0.2 per distinct strong word, 0.1 per mild word, 0.3 per hostile phrase such as 'kill yourself', capped at 0.9; Hindi terms in Devanagari and romanised spelling; game words like 'kill' and 'died' are deliberately left out (backend/text_utils.py keyword_toxicity()). Model: TF-IDF over word 1-2 grams (up to 20,000) plus char_wb 3-5 grams, letter pieces that never cross a word boundary (up to 30,000); balanced logistic regression; isotonic layer fitted on a 15% slice of the training side (ml/retrain_models.py train_chat_model(); PROJECT_PAPER Methodology, model development). Duplicate window 8 s, because our keyboard and the accessibility service can both see one line (PROJECT_PAPER Implementation, chat capture). Deployed operating point on held-out real gaming chat (CONDA validation split, 7,721 lines, 21.5% toxic): at {alert_threshold}, precision {chat_p_deployed}, recall {chat_r_deployed}; the 0.97 high-severity bar reads precision 1.00, recall 0.024 (PROJECT_PAPER Results, chat). Streak: 3 lines at 0.6 or more, one high alert per session, enforced by a unique database index; at 0.6 a single line has precision 0.63, recall 0.82 (PROJECT_PAPER Results, session-level escalation). Hindi held-out set ({hindi_heldout_rows} rows) at {alert_threshold}: precision {hindi_p_deva} Devanagari, {hindi_p_roman} romanised. Why not 0.5: in a realistic general-chat stream with 3.5% toxic lines, a 0.5 cutoff gives precision 0.235, about three false alarms per real one (PROJECT_PAPER Results, chat table). Separate view, never mixed with the deployed point: the ablation protocol on CONDA_valid gives PR-AUC {chat_prauc} {chat_prauc_ci}, and at {alert_threshold} precision {chat_p_alert_abl}, recall {chat_r_alert_abl}; without keyword fusion PR-AUC {no_keyword} and recall at the alert bar 0.278 instead of {chat_r_alert_abl} (docs/ablation_results.json; IEEE paper, Results); without char_wb PR-AUC {no_charwb}. PROJECT_PAPER's Ablations paragraph says the word list's recall gain shrank below 0.01, which the current JSON does not show: quote the JSON. Session score = max of typed-line scores; max beat scoring the joined text on 707 CONDA conversations, PR-AUC 0.916 vs 0.907 (PROJECT_PAPER Implementation, prediction). Spoken voice_stt lines are scored and can alert, but they feed the voice channel, not this score. A line that arrives after the session closed triggers a re-score. Doc note: the comment above CHAT_STREAK_BAR in backend/app.py still quotes an older curve (P 0.53 / R 0.87); model_metadata.json and the paper read 0.63 / 0.82.\n\nLIKELY QUESTIONS:\nQ: Why alert at {alert_threshold} and not at the best-F1 threshold? A: Best F1 sits near 0.85, where precision is 0.800, so one alert in five would be wrong; at {alert_threshold} precision is {chat_p_deployed}. Parents stop reading alerts that cry wolf, so the streak rule wins back recall and the bar stays an environment setting; Kanak covers how alerts are delivered.\nQ: Why not BERT? A: We measured it: off-the-shelf toxic-BERT scores PR-AUC (area under the precision-recall curve, 1 is perfect) {toxic_bert} on the same held-out game chat, against {chat_prauc} for our recipe under the ablation protocol, and it would not fit our 512 MB server. Removing the game-chat corpus drops our PR-AUC to {no_conda}, so data mattered more than model size.\nQ: Does it understand Hindi? A: Typed Hindi, yes: the word list covers both scripts and the model was trained on HASOC Hindi in Devanagari and romanised form, giving held-out precision {hindi_p_deva} and {hindi_p_roman} at the alert bar. Spoken Hindi is a known gap because the on-device recogniser is Indian-English; Khushee covers capture."
+  },
+  {
+    "order": 255,
+    "id": "ml_training_data",
+    "heading": "Implementation Details",
+    "subheading": "Training data: real corpora wherever they exist, simulation only for behaviour",
+    "presenter": "Kaustubh",
+    "kind": "table",
+    "seconds": 40,
+    "skip_if_short": true,
+    "table": {
+      "header": [
+        "Model",
+        "What it learned from",
+        "Size",
+        "Why this data"
+      ],
+      "rows": [
+        [
+          "Behaviour (random forest)",
+          "Simulated sessions; play-time levels follow a real survey of 13,464 gamers",
+          "23,000 train · 5,750 test rows",
+          "No public dataset pairs phone session logs with severity labels"
+        ],
+        [
+          "Chat (TF-IDF + logistic regression)",
+          "General toxic comments (185,312) · CONDA Dota 2 chat · Davidson tweets (24,783) · HASOC Hindi, both scripts (4,665) · clean Hindi Wikipedia (8,000)",
+          "5 real corpora",
+          "Game slang needs game chat: without CONDA, PR-AUC (1 = perfect) falls {chat_prauc} → {no_conda} (ablation protocol)"
+        ],
+        [
+          "Voice (gradient-boosted trees)",
+          "Acted emotional speech: RAVDESS, CREMA-D (English), EMO-DB (German), URDU",
+          "9,817 clips · {voice_speakers} speakers · {voice_languages} languages",
+          "Real labelled emotion; Urdu is close to Hindi; tested on unseen speakers"
+        ]
+      ],
+      "col_widths_in": [
+        2.0,
+        4.6,
+        2.1,
+        3.4
+      ]
+    },
+    "footer": "Test-only data: CONDA validation chat (7,721 lines), 20% of HASOC ({hindi_heldout_rows} rows), unseen voice speakers. The IGDS9-SF survey only validates the score.",
+    "notes": "What did each model learn from? Behaviour is our honest weak spot. No public dataset pairs a child's phone session logs with severity labels, so those labels are simulated; only the play-time levels come from a real survey of 13,464 gamers. Chat learned from five real corpora, including real Dota 2 game chat and Hindi in both scripts. Game chat matters most: under our ablation protocol, removing it drops PR-AUC, where 1 is perfect, from {chat_prauc} to {no_conda}. Voice learned from {voice_corpora} real speech corpora, 9,817 clips from {voice_speakers} speakers, including Urdu because it sounds close to Hindi.\n\nIf time is short, skip this slide and say: behaviour labels are simulated because no public dataset pairs phone logs with severity; chat and voice learned from real corpora, and real game chat mattered most.\n\nNUMBERS BEHIND THIS SLIDE: Behaviour: 23,000 training and 5,750 test rows, all simulated (IEEE paper, Results); the generator also mixes in deliberately ambiguous border cases (15% extra, random adjacent labels), so a ceiling is built into the data (ml/retrain_models.py generate_behavior_dataset()). Play-time levels: Gamers & Anxiety survey, 13,464 respondents, 11,731 aged 24 or under, weekly 14.2 ± 4.8, 26.3 ± 6.6 and 50.0 ± 12.8 hours for the three bands (PROJECT_PAPER Methodology, datasets and honesty of data). Chat: general corpus 185,312 rows, 86% Jigsaw Wikipedia comments; CONDA train split; Davidson 24,783 tweets; HASOC 2019 Hindi 4,665 posts, 80% trained in both scripts; 8,000 Hindi Wikipedia sentences in both scripts (same section). Ablation protocol on CONDA_valid: full recipe PR-AUC {chat_prauc} {chat_prauc_ci}; without CONDA {no_conda}; without Davidson {no_davidson}; original general-only recipe {chat_original}. Held out: CONDA validation split, 7,721 lines, 21.5% toxic (PROJECT_PAPER Results, chat); 20% of HASOC, {hindi_heldout_rows} rows; voice tested on unseen speakers, {voice_acc} versus {voice_random_split} on a random split, a leakage gap of {voice_leak_gap} points. Voice: {voice_corpora} corpora, 9,817 clips, {voice_speakers} speakers, {voice_languages} languages (PROJECT_PAPER Methodology, datasets). Survey, validation only: {n_raw} raw, {n_usable} usable, {n_scored} scored.\n\nLIKELY QUESTIONS:\nQ: Why not train behaviour on a real dataset? A: None exists that pairs per-session phone logs with severity labels; we inspected two Kaggle candidates and rejected both, one as synthetic and one because its labels measure engagement, not severity. Kanak has the full dataset audit, and the survey is where our score meets real people.\nQ: Could test rows have leaked into training? A: The chat test split is rebuilt from the trainer's own corpus assembly after duplicate texts were collapsed, CONDA's validation split was never trained on, and voice is tested on unseen speakers. When a random voice split gave {voice_random_split}, we reported the speaker-independent {voice_acc} instead.\nQ: Acted adult emotions are not children playing games. A: Agreed; it is the voice channel's main validation gap, and we state it. On one unseen-speaker split, frozen wav2vec2 speech embeddings reach {voice_emb} where our 36 features reach 0.553, so a small distilled encoder is our next step once it fits the server."
+  }
+]

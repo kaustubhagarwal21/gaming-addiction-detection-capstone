@@ -1,0 +1,241 @@
+[
+  {
+    "order": 700,
+    "id": "timeline_update",
+    "heading": "Timeline – Update on Tasks",
+    "subheading": "The system is complete; the promised genre change landed three weeks late",
+    "presenter": "Kanak",
+    "kind": "table",
+    "seconds": 35,
+    "skip_if_short": false,
+    "table": {
+      "header": [
+        "When (2026)",
+        "Task",
+        "Status"
+      ],
+      "rows": [
+        [
+          "Feb–May",
+          "Phase 2: working prototype of both apps, server and three models",
+          "Done"
+        ],
+        [
+          "29 May–2 Jun",
+          "Deployable system: cloud backend, consent and data deletion, signed apps",
+          "Done"
+        ],
+        [
+          "6–28 Jul",
+          "Consented family pilot, {pilot_days} days",
+          "Done"
+        ],
+        [
+          "Aug",
+          "Adult IGDS9-SF survey, {n_raw} replies (final 25 Aug); release v2.4.0 (18 Aug); IEEE draft",
+          "Done"
+        ],
+        [
+          "13 Oct",
+          "Review 2",
+          "Done"
+        ],
+        [
+          "{genre_removed_on}",
+          "Score version {score_version}: genre weight removed",
+          "**Done, 3 weeks late** (promised 19 Oct–2 Nov)"
+        ],
+        [
+          "Nov",
+          "Department-format report, {report_pp}-page draft",
+          "Drafted; guide's corrections next"
+        ],
+        [
+          "23–27 Nov",
+          "Review 3",
+          "Now"
+        ],
+        [
+          "By 31 Jan 2027",
+          "IEEE submission: COMPSAC 2027, Digital Health symposium",
+          "Planned (Review 2 plan: mid-Nov)"
+        ],
+        [
+          "TBA",
+          "Final report submission and final evaluation",
+          "Date to be announced by the department"
+        ]
+      ],
+      "col_widths_in": [
+        1.7,
+        6.2,
+        4.2
+      ]
+    },
+    "footer": "From 29 May on, dates come from git history; Feb–May from the Phase-2 report.",
+    "notes": "Here is what we finished, and when; dates from May on come from git. Phase 2 gave us a working prototype. By 2 June the deployable system had a cloud backend, consent, data deletion and signed apps. The family pilot ran in July; in August the survey reached {n_raw} replies, version 2.4.0 shipped and the IEEE draft was written. After Review 2, score version {score_version} landed on {genre_removed_on}, three weeks later than promised. The report is drafted, the IEEE paper is due by 31 January, and the department sets the final dates.\n\nNUMBERS BEHIND THIS SLIDE: Git (git log --date=short): 29 May, 846470d, first commit carrying the deployable backend, ChildApp and ParentApp; 30 May, 46bb270 parental consent, privacy policy and data deletion, and 86a4dc4 SHAP explanations; 2 Jun, 8b75c32 signed release APKs; 6 Jul, 64ca21a pilot release (ChildApp 2.3, ParentApp 2.1); family pilot 6–28 Jul, {pilot_days} days; 7 Aug, 79a78f4 survey parser fixed before launch; 18 Aug, 4d2cadf v2.4.0 promoted to Latest (ChildApp 2.4.0-beta3, ParentApp 2.2.0-beta) and 593a86a the IEEE conference-format paper; 25 Aug, ed6f7b6 the survey's late batch folded in: {n_raw} raw, {n_usable} usable, {n_scored} scored; 7 Oct, f1c31e7 Review 2 deck; Review 2 itself on Tue 13 Oct 2026, 3:00 pm, B204 (docs/TEAM_BRIEFING.md); {genre_removed_on}, e9d16c8 score version {score_version}, {backend_tests} backend tests passing; pushed the same day and live on Render since then (the public model card reports score_version {score_version}). The Review 2 plan (tools/build_pes_review2_deck.py) put the genre removal in the weeks of 19 and 26 Oct, the IEEE polish from 26 Oct to 15 Nov, and the IEEE submission from 9 to 22 Nov with 'venue and deadline to be fixed'. COMPSAC 2027 Digital Health deadline: 31 Jan 2027, official (docs/review3_venues.json). Git history starts on 29 May, so the Feb–May row comes from the Phase-2 report.\n\nLIKELY QUESTIONS:\nQ: Why was the genre change three weeks late? A: It took longer than we planned, and we will not dress that up. It shipped as a versioned change, not a one-line edit: a stored score version, a one-time note to parents, 8 new tests and a database migration rehearsed on Postgres 16.\nQ: The Review 2 plan put the IEEE submission in mid-November. Why January? A: At Review 2 the venue was still open. We chose IEEE COMPSAC 2027's Digital Health symposium, whose official deadline is 31 January; Kaustubh explains the choice on the venues slide.\nQ: When are the final submission and the final evaluation? A: The department has not announced them yet. The report draft is ready for the guide's corrections now, so we can meet whatever date is set.\n\nBEFORE PRESENTING: confirm whether Prof. Sawant has seen the report draft; if not yet, reword that status cell."
+  },
+  {
+    "order": 710,
+    "id": "project_report_status",
+    "heading": "Project Report",
+    "subheading": "Department-format report drafted; guide's corrections and plagiarism check next",
+    "presenter": "Kanak",
+    "kind": "twocol",
+    "seconds": 35,
+    "skip_if_short": false,
+    "cols": [
+      {
+        "title": "Drafted: {report_pp} pages, department format",
+        "bullets": [
+          "**Chapters 1–5:** Introduction · Problem Statement · Literature Review · Project Requirements Specification · System Design",
+          "**Chapters 6–9:** Proposed Methodology · Implementation and Pseudocode · Results and Discussion · Conclusion and Future Work",
+          "**Back matter:** References (IEEE style) · Appendix A abbreviations · Appendix B user manual"
+        ]
+      },
+      {
+        "title": "Remaining before final submission",
+        "bullets": [
+          "**Guide's corrections**, then Prof. Shridevi Sawant's approval",
+          "**Plagiarism check** at the PESU library: limit 15%",
+          "**Binding:** hard-bound copy with the plagiarism report",
+          "**Upload:** report, final presentation and user manual to the project repository server"
+        ]
+      }
+    ],
+    "footer": "The report and these slides fill their numbers from one source file.",
+    "notes": "This is our project report in the department's format, and the printed draft is here for the panel. It follows the department's contents page, from introduction and problem statement through design, methodology, implementation with pseudocode and results, to conclusion and future work, with IEEE references, abbreviations and a user manual. The draft is {report_pp} pages, and its numbers come from the same source file as these slides, so the two cannot disagree. Next: Prof. Sawant's corrections and approval, the PESU library plagiarism check, under 15 percent, then binding and upload.\n\nNUMBERS BEHIND THIS SLIDE: Format (docs/templates/REVIEW3_REQUIREMENTS.md, from the department's report guidelines): A4, one side, 1.5 line spacing, 2 cm margins; body 12 pt Times New Roman, justified; chapter titles 18 pt bold, centred; figures and tables numbered by chapter; abstract at most 150 words; front matter of title page, certificate, declaration, acknowledgement, abstract, contents and lists of figures and tables; IEEE references numbered in order of first citation; plagiarism at most 15%, checked only at the PESU library; the final copy hard-bound with a cream outer cover and a plastic cover, plus the plagiarism report; documentation, final presentation and user manual uploaded to the project repository server. Draft length: {report_pp} pages (docs/CAPSTONE_REPORT.pdf). The report and the deck fill every number from tools/project_numbers.py, which reads the committed result files and stops the build on an unknown placeholder; the audited long-form technical report, docs/PROJECT_PAPER.tex, is the source the chapters draw on.\n\nLIKELY QUESTIONS:\nQ: Has the guide approved the report? A: Say exactly where it stands on the day: when Prof. Sawant saw the draft and which of her corrections are done. Never claim an approval she has not given.\nQ: How do you keep the report, the papers and the slides consistent? A: Every number is filled in at build time from tools/project_numbers.py; an unknown number stops the build, and {ml_guards} guards in CI check the papers' headline numbers against the data on every push.\nQ: What does the user manual cover? A: Appendix B: installing both apps, creating the account, consent and permissions on the child's phone, then the parent app's dashboard, alerts and verdicts, nudges, transparency screens, privacy controls and troubleshooting. Vidisha walks through the parent side in the demo.\n\nBEFORE PRESENTING: bring the printed draft, and replace 'drafted' with the real state if Prof. Sawant has already returned corrections."
+  },
+  {
+    "order": 740,
+    "id": "ieee_draft",
+    "heading": "IEEE Draft",
+    "subheading": "IEEE draft complete, updated for score v{score_version}; submitting by January",
+    "presenter": "Kaustubh",
+    "kind": "table",
+    "seconds": 45,
+    "skip_if_short": false,
+    "table": {
+      "header": [
+        "Item",
+        "IEEE draft (docs/IEEE_PAPER.tex)"
+      ],
+      "rows": [
+        [
+          "Title",
+          "Measuring How People Play, Not Just How Long: A Multimodal, Privacy-Conscious Gaming-Risk Monitor for Guardians, with Construct-Validity Evidence"
+        ],
+        [
+          "Format",
+          "IEEEtran two-column conference paper, {ieee_pp} pages, 31 references; anonymous-build switch for double-blind review"
+        ],
+        [
+          "Sections",
+          "Introduction · Related Work · System Architecture · Methodology · Results · Ethics and Limitations · Conclusion"
+        ],
+        [
+          "Claims",
+          "A deployed three-channel monitor, raw audio never kept · each channel tested on held-out data with ablations (behaviour labels simulated) · the score tracks IGDS9-SF, rank correlation {rho} in {n_scored} adults · pattern beats volume by {contrast}, 95% CI {contrast_ci} · two results against us reported"
+        ],
+        [
+          "Status",
+          "**Complete draft, updated 23 Nov 2026**"
+        ],
+        [
+          "Before submission",
+          "Final proofread · ethics statement: say why no ethics-committee review was sought · submit to COMPSAC 2027 Digital Health by 31 Jan 2027"
+        ]
+      ],
+      "col_widths_in": [
+        1.4,
+        6.9
+      ]
+    },
+    "side_page": {
+      "pdf": "docs/IEEE_PAPER.pdf",
+      "page": 1,
+      "caption": "Page 1 of {ieee_pp}, IEEEtran conference template (docs/IEEE_PAPER.pdf)."
+    },
+    "notes": "This is our IEEE paper in the IEEEtran conference template. Its title is the idea: measure how people play, not just how long. It describes the deployed system, tests each channel on held-out data with ablations, and then checks the behaviour score from outside: in {n_scored} adults it tracks the IGDS9-SF questionnaire at a rank correlation of {rho}, and pattern features beat volume features by {contrast}, with an interval that excludes zero. It reports two results against us, and it states that the behaviour labels are simulated and the cohort is adult. The draft is complete at {ieee_pp} pages and was updated on 23 November: it reports score version {score_version} and marks the secondary analyses as exploratory. What remains is a final proofread, one ethics sentence, and submission by 31 January.\n\nNUMBERS BEHIND THIS SLIDE: docs/IEEE_PAPER.tex, {ieee_pp} pages (IEEE_PAPER.log), 31 references (docs/ieee_refs.tex); the anonymous-build switch removes names, affiliation and the repository link. Survey: {n_raw} raw, {n_usable} usable, {n_scored} scored. Primary endpoint, fixed in advance: rank correlation {rho} {rho_ci}. With screen time partialled out: {partial} {partial_ci}. Gain over self-reported hours: {delta} {delta_ci}, ahead in {p_model_better} of resamples, so only suggestive. Pattern {pattern} vs volume {volume}: contrast {contrast} {contrast_ci}, the strong claim. Only {prevalence_k} respondent was in the disordered range, so no sensitivity or specificity. Chat, ablation protocol: PR-AUC {chat_prauc}. Chat, deployed operating point at {alert_threshold}: precision {chat_p_deployed}, recall {chat_r_deployed}. Voice, deployed, unseen speakers: {voice_acc}; a random split shows {voice_random_split}, a {voice_leak_gap}-point leakage gap. Behaviour {beh_acc} is on simulated labels. Accent audit: {clips} clips, {false_alerts} false alerts, word error rate {wer_drav} Dravidian to {wer_tb} Tibeto-Burman. The two results against us: genre p {genre_p} at {genre_power} power; four of five parent-facing reason names did not track their IGDS item (only craving held, {craving}). Updated 23 Nov 2026: the genre text reports score version {score_version} (removed, disclosed to parents); test counts are {total_tests} ({backend_tests} backend, {android_tests} Android) plus {ml_guards} guards; secondary analyses are marked exploratory. Still pending: the Ethics section says there was no ethics-committee review and how consent was shown, but not yet why none was sought.\n\nLIKELY QUESTIONS:\nQ: Did you correct for multiple comparisons? A: No formal correction. The rank correlation {rho} was the one primary endpoint, fixed before data collection; everything else is secondary, and the new sentence labels it exploratory. Among those, the pattern-minus-volume contrast {contrast} {contrast_ci} excludes zero, while the gain over hours {delta} {delta_ci} is only suggestive.\nQ: Doesn't 'construct-validity evidence' overclaim without clinical accuracy? A: The paper claims only that the score moves with an established questionnaire, not diagnostic accuracy. With {prevalence_k} respondent in the disordered range, sensitivity and specificity cannot be computed, and the paper says so.\nQ: Was the survey ethics-approved? A: No. It was anonymous, adults-only and consent-gated, and our guide was notified in writing on 14 Aug 2026 while the form was still open. The paper states that there was no ethics-committee review and never calls that notification an approval.\n\nBEFORE PRESENTING: page 1 of the draft is on this slide, as the department template asks; also keep docs/IEEE_PAPER.pdf open on the laptop in case the panel wants to scroll through it."
+  },
+  {
+    "order": 750,
+    "id": "target_venues",
+    "heading": "List of Targeted Conferences/Journals",
+    "subheading": "Primary target: IEEE COMPSAC 2027 Digital Health, due 31 Jan 2027",
+    "presenter": "Kaustubh",
+    "kind": "table",
+    "seconds": 30,
+    "skip_if_short": false,
+    "table": {
+      "header": [
+        "Venue (all IEEE)",
+        "Deadline",
+        "Role and reason"
+      ],
+      "rows": [
+        [
+          "COMPSAC 2027, Digital Health symposium · Tokyo, 13–16 Jul 2027",
+          "31 Jan 2027 (official); decision 7 Apr",
+          "**Primary.** Asks for mobile health, health analytics and privacy; computing reviewers; our {ieee_pp}-page draft fits"
+        ],
+        [
+          "HealthCom 2027 · London, 1–3 Nov 2027",
+          "8 Jun 2027 (official)",
+          "**Backup.** Deadline falls after COMPSAC's decision, so the paper is never at two venues; e-health focus"
+        ],
+        [
+          "INDICON 2027 · India",
+          "Not yet announced",
+          "**Budget fallback.** Low fees for Indian student authors"
+        ],
+        [
+          "IEEE Access (journal)",
+          "Rolling, no deadline",
+          "**Journal route** for a longer version after a conference acceptance"
+        ],
+        [
+          "EMBC 2027 · ICHI 2027 · BHI 2027",
+          "24 Jan · 1 Feb 2027 (official) · not yet announced",
+          "**Avoid for now.** Health reviewers expect ethics-committee approval, which our survey lacks"
+        ]
+      ],
+      "col_widths_in": [
+        3.6,
+        2.9,
+        5.6
+      ]
+    },
+    "footer": "Deadlines read on official call-for-papers pages on 23 Nov 2026; IEEE allows one venue at a time.",
+    "notes": "Our primary target is IEEE COMPSAC 2027, its Digital Health symposium: its call asks for mobile health, health analytics and privacy, and its computing reviewers judge engineering, not clinical accuracy. It closes on 31 January and decides on 7 April. If rejected, we revise and send it to IEEE HealthCom, which closes on 8 June, so the paper is never under review twice. We avoid EMBC, BHI and ICHI for now: they expect an ethics approval our survey lacks.\n\nNUMBERS BEHIND THIS SLIDE: All from docs/review3_venues.json, checked 23 Nov 2026; a deadline is quoted only where it was read on an official page. COMPSAC 2027: Tokyo, 13–16 Jul 2027; submission 31 Jan 2027, notification 7 Apr, camera-ready 1 Jun (ieeecompsac.computer.org/2027/call-for-papers/); double-blind; full papers up to 10 pages and short papers 6, references included; about a quarter accepted as full papers; 2026 was in person only and the 2027 rule is not yet posted; 2027 fees not yet published. HealthCom 2027: London, 1–3 Nov 2027; submission 8 Jun 2027 on ComSoc's official listing (re-check on the conference site, which blocks automated reading); likely to ask more about the missing ethics review than COMPSAC. INDICON 2027: not yet announced (last year's 31 Aug is a planning hint only); 2025 fee INR 12,000 + 18% GST for an IEEE student member; 4–6 pages, so our draft is at the limit. IEEE Access: rolling; fee USD 2,160, or USD 1,620 with India's 25% discount when every author is at an Indian institution. EMBC 2027: 24 Jan 2027, official and final; 4 + 1 pages, at most 20 references. ICHI 2027: abstract 25 Jan, paper 1 Feb 2027, official. BHI 2027: not yet announced. Also watched, all not yet announced: ICDH, CONECCT, TENCON and CoG 2027.\n\nLIKELY QUESTIONS:\nQ: Why not a clinical venue such as EMBC? A: EMBS conferences require formal ethics-committee approval or a waiver for human-subject data, which our survey does not have, and EMBC's 4-page, 20-reference limit would cut most of the evaluation.\nQ: Why not submit to two venues at once? A: IEEE forbids one paper being under review at two venues. That is why HealthCom is the backup: it closes on 8 June, after COMPSAC's 7 April decision.\nQ: Is COMPSAC realistic for a student paper? A: It is competitive, with about one in four accepted as full papers, and borderline papers may be offered a 6-page short slot, which our {ieee_pp}-page draft already fits. It was in person only in 2026, so we plan for travel to Tokyo and a visa."
+  },
+  {
+    "order": 760,
+    "id": "other_information",
+    "heading": "Any Other Information",
+    "subheading": "Deployed on Render's free plan; parents control consent, export and deletion",
+    "presenter": "Kanak",
+    "kind": "twocol",
+    "seconds": 30,
+    "skip_if_short": true,
+    "cols": [
+      {
+        "title": "Deployment and release",
+        "bullets": [
+          "**Backend:** Docker on Render (free plan, 512 MB) with Neon Postgres; a push to main redeploys it.",
+          "**Apps:** signed APKs sideloaded from GitHub; v2.4.0 is Latest since 18 Aug 2026."
+        ]
+      },
+      {
+        "title": "Privacy commitments, in code",
+        "bullets": [
+          "**Versioned consent:** a new policy version stops scoring until the parent agrees again.",
+          "**Raw audio deleted** right after feature extraction.",
+          "**Parent controls data:** export it as one file or delete it, any time."
+        ]
+      }
+    ],
+    "footer": "Change log, {genre_removed_on}: score version {score_version} drops the genre weight; parents with older scores get one in-app note.",
+    "notes": "A few more facts. The backend runs in Docker on Render's free plan with Neon Postgres; the apps are signed APKs from our GitHub release, version 2.4.0, not the Play Store. Privacy is enforced in code: a new policy version stops scoring until the parent agrees again, raw audio is deleted after feature extraction, and a parent can export or delete a child's data at any time.\n\nIf time is short, skip this slide and say: consent is versioned, raw audio is deleted, and parents can export or delete their child's data.\n\nNUMBERS BEHIND THIS SLIDE: render.yaml: runtime docker, plan free, autoDeploy true, health check /api/health, AUTH_ENFORCE=1; the free server has 512 MB. Release v2.4.0, Latest since 18 Aug 2026 (commit 4d2cadf): ChildApp 2.4.0-beta3 and ParentApp 2.2.0-beta, validated end to end on a real phone; v2.3.11 stays available as the previous stable; Hindi plus English speech-to-text stays off by default because it cost {cpu_dual} of a core and {mem_dual} on the phone. Consent: CONSENT_VERSION in backend/app.py (default 2026-07-30); a session is scored only if the parent's stored consent_version matches; the parent confirms with the family PIN, and the time and version are recorded (PRIVACY.md). Audio: save_voice() deletes each clip after feature extraction; the developer-only KEEP_AUDIO switch is off in production. Export: GET /api/user/export, parent-only, at most 5 per hour, covering exactly what POST /api/user/delete_data erases. Score version {score_version} (commit e9d16c8, {genre_removed_on}): changes the band of {genre_band_shift} of the {pilot_sessions} pilot sessions; the note is an informational alert, never pushed, at most once per child (a partial unique index); {backend_tests} backend tests pass on SQLite, and the migration was rehearsed on Postgres 16.\n\nLIKELY QUESTIONS:\nQ: Will a free tier hold real families? A: It held our pilot, and the models fit in 512 MB by design; the same Docker image runs on a paid plan. Our load test, {load_requests} requests with 0 errors, ran on the development machine, so we do not quote it as cloud throughput.\nQ: What happens to a family's data when they stop? A: In Settings the parent can delete the child's data or remove the child from the family; both call POST /api/user/delete_data and take effect at once.\nQ: Does the child know about the monitoring? A: Yes. The policy is for a parent monitoring their own child with the child's awareness, never covertly; Vidisha covers consent and the transparency screens.\n\nStatus check: score version {score_version} has been live on the server since {genre_removed_on}; nothing to confirm on this slide."
+  }
+]

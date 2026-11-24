@@ -1,0 +1,123 @@
+[
+  {
+    "order": 600,
+    "id": "applicability_domains",
+    "heading": "Applicability of Proposed Methodology in Other Domains",
+    "subheading": "Four domains share our problem: totals miss the harmful pattern",
+    "presenter": "Vidisha",
+    "kind": "table",
+    "seconds": 45,
+    "skip_if_short": false,
+    "table": {
+      "header": [
+        "Domain",
+        "Common problem",
+        "What transfers",
+        "What must change",
+        "Data source"
+      ],
+      "rows": [
+        [
+          "**Phone and social-media overuse**",
+          "Screen-time totals miss compulsive late-night checking.",
+          "Pattern features, calibrated score + reasons, parent verdicts, timing-only capture.",
+          "Watch all apps, not just games.",
+          "StudentLife phone logs; Smartphone Addiction Scale."
+        ],
+        [
+          "**Online gambling**",
+          "Total spend hides harmful patterns like chasing losses.",
+          "Pattern features, calibrated score, questionnaire check.",
+          "Add stake and loss-chasing features; alert the player, not parents.",
+          "bwin betting records; Problem Gambling Severity Index."
+        ],
+        [
+          "**Cyberbullying in Indian student chat**",
+          "English-only filters miss Hinglish and Devanagari abuse.",
+          "Hinglish chat recipe, text + voice fusion, on-device speech-to-text.",
+          "Bullying labels, Kannada and more languages; teacher verdicts.",
+          "HASOC 2019 Hindi-English posts; MACD, five Indian languages."
+        ],
+        [
+          "**Card-fraud alerts**",
+          "Fraud is rare; false-alarm floods get ignored.",
+          "Only the method: calibration, PR-AUC, precision-first alerts, analyst verdicts.",
+          "New features: transaction speed, time of day.",
+          "IEEE-CIS and ULB card-fraud datasets."
+        ]
+      ],
+      "col_widths_in": [
+        1.85,
+        2.45,
+        2.9,
+        2.6,
+        2.3
+      ]
+    },
+    "footer": "The method transfers; the trained models do not.",
+    "notes": "In each of these domains, a simple total of hours, money or keywords misses the harmful pattern, and floods of false alarms make people stop listening. Rows run from most to least transferable. Phone and social-media overuse reuses almost everything: our features need only app start and stop times, so we would watch all apps, record timings only, and check scores against the Smartphone Addiction Scale. Gambling reuses the pattern features and the questionnaire check, but alerts the adult player, never a parent. For cyberbullying in Indian student chat, our Hinglish chat recipe and on-device speech-to-text carry over. For card fraud, only the evaluation method does. Every row retrains its models on its own data.\n\nNUMBERS BEHIND THIS SLIDE: Why pattern features: in our survey the pattern-minus-volume contrast is {contrast} {contrast_ci}, which excludes zero ({n_scored} scored adults). Phone row, a check already run (no key; PROJECT_PAPER.tex, Future Work, item 'Feedback-driven retraining, stage two'): on open StudentLife data, students' late-night share of phone activity has median 0.32 (IQR 0.29 to 0.35, 90th percentile 0.36), so our heavy-use prior of 0.60 marks genuinely extreme night use. Chat row: HASOC 2019 is already in our chat training data; on its {hindi_heldout_rows}-row held-out split at threshold {alert_threshold}, precision is {hindi_p_deva} in Devanagari and {hindi_p_roman} in romanised Hindi. The chat recipe means word and character n-grams, a keyword list, and Hindi in both scripts. Sources (docs/review2_content.json references and references_domain): StudentLife (Wang et al., UbiComp 2014); Smartphone Addiction Scale, short version (Kwon et al., PLoS ONE 2013); Bergen Social Media Addiction Scale, an alternative check (Andreassen et al., Psychology of Addictive Behaviors 2016); bwin records from the Transparency Project (LaBrie et al., Journal of Gambling Studies 2007); Problem Gambling Severity Index (Ferris and Wynne, 2001); HASOC 2019 (Mandl et al., FIRE 2019); MACD, ShareChat comments in Hindi, Kannada, Malayalam, Tamil and Telugu (Gupta et al., NeurIPS 2022); IEEE-CIS Fraud Detection (Kaggle, 2019); ULB card-fraud data (Dal Pozzolo et al., IEEE SSCI 2015).\n\nLIKELY QUESTIONS:\nQ: Isn't online money gaming banned in India now? A: Yes, the Promotion and Regulation of Online Gaming Act, 2025 bans it, so this row is for regulated markets outside India. We keep it because ICD-11 lists gambling disorder beside gaming disorder, and its harm also shows in patterns.\nQ: Can you really reuse your features for phone overuse? A: The computation, yes: every feature uses only session start and stop times, and we already ran our late-night feature on StudentLife. The open copy we used has only coarse lock events, so the other features need finer logs, which Android's UsageStats, the source our ChildApp already reads, provides.\nQ: Would your trained chat model work on student chat as it is? A: No. It learned gaming and social-media text, while bullying is targeted and repeated, so it needs its own labels and a re-tuned alert threshold. Kanak can cover the training data."
+  },
+  {
+    "order": 601,
+    "id": "applicability_benefits_limits",
+    "heading": "Applicability of Proposed Methodology in Other Domains",
+    "subheading": "Real benefits, but each domain must earn its own evidence",
+    "presenter": "Vidisha",
+    "kind": "twocol",
+    "seconds": 45,
+    "skip_if_short": true,
+    "cols": [
+      {
+        "title": "Benefits and comparison",
+        "bullets": [
+          "**How, not just how long:** in our survey, patterns beat volume, {contrast} {contrast_ci}.",
+          "**Calibrated, with reasons:** a stated 70% chance comes true about 70% of the time.",
+          "**Few false alarms:** alert only when very sure.",
+          "**Parental apps** count hours or keywords; no published error rates."
+        ]
+      },
+      {
+        "title": "Feasibility, limits, future",
+        "bullets": [
+          "**Feasible** where timed logs and a standard questionnaire exist.",
+          "**Models do not transfer:** without gaming chat, PR-AUC fell from {chat_prauc} to {no_conda} (ablation).",
+          "**Each new group** needs consent, ethics review, own validation.",
+          "**Future:** a reusable toolkit, piloted one domain at a time."
+        ]
+      }
+    ],
+    "notes": "Three benefits travel with the method. First, it reads how people behave, not just how long: in our survey, pattern features tracked the questionnaire better than volume features, and that gap's interval stays above zero. Second, calibrated probabilities with reasons: when the model says seventy percent, it is right about seventy percent of the time. Third, alerts fire only when the model is very sure. Parental apps count hours or flag keywords and publish no error rates, so we compare capabilities, not accuracy. Our trained models do not transfer: without real gaming chat, chat PR-AUC fell from {chat_prauc} to {no_conda}. Every new group needs consent, ethics review and its own validation. Future scope: a reusable toolkit, piloted one domain at a time.\n\nIf time is short, skip this slide and say: the method transfers, the trained models do not: without real gaming chat our chat PR-AUC fell from {chat_prauc} to {no_conda}, so each new domain needs its own data, consent, ethics review and validation.\n\nNUMBERS BEHIND THIS SLIDE: Pattern-minus-volume contrast {contrast} {contrast_ci}, pattern ahead in {p_pattern_better} of resamples; pattern composite {pattern} {pattern_ci}, volume composite {volume} {volume_ci}. Calibration: the behaviour model's expected calibration error fell from {beh_ece_before} to {beh_ece_after} with isotonic calibration. Chat has two views that must never be mixed: at the deployed alert threshold {alert_threshold} on held-out real gaming chat, precision {chat_p_deployed} and recall {chat_r_deployed}; under the ablation protocol on CONDA_valid, PR-AUC {chat_prauc} with the CONDA gaming-chat corpus and {no_conda} without it. Few false alarms on speech: {false_alerts} false alerts in {speech_hours} hours of benign accented speech ({clips} clips, {speakers} speakers). Phone cost of the default capture path: {cpu_default} of one core and {mem_default} of memory.\n\nLIKELY QUESTIONS:\nQ: Does your system beat Bark or Google Family Link? A: We cannot claim that: they publish neither models nor error rates, so we compare capabilities. Our one head-to-head is against self-reported screen time in the survey, {rho} versus {rho_hours}, a gain of {delta} {delta_ci} that grazes zero, so it is suggestive; Kaustubh has the details.\nQ: Doesn't India's DPDP Act 2023 restrict monitoring of children? A: Its children's-data section requires verifiable parental consent and restricts behavioural monitoring of children, apart from exemptions the government can prescribe. We have had no legal review and claim no compliance; our pilot was consented and within our own extended family, and any wider use needs that review first.\nQ: What would the toolkit contain? A: The parts that are not about games: features from timed sessions (backend/behavior_features.py), fusion over the channels present with the observation-mode cap (backend/app.py: run_prediction()), isotonic calibration, SHAP reasons, meaning which inputs pushed a score up (backend/app.py: _shap_explain_behavior()), the verdict-driven threshold tuner (ml/tune_from_feedback.py) and the survey-scoring script (ml/eval_behavior_survey.py)."
+  },
+  {
+    "order": 720,
+    "id": "conclusion_future_work",
+    "heading": "Conclusion and Future Work",
+    "subheading": "Built, deployed and externally checked; what remains is data",
+    "presenter": "Vidisha",
+    "kind": "twocol",
+    "seconds": 45,
+    "skip_if_short": false,
+    "cols": [
+      {
+        "title": "Key points",
+        "bullets": [
+          "**Built:** child app, three-model server, parent app; {pilot_days}-day consented family pilot.",
+          "**Shown:** score tracks IGDS9-SF, a standard gaming-disorder questionnaire (rank correlation {rho}, {n_scored} adults).",
+          "**Not shown:** clinical cut-off accuracy, results on children; {beh_acc} accuracy is on simulated labels.",
+          "**Changed by evidence:** genre weight removed (score version {score_version})."
+        ]
+      },
+      {
+        "title": "Future work",
+        "bullets": [
+          "Guardian-answered IGDS9-SF linked to measured play, after ethics approval.",
+          "Fusion weights fitted from parents' verdicts.",
+          "Genre study big enough to decide: about 400 people.",
+          "Browser games: a disclosed blind spot today.",
+          "Voice: speech embeddings, {voice_emb} vs our 0.553 on the same speakers, made small enough for the server."
+        ]
+      }
+    ],
+    "notes": "To conclude. We built and deployed the whole screening system and ran a consented {pilot_days}-day family pilot. Against an outside standard, our score tracked the IGDS9-SF questionnaire in {n_scored} adult gamers, a moderate rank correlation of {rho}, and pattern features beat volume features. We do not claim clinical cut-off accuracy or results on children, and the {beh_acc} accuracy is on simulated labels. Evidence changed the product: the survey did not support the genre weight, so score version {score_version} dropped it. Next: guardian-answered questionnaires linked to measured play once ethics approval exists, fusion weights fitted from parents' verdicts, a larger genre study, the browser-games boundary, and a lighter voice model. What remains is data, not architecture.\n\nNUMBERS BEHIND THIS SLIDE: Survey (anonymous adults, IGDS9-SF): {n_raw} raw, {n_usable} usable, {n_scored} scored; rank correlation {rho} {rho_ci}; with screen time partialled out {partial} {partial_ci}; pattern-minus-volume contrast {contrast} {contrast_ci}, which excludes zero; gain over screen-time hours {delta} {delta_ci}, which grazes zero, so suggestive; only {prevalence_k} respondent in the disordered range, so no sensitivity or specificity. Behaviour accuracy {beh_acc} (95% CI {beh_acc_ci}) on simulated labels grounded on two real surveys. Genre: p {genre_p} at {genre_power} power; removal changes the band of {genre_band_shift} of the {pilot_sessions} pilot sessions; removed {genre_removed_on} as score version {score_version}, with a one-time in-app note to each affected parent (backend/app.py: _maybe_insert_score_v2_notice()). Tests: {total_tests} automated tests ({backend_tests} backend, {android_tests} Android) plus {ml_guards} research-integrity guards. Voice, like for like on one unseen-speaker split without augmentation: frozen speech embeddings (wav2vec2) {voice_emb} against 0.553 for our 36 features (no key; docs/voice_headroom.json; PROJECT_PAPER.tex, Results, voice model, 'Representation headroom'); not served because of the 512 MB server budget. The deployed model's {voice_acc} comes from its own split with augmentation, so never set it beside {voice_emb}. Fusion sensitivity on the pilot: changing the weights flips a median {weight_flip_median} and at worst {weight_flip_max} of bands; thresholds flip up to {threshold_flip_max}, so the verdict-driven threshold tuner (ml/tune_from_feedback.py) comes before weight fitting. No key, from PROJECT_PAPER.tex: about 400 scoreable respondents give the genre test 90% power (Results, External construct validation, Result 5); about 157 usable responses are needed for caseness metrics at the 6.4% base rate (same section, 'What this study does not establish').\n\nLIKELY QUESTIONS:\nQ: Why remove the genre weight if the test was only underpowered? A: The validated computation never included it, so the burden of proof sits on keeping it; now a session scored on behaviour alone gets exactly the validated score, while chat and voice weights remain priors. It moved {genre_band_shift} of pilot session bands, so version {score_version} carries a one-time note to parents; Kaustubh has the statistics.\nQ: What is the single most important next step? A: The per-child cohort: guardians answer IGDS9-SF about their child, linked to the app's measured play. It is the only route to accuracy at the clinical cut-off and to children, and it needs ethics approval first.\nQ: Can a child dodge monitoring by playing in a browser? A: Yes, and we say so: detection works on installed apps, and closing the gap would need screen or URL surveillance, which we refuse. A future nudge when screen time is high but no game is detected could flag it; Khushee can show the capture side."
+  }
+]

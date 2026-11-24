@@ -11,6 +11,207 @@ Primary evidence files:
 - `docs/survey_validation.json`, `docs/survey_extras.json` — the external IGDS9-SF
   construct-validity study (written by `ml/eval_behavior_survey.py`, `ml/eval_survey_extras.py`)
 - `docs/PROJECT_PAPER.tex` §4 — dataset audit, evaluation methodology, model selection
+- `docs/genre_removal.json` — the score-version-2 record: both formulas, the pilot band shift,
+  the parent note, the tests, the migration rehearsal and the deployment
+- `docs/hparam_behaviour.json`, `docs/hparam_chat.json`, `docs/hparam_voice.json` — the
+  hyperparameter studies (written by `ml/hparam_behaviour.py`, `ml/hparam_chat.py`, `ml/hparam_voice.py`)
+- `docs/GEMINI_NANO_FEASIBILITY.md` — the Gemini Nano decision record (Google's pages checked 23 Nov 2026)
+- `docs/test_counts.json` (written by `tools/count_tests.py`) and `docs/review3_venues.json` (target venues)
+- `tools/project_numbers.py` — the single source of every number the Review 3 deck and the
+  report print (`python tools/project_numbers.py` lists them)
+
+---
+
+## Review 3 — questions this review invites
+
+Review 3 runs 23–27 Nov 2026; our slot: **[slot: fill in]**. Everyone presents and is graded individually against four criteria (`docs/templates/REVIEW3_REQUIREMENTS.md`): (1) demonstration — UI, module-wise functionality, integration; (2) results — graphs, tables, comparative analysis, limitations, implications; (3) presentation and viva; (4) depth — ablation study, interpretation of code, system architecture, analysis of results. The department requires the PPT and the complete report draft to be shown to Prof. Shridevi Sawant and approved *before* the review: [team: date shown, her corrections, approval]. Numbers in this section match `tools/project_numbers.py` wherever it carries them, and the rest come from the evidence files above; the one figure newer than `project_numbers.py` (the 23 Nov load-test re-run) is labelled where it appears. Slide numbers refer to the current 42-slide build. Owners: **Kaustubh** — ML models and validation · **Khushee** — ChildApp, capture, anti-tamper, device numbers; drives the demo · **Kanak** — backend, deployment, fusion/alerting, datasets, CI/testing · **Vidisha** — ParentApp, ethics/privacy, scope, applicability; narrates the ParentApp. If a question lands on you outside your module, give the one-line answer yourself, then offer the owner for detail.
+
+### Completeness and the demo
+
+**Q (owner: Kanak; demo: Khushee drives, Vidisha narrates): Is the project complete?**
+The system is: every module is built, deployed and integrated, and the demo (slide 17) runs the whole loop live on two real phones and the cloud server. Khushee opens Roblox and the session starts within ~10 s; she types and speaks; she closes it and the session ends ~25 s later; Vidisha shows the score, its reasons and the alert in the ParentApp, rates the alert, and sends a nudge that reaches the child in ~12 s. Built modules: ChildApp — game detection, chat capture through our keyboard and the accessibility path, voice with on-device Vosk, consent, tamper heartbeats, Mira, the daily check-in; backend — three models, fusion, alerting, drift monitor, model card, export and deletion; ParentApp — dashboard, reasons, alerts with ratings, chat and emotion views, nudges, weekly PDF. Documents: the department-format report is drafted (140 pages) and the IEEE draft is complete (6 pages). Name the unfinished parts before anyone asks: the child validation study (not started — it needs ethics-committee approval), the IEEE submission (by 31 Jan 2027), the guide's corrections and the PESU plagiarism check on the report, and a Gemini Nano benchmark (no supported phone). The one-line version: **the system is finished; the evidence about children is not.** Demo hygiene: the history is seeded demo data and today's session is live; wake the server and reseed the demo family that morning (DEMO_RUNBOOK §2); backup video [team: confirm it is recorded].
+
+### Test plan and strategy
+
+**Q (owner: Kanak; Khushee for the phone and fairness rows): What is your test plan and strategy?**
+(slides 18–21) Testing grew in layers, dated from git: Phase 2 (Feb–May) scored the models on held-out data with a manual end-to-end checklist; from 29 May the backend suite was rebuilt on a throwaway database, with a live-cloud check, a production-mode sweep and a real-phone checklist; from 6 Jul CI ran on every push; August added fuzzing, security scans, the survey-parser test, the accent audit and the phone drill; late August the paper-vs-data guards joined CI; November added the score-v2 tests. Today CI runs **300 automated tests — 190 backend + 110 Android — plus 7 research-integrity guards** on every push (backend: 190 pass on SQLite; on Postgres 16, 189 pass and the one SQLite-only migration test is skipped).
+- **Functional, and why each:** *unit* (pytest, JUnit 4) — exact and fast, so every push runs them; *integration* through the real API on a throwaway database, on SQLite **and** Postgres 16 — production runs Postgres, and SQL that passes on one can fail on the other; *contract* — API spec vs routes, survey form vs parser, both apps' risk labels — parts built separately must not drift apart; *system* in production mode (`functional_sweep.py`, `AUTH_ENFORCE=1`, real tokens; 89/89 on 23 Nov); *end-to-end* against the live deployment (`cloud_e2e.py`, 25 checks).
+- **Non-functional:** performance — 288 mixed requests from 24 threads, 0 server errors; security — Schemathesis fuzzing of all 53 documented API operations, bandit, pip-audit, detect-secrets, MobSF on both signed APKs (one real bug, a login checked too late, and six known vulnerabilities fixed; no exploitable high-severity issue); phone cost — Galaxy M52, two 15-minute Roblox sessions; phone function — every screen and the tamper drills by hand; accent fairness — 6,656 Svarah clips through the served speech-to-text and chat scorer; research integrity — the 7 guards fail CI if a paper's survey number drifts from the data.
+- **Environment and roles:** laptop (SQLite) → GitHub Actions (SQLite job, Postgres 16 service job, Android Lint + JVM tests) → Render + Neon cloud → real phones. Kanak: backend suites, fuzzing, load test, CI. Khushee: ChildApp tests, phone and tamper drills. Vidisha: ParentApp tests; consent, export and deletion checks. Kaustubh: model evaluation, ablations, guards.
+- **Benefits:** each layer caught what the others could not — the fuzzer found the mark-read authorization-order bug, real phones found 3 bugs the API tests missed (one a launch crash), the parser test caught a pre-launch defect that would have dropped every survey response, and the drift monitor's 24 Aug false negative became a regression test.
+- **Drawbacks, named:** no automated UI tests on a phone; the load test ran on a laptop, not the live server; no human penetration test; behaviour labels are simulated and the external check used adults; statement coverage was last measured on the earlier 181-test suite (75% overall, 80% of served code).
+- **Tools, all open-source:** pytest, JUnit 4 with Gradle, GitHub Actions, Docker (Postgres 16), Schemathesis, bandit, pip-audit, detect-secrets, MobSF, adb for the phone drill.
+
+### Interpreting the code
+
+Each owner opens the file at the line given and walks it top to bottom: say the two-line summary first, then the walk, then expect the follow-up. Line numbers are at HEAD (`e7b9b21`).
+
+**1. `run_prediction(session_id, explain)` — `backend/app.py:2289` (owner: Kanak).**
+*Summary:* scores the channels this session actually captured — behaviour from the calibrated forest, chat as the highest stored per-message score, voice from the stored emotions — and fuses them as the 40/30/30 mean renormalised over the channels present, which since score version 2 is the whole score. It bands at 0.33/0.67, never shows High concern before 3 scored sessions, and stores the row with `score_version` 2.
+*Walk:* count prior scored sessions (2299–2308) → latest behaviour row; a zero-second session is not evidence (2310–2318) → typed chat only — `voice_stt` is excluded so one utterance is not counted twice (2320–2328) → behaviour: scaler → calibrated forest → `0.5·P(Some) + 1.0·P(High)`, SHAP only when `explain` (2339–2356) → chat: `max` of the stored scores, re-scoring only legacy rows (2367–2381) → voice: model probabilities × `VOICE_RISK` when audio exists, otherwise stored emotion × intensity — the production path, because audio is deleted (2384–2417) → components, renormalised mean, band (2432–2446) → observation-mode cap (2449–2450) → INSERT with modality flags and `score_version` (2474–2489) → `_maybe_insert_score_v2_notice` in its own short transaction, so the note can never cost a score (2490–2493).
+*Follow-ups:* "Why max for chat?" — on 707 real CONDA conversations it beat scoring the concatenated text and mean/top-3, and a blob dilutes one toxic line among clean ones (comment at 2359). "Nothing captured?" — score `None`, band unknown; no fake neutral. It runs from `_finalize_session_once` (4131) after `end_session` (4566); one database claim covers features → score → alert, so a retried end never alerts twice. The internal band keys are legacy strings; everything served passes through `RISK_DISPLAY` as Low / Some / High concern.
+
+**2. `compute_behavioral_features(session_id)` — `backend/app.py:2118` (owner: Kaustubh).**
+*Summary:* builds the 10 objective features for one session as of its own end, from the sessions that began in the 30 days before it (at most 200), so a backfilled session is reproducible and later play cannot leak in. It then appends the 10 derived proxies (`derive_psychometrics`), which parents see as explanations and the model never sees.
+*Walk:* reference clock = the session's end (or now), clamped (2135–2141) → history: same child, began in the 30 days before this session (2142–2147) → local-day shift (2148) → `known_duration` clamps each past session to the reference time (2157–2168) → daily and weekly hours, sessions per day, average duration (2170–2187) → late-night ratio, days played, longest streak, binge sessions ≥ 3 h (2189–2208) → breaks between sessions, including the one just before this session (2210–2236) → rapid-relogin ratio = share of breaks under 15 min (2237–2238) → objective dict + proxies (2240–2252). Volume = daily hours, weekly hours, sessions per day, average duration, days played; pattern = late-night ratio, longest streak, binge sessions, average break, rapid relogin.
+*Follow-ups:* "Why the break right before this session?" — restarting minutes after stopping is exactly the rapid-relogin pattern, and pairing only past sessions missed it (comment at 2223). "Why split pattern from volume?" — the survey found the five pattern features carrying the signal: composite contrast +0.199 [+0.019, +0.380].
+
+**3. Chat scoring and the alert path — `save_chat(sid)` `backend/app.py:5157`, with `_ml_toxicity` (2048) and `fuse_toxicity` (2062) (owner: Kaustubh; Kanak for the alert rows).**
+*Summary:* each line is scored the moment it arrives: the keyword lexicon and the calibrated TF-IDF + logistic-regression probability are fused by noisy-OR, `1 − (1 − kw)(1 − ml)`, and the score is stored per message. A toxicity alert fires only at ≥ 0.95 (high severity at ≥ 0.97), and three lines at ≥ 0.6 in one session raise one streak alert instead.
+*Walk:* `guard_session` + current-consent check (5159–5162) → validation: a non-empty string, ≤ 2,000 characters, source ∈ {keyboard, ime_keystroke, ocr, voice_stt} (5167–5180) → score (5183–5185) → 8-second de-dupe, because our keyboard and the accessibility path can both see one line (5189–5196) → INSERT with the score (5197–5199) → at ≥ `CHAT_ALERT_T`: `_insert_alert(…, 'toxicity', …)` plus at most one pending nudge to the child (5203–5219) → at ≥ `CHAT_STREAK_BAR`: count flagged lines; at 3, `_insert_toxicity_streak_once` (5225–5236) → a line that arrives after the session closed queues the durable late re-score (5242–5253).
+*Follow-ups:* "Why noisy-OR, not max?" — two moderate, independent signals are stronger evidence than either; the result never falls below the larger one and equals a lone signal (docstring at 2062). The thresholds are checked at start-up, `0 ≤ CHAT_STREAK_BAR ≤ CHAT_ALERT_T ≤ CHAT_ALERT_HIGH_T ≤ 1` (820). Spoken lines (`voice_stt`) can alert here but are left out of the session's chat score.
+
+**4. The voice pipeline — ChildApp `VoiceRecorderService` → `save_voice(sid)` `backend/app.py:5302` → `analyse_audio` (1955) → `fuse_emotion` (2083) (owner: Khushee; Kaustubh for the model).**
+*Summary:* the phone records 16 kHz mono only while the session's game is in front; Vosk transcribes on the phone (the text goes to `/chat` as `voice_stt`) and a 10-s WAV is uploaded. The server stores a clip with too little speech as *missing*, not neutral, turns the rest into 36 acoustic features → HistGradientBoosting → four emotion probabilities, fuses tone (arousal) with the last 20 s of words (valence), keeps the label and probabilities, and deletes the audio.
+*Walk:* guard + consent (5304–5307) → 2 MB cap, collision-proof file name (5308–5331) → `analyse_audio`: features → model probabilities, or `None` for a rejected clip (1955–1982) → `capture_valid` (5339) → fuse with recent `voice_stt` words: lexical valence + the trained toxicity score (5344–5361) → delete the WAV; `KEEP_AUDIO` is "0" in `render.yaml` (5362–5372) → INSERT into `voice_events` with the probabilities and `capture_valid` (5406–5410) → re-score at most every 8 s, or queue a late re-score if the session already closed (5428–5440).
+*Follow-ups:* "Why fuse words at all?" — the acoustic model separates arousal, not valence: loud-but-calm speech read as angry, and a child's naturally high pitch can read as high arousal (comment at 1985). Deployed accuracy 0.574 on unseen speakers.
+
+**5. ChildApp session auto-start and auto-end — `PassiveMonitorService.checkForegroundGame()` in `android/ChildApp/app/src/main/java/com/pes/gamingdetector/services/PassiveMonitorService.kt:523`, with `performAutoStart` (735), `launchAutoEnd` (829), `performAutoEnd` (853) (owner: Khushee).**
+*Summary:* every 5 s while the phone is in use (30 s when it is locked with no session) the service reads the foreground app. With no session it starts one when the phone is unlocked and the foreground app is a game; during a session it ends it after 20 s away from the game (2 min inside a sign-in, purchase or ad flow the game opened), or at once if the child switches to another game, counting play only up to the moment it stopped.
+*Walk:* skip while an end is in flight (526) → retry a failed end with the same stored stop time (531–546) → bound a start whose request is still in flight (548–555) → close an offline bout once its game leaves the foreground (557–562) → re-adopt an orphaned session after a service restart (564–581) → maintenance mode: still playing resets the grace timer; another game ends the session now; anything else starts the grace, then `launchAutoEnd(gameLeftAtEpochMs)` (583–622) → detection mode: unlocked + `GameDetector.isGame` + no start in flight → `startingSession` guard → `performAutoStart` (624–651).
+*Follow-ups:* measured auto-start ~10 s and auto-end ~25 s — the 20 s grace plus at most one 5 s poll. "Why the unlock check?" — otherwise a session would start while the game is the last app behind the lock screen (comment at 625). The phone sends `ended_seconds_ago`, so its clock never matters.
+
+**6. The authentication guard — `guard(target_uid)` `backend/app.py:357`, with `guard_session` (428) and `deny_non_parent` (413) (owner: Kanak).**
+*Summary:* it is a guard function, not a decorator: every protected handler begins `deny = guard(uid)` / `if deny: return deny`. `guard()` verifies the HMAC-signed bearer token (itsdangerous, 30-day TTL), rejects tokens minted before a credential change, authorises the target child through the token's allowed list or a live family-membership check, and treats a deleted account as signed out; production runs `AUTH_ENFORCE=1`, and shadow mode only logs.
+*Walk:* `_read_token` (255): no bearer → `None`; expired or bad signature → 401 (366–374) → credential version must be current (`_token_auth_version_current`, 293), else 401 (376–382) → no token → 401 (384–385) → target id must be a positive integer, else 400 (387–391) → in `allowed`, or `_parent_family_allows` (323), else 403 (392–401) → the account still exists (`_user_exists`, 275), else 401 (402–409). `guard_session` looks up the session's owner first (428–435); `deny_non_parent` adds the role check, because a child's own token passes `guard()` for its own id (413–425).
+*Follow-ups:* "Why does `_user_exists` fail open while `_parent_family_allows` fails closed?" — the existence probe only detects deleted accounts, and a database hiccup must not lock everyone out; a database error must never *broaden* access. "Why not a decorator?" — the target id comes from a different place in each route (URL, body, or a session's owner), so the check is the explicit first line of each handler.
+
+**7. ParentApp alert triage — `AlertTriage` and `NotificationRouting.channelFor` in `android/ParentApp/app/src/main/java/com/pes/parentmonitor/util/` (owner: Vidisha).**
+*Summary:* pure rules with JVM unit tests: a per-child high-water mark picks the new unread alerts, a burst becomes one notification showing the worst severity and the count, and only model assessments (`risk`, `risk_revision`, `toxicity`, `toxicity_streak`) ask the parent "Was this accurate?". Routing sends informational and low-severity events — the score-v2 `score_update` note included — to the quiet Activity channel, and high severity to the urgent one.
+*Walk:* `severityRank` → `newAlertsSince` (per-child mark — the sibling bug) → `worstOf` → `notificationTitle` (carries the count) → `isFeedbackEligible` (facts such as login, offline or tamper are not rateable) → `channelFor` (the event type wins over a malformed severity) → `belongsToFamily` (a push for another family is dropped, failing closed; polling is the fallback).
+
+### The architecture
+
+**Q (owner: Kanak): Explain the architecture in 60 seconds.**
+(slides 6–7) Three tiers, and the two apps meet only at the server. **ChildApp** (Kotlin, the child's phone): a foreground service checks the foreground app every 5 s, detects installed games itself and opens and closes sessions; chat comes from our Wellbeing Keyboard and the accessibility path; the recorder runs only while the game is in front, Vosk transcribes on the phone and 10-s clips upload; a heartbeat every 3 min feeds the tamper watchdog; nothing is captured without current consent. **Backend** (Flask + gunicorn on Render's free 512 MB tier, Neon Postgres 16; SQLite locally): every upload passes a token check and a consent check; each chat line is scored on arrival (TF-IDF logistic regression + lexicon, noisy-OR, alert at 0.95); each clip becomes 36 features, then an emotion, and the audio is deleted; at session end the 10 behaviour features feed the calibrated forest, and `run_prediction` fuses 40/30/30 over the channels present — score version 2, no genre factor — bands at 0.33/0.67 and writes the alert. **ParentApp** (Kotlin, the parent's phone): polls alerts every 25 s plus data-only push, shows the score with its SHAP reasons, lets the parent rate alerts (ratings become threshold *recommendations* a human applies), sends nudges, builds the weekly PDF, and exports or deletes the family's data. Around it: CI on every push, a weekly drift check, and a model card at `/api/model_card`.
+
+### Ablations and hyperparameters
+
+**Q (owner: Kaustubh): Walk us through every ablation row. What does each one mean?**
+(slides 24–25) Protocol (`ml/ablation_studies.py` → `docs/ablation_results.json`): one part removed per row, the model retrained, the same held-out set, bootstrap 95% CIs over 1,000 resamples.
+- **Behaviour** (accuracy, held-out **simulated** labels): screen-time hours only 70.2% — the baseline commercial tools ship, and the only row with errors two bands apart (7); volume features only 87.1%; pattern features only 90.2%; the deployed 10 features 91.6% [0.909, 0.923]; all 20 including the derived proxies 91.9% — overlapping intervals, so the proxies add nothing and would make SHAP circular. Pattern beating volume here proves little, because the labels were simulated from the same priors the features encode; the survey's pattern-minus-volume contrast (+0.199 [+0.019, +0.380]) is the external version.
+- **Chat** (PR-AUC on the CONDA validation split, *ablation protocol*; the full recipe reads P 0.965 / R 0.363 at 0.95 there — not the deployed operating point): full recipe 0.825 [0.807, 0.841]; − CONDA 0.511, the largest single effect, back to our first general-only model's 0.516 — in-domain data outweighs every other part; − Davidson 0.794, and alert precision drops to 0.895, below the 0.95 bar — slang coverage; − char_wb n-grams 0.794 — misspellings and obfuscation; − keyword list 0.814, small in PR-AUC but alert recall falls 0.363 → 0.278 and MCC 0.541 → 0.472. Three rows score slightly *higher* and are kept on purpose: − calibration 0.837 (isotonic steps coarsen the ranking, but without calibration 0.95 stops meaning about 95 in 100), − HASOC Hindi 0.832 and − clean-Hindi Wikipedia 0.835 (inside the intervals on English-dominant CONDA; their value shows on the 933-row Hindi hold-out, alert precision 0.968 Devanagari and 0.958 romanised).
+- **Voice** (accuracy, unseen speakers, 4 classes, chance 0.25; the *ablation* view, not the deployed 0.574): full recipe 0.562 [0.540, 0.584]; 17-feature prefix 0.499 — the 36 features are the lever; English-only corpora 0.546 — slightly worse, intervals overlapping; no augmentation 0.566 — inside the interval, a null we report.
+- **Fused score** (production pilot, v1 scores): behaviour alone matches the full band in only 67.7% of 130 sessions, and all of the change comes from dropping voice (dropping chat changed no band) — the extra channels change what parents see.
+What it adds up to: accuracy came from data and features; the hyperparameter studies below show tuning moved little.
+
+**Q (owner: Kaustubh): Did you tune the hyperparameters?**
+(slide 26) Yes, for all three models, under a protocol that keeps every test set clean. Each grid was searched on training data only — 120 random-forest settings for behaviour (5-fold stratified CV), 14 logistic-regression settings for chat (a validation slice of the training corpora whose duplicates are all removed from training) and 54 gradient-boosting settings for voice (folds grouped by speaker) — 188 in all. Each study first retrained the deployed setting and reproduced the ablation numbers (behaviour 0.9160, chat 0.8246, voice 0.5622), so every comparison is like for like. Each test set was then scored exactly once for two settings, the deployed one and the search winner, with a paired bootstrap of the difference over 1,000 resamples. The hand-set values sit in the middle of their grids (rank 69 of 120, 8 of 14 and 29 of 54). Only behaviour shows a measurable test gain, +0.0113 [+0.0063, +0.0165] accuracy, and it is measured on simulated labels.
+
+**Q (owner: Kaustubh): What did each search find?**
+**Behaviour:** CV macro-F1 0.9057–0.9291, with tree depth the main lever (it moves the CV mean by 0.0155; every other setting by at most 0.0041); the deployed setting (200 trees, depth 6, min leaf 20) scores 0.9221; the winner (200 trees, unlimited depth, min leaf 1) adds +0.0113 [+0.0063, +0.0165] test accuracy on 5,750 rows, ahead in 100.0% of resamples — but on real people it does not carry over: scored exactly like the served model on the 103 IGDS9-SF respondents, the winner correlates ρ 0.295 [0.115, 0.456] against the deployed 0.317 [0.137, 0.478], a paired difference of −0.022 [−0.073, +0.027]. **Chat:** validation PR-AUC 0.6751–0.7483 across the 14 settings, C alone moving it by 0.0726; the validation pick, C = 8, is *worse* on held-out gaming chat (7,721 lines): −0.0100 [−0.0167, −0.0035]; at the 0.95 threshold it reads P 0.969 / R 0.336 against the deployed C = 1's 0.965 / 0.363, both under the ablation protocol — it gives up recall. Why the pick misled: only 2,549 of the 35,546 validation texts (7%) were gaming chat; selected on 2,427 gaming-chat texts from CONDA_train alone, the deployed C = 1 ranks 1 of 14 and C = 8 ranks 11. **Voice:** CV macro-F1 0.5402–0.5612; no setting moves it by more than 0.0105, below the CV standard deviation of 0.0180; the winner changes test accuracy on 1,880 clips from 31 unseen speakers by +0.0021 [−0.0117, +0.0154], ahead in only 62.7% of resamples — no detectable gain.
+
+**Q (owner: Kaustubh): Why did you not run a grid search earlier?**
+Honestly, the hand-set values looked reasonable, and our effort went into data, features and leakage-free evaluation instead; the ablations show that was the right order. On the same test sets, removing the gaming-chat corpus cuts chat PR-AUC from 0.825 to 0.511, and the earlier 17-feature voice set reaches 0.499 against 0.562, while the largest tuning effect is about one accuracy point. A search is also only meaningful with a leakage-free protocol: folds grouped by speaker for voice, and for chat a validation slice whose duplicates are all removed from training. The studies reuse the ablation code for exactly that reason. The starting points were sensible: C = 1 and the 0.1 learning rate are the library defaults, and the shallow forest was a deliberate choice.
+
+**Q (owner: Kaustubh): Why not deploy the tuned model?**
+For chat and voice there is nothing better to deploy. The chat winner, C = 8, is worse on held-out gaming chat (PR-AUC −0.0100 [−0.0167, −0.0035]), and the voice winner differs by +0.0021 [−0.0117, +0.0154], an interval that spans zero. The behaviour winner is better on the test rows, +0.0113 [+0.0063, +0.0165], but those rows carry simulated labels, so the gain measures fit to our simulator, not to children. Adopting it would mean unlimited-depth trees that reproduce their training rows exactly, a model about 24 times larger (1.9 MB against 45.8 MB serialised) and a repeated fairness audit — and on the real survey it is no better (ρ 0.295 against 0.317 for the deployed forest). So we report it as an option and keep the deliberately regularised forest (200 trees, depth 6, min leaf 20).
+
+**Q (owner: Kaustubh): Does the tuned behaviour model work better on real people?**
+No. We scored both forests on the 103 IGDS9-SF respondents exactly as the served model is scored, selecting nothing on the survey. The tuned forest correlates ρ 0.295 [0.115, 0.456] with the IGDS9-SF total, the deployed one 0.317 [0.137, 0.478]; the paired difference is −0.022 [−0.073, +0.027] over 2,000 resamples. The interval includes zero, so the survey cannot separate them, and the point estimate favours ours. The +0.0113 is fit to our simulator, not to people.
+
+**Q (owner: Kaustubh): If C = 1 is right, why did your own search pick C = 8?**
+Because the selection slice pooled every training corpus, and only 2,549 of its 35,546 texts (7%) were gaming chat, so it rewarded what suits general, non-gaming text. We re-ran the selection on 2,427 gaming-chat texts from CONDA_train alone, with the CONDA validation split still untouched: the deployed C = 1 ranks 1 of 14 and C = 8 ranks 11. Selected on gaming chat, the hand-set value is the tuned value.
+
+**Q (owner: Kaustubh): You searched 188 settings. Isn't reporting the best one just p-hacking?**
+It would be if a search had seen a test set or if we had adopted a winner on its test score; neither happened. Selection used training folds or the validation slice only, each test set was scored exactly twice (deployed vs winner) with a paired bootstrap, and we adopted nothing. One winner even lost on its test set (chat), which is what a clean protocol must be able to show.
+
+**Q (owner: Kaustubh): What does the ablation show for each model? (the 30-second version)**
+The ablations remove one part at a time, and they show that data and features matter far more than any hyperparameter. Behaviour, on simulated labels: screen-time hours alone reach 70.2%, the five pattern features alone 90.2% and the ten deployed features 91.6%, while all 120 forest settings stay within CV macro-F1 0.9057 to 0.9291. Chat: removing the gaming-chat corpus drops PR-AUC from 0.825 to 0.511 and removing character n-grams to 0.794, whereas the whole range of C moves validation PR-AUC by 0.0726 and the tuned C is worse on test. Voice, on unseen speakers: the 36 features beat the earlier 17 (0.562 against 0.499), while no hyperparameter moves CV macro-F1 by more than 0.0105. The accuracy came from what the models see, not from how they were tuned.
+
+### Results
+
+**Q (owner: Kaustubh): Are the results what you expected? Where they deviate, why?**
+(slide 22) We count an estimate only if it was written down before measuring.
+- **Behaviour:** the Phase-1 deck expected 80–90% accuracy depending on game type; we reach 91.6% — met, but only on simulated labels, so it checks the method, not real children.
+- **Survey:** the validation plan asked for at least 50 adults and expected about 6% in the disordered range; we scored 103, ρ = 0.317 [0.137, 0.478] — size met, but only 1 respondent reached the disordered range, so accuracy at a clinical cut-off cannot be computed (a recruitment problem, not an analysis one).
+- **Genre weight:** our Review 2 score assumed genre changes risk (weights 0.70–1.25); the survey found no genre difference (p = 0.598 at 32% power), so score version 2 removed it.
+- **Hindi + English speech-to-text:** the gate was fixed on 7 Aug, before measuring (< 2× the default CPU, < 400 MB); it measured 51–72% of a core and 399–419 MB against 14% for the default — failed, so it ships off by default.
+- **Chat and voice had no written targets:** deployed chat alerts read P 0.956 / R 0.428 at 0.95 — a chosen trade, rare false accusations and many misses; voice reads 0.574 on unseen speakers, where a random split would have claimed 0.657 by memorising voices.
+- **Hyperparameters had no target either:** the hand-set values held up (above).
+
+**Q (owner: Kaustubh): How do your results compare with other methods?**
+(slide 23) One comparison per channel on the same held-out data, plus the survey baseline:
+- **Behaviour** (simulated labels): screen-time hours alone 70.2% vs our 10 features 91.6%; pattern features 90.2% ahead of volume 87.1%.
+- **Chat** (PR-AUC on held-out CONDA, ablation protocol): ours 0.825 vs off-the-shelf toxic-BERT (Jigsaw-trained, about 110M parameters) 0.709 — at ≥ 0.95 precision its recall is 0.12 — vs our own first, general-data model 0.516. Domain data beat model size.
+- **Voice**, where we lose: on one matched speaker-independent split, frozen wav2vec2 embeddings reach 0.776 against 0.553 for our 36 hand-made features, but they do not fit the 512 MB server (Future Work: a distilled model). The deployed model reads 0.574 on unseen speakers.
+- **Survey** (external, adults): the served behaviour score ρ = 0.317 vs self-reported hours ρ = 0.147 [−0.053, 0.339]; the paired difference +0.167 [−0.002, +0.341] just touches zero, so it is suggestive; the strong comparison is pattern minus volume, +0.199 [+0.019, +0.380].
+- **Methodology:** the speaker-independent split reversed the voice model-selection verdict (SVM won the leaky split; HistGradientBoosting wins the honest one).
+
+**Q (owner: Vidisha): What are the limitations, and what are the implications?**
+(slide 30) Limitations, each stated in the papers: (1) behaviour accuracy, 91.6%, is on simulated labels — real-child accuracy is unknown; (2) the survey is adult, self-reported and cross-sectional, with one disordered-range respondent, so it shows that the score carries meaning, not clinical accuracy; its secondary analyses are exploratory and not corrected for multiple comparisons (the rank correlation was the pre-designated primary endpoint), and it had no ethics-committee review — the only record is the 14 Aug notification to the guide, sent while the form was open; (3) voice trains on acted adult emotion and reads 0.574; (4) chat alerts trade recall for precision (deployed recall 0.428), so no alert does not mean no abuse; (5) speech recognition is not accent-uniform — 0 false alerts in 9.6 h of benign speech, but word errors from 34.6% (Dravidian) to 60.8% (Tibeto-Burman); (6) fusion weights and cut-offs are hand-set priors; (7) blind spots: browser and cloud-streamed games, in-game voice chat holding the microphone, spoken Hindi off by default; (8) engineering: no automated phone UI tests, a laptop-only load test, a free-tier cold start. Implications: for **parents**, a band opens a conversation — it is a screening signal, not a verdict on the child; for **researchers**, measure how children play, not just how long, and split by speaker; for **deployment**, version every score change, audit every accent group, and expect on-device AI to be limited by terms and background rules as much as by accuracy (Gemini Nano, below).
+
+### Report, paper and venue
+
+**Q (owner: Kanak): What is the status of the project report?**
+(slide 34) Drafted in the department format: A4, 1.5 line spacing, 2 cm margins, 12 pt Times New Roman, the department's chapter list (1 Introduction … 9 Conclusion and Future Work), IEEE-style references, Appendix A (abbreviations) and Appendix B (user manual). It is **140 pages** — 13 front-matter pages and 127 body pages — built by `tools/build_report_docx.py` in strict mode (it fails on an unknown number key, a missing figure or a broken reference) and finished by `tools/finalize_report.py` (Word fields, PDF). Every number fills from `tools/project_numbers.py`, the same source as the deck, so the two cannot disagree. New since Review 2: §6.5 the Gemini Nano feasibility study, §8.7 the hyperparameter studies (Table 8.7, Figure 8.8), and score version 2 throughout. Remaining: Prof. Sawant's corrections and approval [team: status], then the **plagiarism check — done only at the PESU library, limit 15%** — and binding and upload. Until that check the report stays out of the public GitHub repository, so the checker cannot match it against a public copy.
+
+**Q (owner: Kaustubh): Where is the IEEE paper, and where will you submit it?**
+(slides 39–40) Complete draft, updated 23 Nov 2026 for score version 2: *Measuring How People Play, Not Just How Long: A Multimodal, Privacy-Conscious Gaming-Risk Monitor for Guardians, with Construct-Validity Evidence* — IEEEtran conference format, 6 pages, 31 references, with an anonymous-build switch (`\anontrue`). It claims a deployed three-channel monitor that keeps no raw audio, each channel tested on held-out data with ablations (behaviour labels simulated), the score tracking the IGDS9-SF at ρ = 0.317 in 103 adults, and pattern beating volume by +0.199 [+0.019, +0.380]; and it reports two results against us (the unsupported genre multiplier; four of five parent-facing proxy names not tracking their namesake items). Primary target: **IEEE COMPSAC 2027, Symposium on Digital Health** (Tokyo, 13–16 Jul 2027) — submission **31 Jan 2027** (read on the official call), notification 7 Apr, camera-ready 1 Jun; double-blind; full papers up to 10 pages and short papers 6, so the draft fits and can grow from the report. Why COMPSAC: its call asks for mobile health, health analytics and privacy, and its computing reviewers judge the engineering, not clinical accuracy. Backups: IEEE HealthCom 2027 (8 Jun 2027 — after COMPSAC's decision, so the paper is never under review twice), INDICON 2027 as a budget fallback, and IEEE Access for a longer journal version. We avoid EMBC, ICHI and BHI for now, because they expect ethics-committee approval that our survey lacks. Left before submission: a final proofread and one ethics sentence saying why no ethics-committee review was sought. (The Review 2 plan said mid-November; the target is now COMPSAC's 31 Jan deadline.)
+
+### Speed
+
+**Q (owner: Kanak; Khushee for the phone): How fast is the system?**
+(slides 20, 28) **Server, load test** (`backend/scripts/concurrency_smoke.py`: 288 mixed requests from 24 threads against a real threaded server, chat scoring and live predictions included): 0 server errors, median 66 ms, 95th percentile 684 ms in the August run that the deck and report quote; **re-run on score v2, 23 Nov**: 288 requests in 1.6 s, median 64 ms, p95 607 ms, max 819 ms, 0 errors — version 2 added no measurable cost. **Live server:** about 210 ms per warm request from Bengaluru; the gap to the local median is network distance plus the cloud-database round trips. **Cold start, about 40 s:** Render's free instance sleeps after ~15 min idle, and the first request waits for it to boot and load the models. We switched the scheduled keep-alive off on 30 Jul on purpose: keeping Render awake 24/7 held Postgres connections open, so Neon's compute could never scale to zero, and the free 100 CU-hour monthly allowance ran out and paused the database. Both apps tolerate the wait; before the demo we wake it (open the app, call `/api/health`, or run the keep-alive workflow by hand). **Phone** (Galaxy M52): sessions start ~10 s after a game opens and end ~25 s after it closes, a parent nudge arrives in ~12 s, the ChildApp cold-starts in 569 ms, and default monitoring costs 14% of one core and 288–301 MB — about one fifteenth of Roblox's own CPU.
+
+### Since Review 2
+
+**Q (owner: Vidisha; Khushee for item 7): What has changed since Review 2?**
+(slides 4–5) Review 2 was on 13 Oct 2026; we made six commitments, and the panel asked us to study one idea:
+1. **Genre weight removed — done, 23 Nov 2026**, three weeks after the promised 19 Oct–2 Nov window (score version 2, deployed; the live model card reports `score_version` 2). The full answer is in §10.
+2. **Score versioned and parents told — done:** every prediction stores its `score_version`; one-time in-app note.
+3. **Report, slides and both papers re-synced to v2 — done** (papers on 23 Nov; the secondary survey analyses are now labelled exploratory; the false claim that an environment variable controlled the genre weight is withdrawn).
+4. **IEEE paper — in progress:** the 6-page draft was updated on 23 Nov; submission by 31 Jan 2027.
+5. **Child validation** (parents answer the IGDS9-SF, linked to measured play) — **not started**: it needs ethics-committee approval first.
+6. **Department-format report — drafted:** 140 pages; the guide's corrections are next.
+7. **Panel: could the Gemini Nano API replace our text and voice models? — studied:** not usable now (the terms exclude apps likely to be used by under-18s; no inference while another app is in front; our phones are unsupported). Q&As below; decision record `docs/GEMINI_NANO_FEASIBILITY.md`.
+
+Also new: hyperparameter studies for all three models (188 settings, nothing adopted), an ablation view across all models, the load test re-run on v2, a researched venue list, and 300 automated tests + 7 guards in CI. Deliberately unchanged: no model was retrained (no commit has touched `backend/models/` since 7 Oct), and the survey data is final (25 Aug).
+
+### Gemini Nano — the Review 2 panel's suggestion
+
+Facts are from Google's documentation as checked on 23 Nov 2026 (`docs/GEMINI_NANO_FEASIBILITY.md`, `docs/gemini/defense_qa.md`; report §6.5; slide 5). **We never ran Nano on a phone — never imply otherwise.**
+
+**Q (owner: Kaustubh): Why not replace your chat and voice models with Gemini Nano? Wouldn't an LLM be more accurate?**
+It might be on some inputs, but nobody has measured it on gaming chat. We could not measure it either, because our test phone is unsupported. Our chat model is measured:
+- PR-AUC is 0.821 on held-out gaming chat as served (0.825 for the recipe under the ablation protocol).
+- At the 0.95 alert threshold, precision is 0.956 and recall is 0.428.
+- Precision is 0.968 on Devanagari Hindi and 0.958 on romanised Hindi.
+
+That threshold works only because our scores are calibrated probabilities. Nano returns text with no probabilities and may answer differently on another phone or model version. Google publishes no toxicity or Hindi accuracy for it. Size alone is no guarantee: toxic-BERT, a larger general model, reached only 0.709 PR-AUC on the same gaming-chat test. For voice the answer is a firmer no. Our model reads emotion from 36 tone features. The Prompt API takes only text and images, and the speech API returns words, timings and an audio level, not tone. Google's own Nano 4 example is a moderation prompt, so the capability is real. What is missing is calibration, validation and access on our users' phones.
+
+**Q (owner: Kaustubh): Did you actually test Gemini Nano, or only read about it?**
+We only read about it, but carefully. We downloaded Google's pages on 23 Nov 2026, checked every quoted sentence, and left out anything we could not confirm. We could not run Nano because no supported phone was available:
+- Our Galaxy M52 (Snapdragon 778G) is on no supported list.
+- AICore needs Android 14, and the M52 stops at Android 13.
+- None of us owns a supported phone.
+
+So we claim no accuracy, latency or battery number for Nano. The test is ready to run:
+- **Who and where:** adult team members, a borrowed supported phone and a separate test app.
+- **Setup:** a frozen prompt at temperature 0 with a fixed seed.
+- **Data:** our held-out CONDA chat and the 933-row Hindi hold-out.
+- **Measures:** PR-AUC and precision at the alert threshold, compared with our deployed model on the same lines. Safety-filter refusals count as misses, and we would run our device drill during a game.
+
+We would switch only if Nano reached at least 0.95 precision in English, Devanagari and romanised Hindi, and if the terms and background rules allowed it.
+
+**Q (owner: Khushee): Why can't the ChildApp run Gemini Nano on the phone while the child plays, at least on phones that support it?**
+Google permits Gemini Nano inference only when the calling app is the top foreground app, and during play the top app is the game.
+- **Foreground services are refused.** Our voice recorder and session monitor run as foreground services. Google's overview says calls from a foreground service get a BACKGROUND_USE_BLOCKED error. Google has documented this since May 2025, when the error was BUSY.
+- **Keyboards and accessibility services are untested.** Google says nothing either way about them, and they are how we capture chat. We could not test them without a supported phone.
+- **The terms rule out the ChildApp.** The ML Kit GenAI terms exclude apps likely to be accessed by under-18s. That applies on every phone, supported or not.
+- **Even supported phones have quotas.** There is a per-app request quota and a long-duration battery quota, both with unpublished limits. The phone is also already running a game. Our own device gate rejected a second speech recogniser on the M52: it used 51–72% of a core, against 14% for the default path.
+
+Nano can fit as a foreground feature on the parent's phone. It would sit behind a capability check, with today's system as the fallback.
+
+**Q (owner: Khushee): Isn't on-device AI better for the child's privacy than sending data to your server?**
+Yes. Privacy is the strongest argument for Gemini Nano, and it is why we studied it instead of dismissing it. Part of our voice pipeline already stays on the phone. Vosk turns speech into text on the device. The server receives 10-second clips only while the monitored game is in front, extracts tone features and deletes the audio. But typed lines, transcripts and those clips do reach our server, so Nano would be a real privacy gain. It cannot deliver that gain to our users today:
+- The terms exclude apps used by children.
+- Inference is blocked while the game is in front.
+- Our test phone and Samsung's Galaxy A, M and F phones are not supported.
+
+Until that changes, we limit what the server holds in three ways. Consent fails closed, audio is deleted after feature extraction, and parents can export or delete the data.
+
+**If anyone is asked (every team member, same words):** "We studied Gemini Nano against Google's own documentation, and it is genuinely good for privacy. But today its terms exclude apps used by children, it only works while its own app is on screen, and it does not run on our test phone or on Samsung's A, M and F phones. So we keep our validated models, and we will benchmark Nano as soon as that changes."
 
 ---
 
@@ -47,7 +248,11 @@ We ran the bake-off (`ml/retrain_models.py` trains and compares candidates) rath
 than assuming. On 10 tabular features with 23,000 training rows, RF (200 trees, depth 6)
 reached 0.916 test accuracy / 0.918 macro-F1 with 5-fold CV of 0.921 ± 0.002. Deep
 models buy nothing on small tabular data, cost more to serve on a 512 MB instance, and
-lose the SHAP-friendly structure we use for parent-facing explanations.
+lose the SHAP-friendly structure we use for parent-facing explanations. Since Review 2 we
+also grid-searched 120 forest settings on training data only: deeper trees score slightly
+better on the simulated test labels (+0.0113 [+0.0063, +0.0165]), which we report and do
+not adopt — the depth-6 / min-leaf-20 forest is deliberate regularisation (Review 3
+section, hyperparameter Q&As).
 
 **Q: Your training data is synthetic. Isn't the 91.6% accuracy meaningless?**
 The number measures *separability of the synthetic distribution*, and we say exactly
@@ -59,7 +264,7 @@ Latin-America dataset (n=11,191 real MOBA players, `ml/analyze_igds.py`) fixes t
 severity base rate, and the Gamers & Anxiety survey (n=13,464, `ml/analyze_survey.py`)
 grounds the behaviour–severity relationships;
 (3) we then ran the external check rather than only planning it — an adult IGDS9-SF
-survey (n=104 usable) shows the *served score* tracking the clinical instrument at ρ = 0.317,
+survey (n=104 usable) shows the served *behaviour* score tracking the clinical instrument at ρ = 0.317,
 leading the self-reported screen-time baseline in 97.4% of paired resamples, and
 surviving partialling it out (§10). That does **not** upgrade the
 91.6%, and we don't claim it does: the accuracy figure is still a synthetic-distribution
@@ -86,7 +291,7 @@ feature importances is unchanged.
 
 **Q: Why logistic regression + TF-IDF and not BERT?**
 Measured, not assumed. The deployed recipe (word 1–2 gram + char_wb 3–5 gram TF-IDF
-union → LogReg → isotonic) reaches PR-AUC 0.825 [0.807, 0.841] on CONDA in-game chat. Measured against a real transformer (2026-08-04): off-the-shelf Jigsaw toxic-BERT (detoxify, ~110M params) reads PR-AUC 0.709 on the same split — 12 points BELOW the domain-trained classical pipeline; at >=0.95 precision its recall is 0.12; the deployed pipeline reads 0.428 at 0.956 precision. Domain data beats model capacity, measured.
+union → LogReg → isotonic) reaches PR-AUC 0.825 [0.807, 0.841] on CONDA in-game chat under the ablation protocol (the served model: 0.821). Measured against a real transformer (2026-08-04): off-the-shelf Jigsaw toxic-BERT (detoxify, ~110M params) reads PR-AUC 0.709 on the same split — 12 points BELOW the domain-trained classical pipeline; at >=0.95 precision its recall is 0.12; the deployed pipeline reads 0.428 at 0.956 precision. Domain data beats model capacity, measured.
 A transformer needs GPU or slow CPU inference; we serve on a 512 MB free-tier instance
 scoring every chat message in real time. The char_wb n-grams are the cheap trick that
 buys robustness to gamer spelling ("noooob", "f4ggot") — removing them drops PR-AUC to
@@ -172,14 +377,18 @@ measurement.
 Correct, and it's the stated validation gap (`voice_metrics.note`). Acted corpora are
 the best *available* labelled emotional speech; child gaming speech is the target of
 the validation plan. Mitigations we measured: training multilingual (adding EMO-DB +
-URDU beats English-only, 0.562 vs 0.546) and using the full 36-feature set (vs the
+URDU edges out English-only, 0.562 vs 0.546, intervals overlapping) and using the full 36-feature set (vs the
 17-feature prefix: 0.562 vs 0.499). Augmentation was tested and found ~neutral
 (0.566 without vs 0.562 with) — we report that negative result rather than hiding it.
 
 **Q: Why is the voice weight lowest in the fusion?**
-Because it's the weakest measured channel — the 40/30/30 behaviour/chat/voice prior
-reflects measured reliability, and a missing channel contributes nothing rather than
-a fake neutral score.
+Correct the premise first: voice ties with chat at 30%; behaviour gets 40%, because DSM-5
+Internet Gaming Disorder and ICD-11 Gaming Disorder are defined behaviourally, and chat
+and voice are corroborating distress signals. The 40/30/30 split is a clinically
+motivated *prior*, not a fitted weighting — we have no outcome labels to fit it on — so
+what we measured instead is how much it matters: shifting the weights by up to ±0.15
+changes a median 0.8% of pilot bands, at worst 10.7%. A missing channel contributes
+nothing rather than a fake neutral score.
 
 ---
 
@@ -190,7 +399,8 @@ Weighted fusion with a 40/30/30 prior (behaviour dominates: it's the best-measur
 channel and always present after a few sessions). Channels that produced no data this
 session are renormalised out instead of being imputed. Session chat risk is the *max*
 of per-message calibrated confidences, not an average — one credible threat matters
-more than a hundred clean messages diluting it.
+more than a hundred clean messages diluting it. Since score version 2 (23 Nov 2026) that
+renormalised mean *is* the served score: the genre multiplier is gone (§10).
 
 **Q: Why alert at 0.95 and not the F1-optimal threshold?**
 The CONDA threshold sweep puts best-F1 near 0.85 (P 0.800 / R 0.703) and the deployed
@@ -220,7 +430,9 @@ No. Thresholds were selected on the sweep and justified by the false-alarm argum
 not by maximising a test metric; the tuner adjusts thresholds *forward* from live
 parent feedback, never by re-fitting on evaluation data. The one place we caught
 ourselves: an early `eval_chat_conda --retrain` run scored on its own training file —
-we split eval into a separate `--eval-csv` and note it as a fixed pitfall.
+we split eval into a separate `--eval-csv` and note it as a fixed pitfall. The
+hyperparameter studies follow the same rule: searched on training data only, each test
+set scored once for two settings, nothing adopted (Review 3 section).
 
 ---
 
@@ -245,21 +457,26 @@ evidence is in the paper.
 Measured: the concurrency smoke (`backend/scripts/concurrency_smoke.py`, 288 mixed
 requests across 24 threads against a real threaded server, including per-message chat
 scoring and live predictions) passes with **zero 5xx errors** — p50 66 ms, p95 684 ms
-on the dev machine (last re-run 2026-08-04, post-retrain, with the current heavier chat
-vectorizer). The script is permanent and re-runnable; the same check against the
-deployed Render instance is the remaining step after each deploy. The DB layer is
-dual-dialect (SQLite/Postgres) so outgrowing SQLite is a config change, not a rewrite.
+on the dev machine in the 2026-08-04 post-retrain run (the figures the deck and report
+quote), and p50 64 ms, p95 607 ms, max 819 ms in the 2026-11-23 re-run on score v2 (288
+requests in 1.6 s; v2 added no measurable cost). The script is permanent and
+re-runnable; the same check against the deployed Render instance is still not done —
+live, a warm request takes about 210 ms from Bengaluru and a free-tier cold start about
+40 s. The DB layer is dual-dialect (SQLite/Postgres), and production already runs Neon
+Postgres 16.
 
 **Q: How is the API secured?**
 Signed HMAC bearer tokens (itsdangerous), role-separated: parent-only routes call
 `deny_non_parent()`, per-user access calls `guard(user_id)`. `AUTH_ENFORCE` supports
 a shadow mode (log violations without breaking clients) → enforce rollout. Rate
 limiting via Flask-Limiter; tokens of deleted accounts are rejected by an existence
-check. 181 backend tests — run in CI against both SQLite and Postgres 16, the
-production dialect — cover the authz matrix, including regression tests for the
-alert-ownership gap we found and fixed; 110 Android JVM unit tests guard the
-offline-session/capture-health logic, profile validation, risk presentation,
-offline queue, WAV, keystroke reconstruction, and alert-triage logic.
+check. 190 backend tests — run in CI against both SQLite (190 pass) and Postgres 16,
+the production dialect (189 pass; the one SQLite-only migration test is skipped) — cover
+the authz matrix, including regression tests for the alert-ownership gap we found and
+fixed; 110 Android JVM unit tests guard the offline-session/capture-health logic,
+profile validation, risk presentation, offline queue, WAV, keystroke reconstruction,
+and alert-triage logic. That is 300 automated tests on every push, plus 7
+research-integrity guards.
 
 **Q: Why sideloaded APKs instead of Play Store?**
 The ChildApp needs a NotificationListener + accessibility-adjacent capture that Play
@@ -388,8 +605,10 @@ plus a passive late batch of 22 through 20 Aug, folded in per a rule fixed befor
 any late data existed) pairing the nine
 IGDS9-SF items with seven gaming-pattern questions. Those seven are mapped to the
 model's 10 objective features and pushed through the **deployed serving path** — same
-`derive_psychometrics`, same fitted scaler, same calibrated forest, same risk formula
-— so what we correlate is the score a parent would actually have seen. Result:
+`derive_psychometrics`, same fitted scaler, same calibrated forest, same behaviour-channel
+formula (0.5·P(Some) + 1.0·P(High)) — so what we correlate is the behaviour score the
+server computes; since score version 2 that is exactly the served score for a session
+scored on behaviour alone (no genre factor; chat and voice were never part of the study). Result:
 **Spearman ρ = 0.317, 95% CI [0.137, 0.478]**. The interval excludes zero.
 
 **Q: 0.32 is a weak correlation. Why should that impress us?**
@@ -434,22 +653,79 @@ The genre test, meanwhile, weakened for the third straight time as n grew (p 0.1
 0.491 → 0.598) — the effect is smaller than any power analysis assumed, not nearly
 significant.
 
-**Q: Your genre multiplier failed the test. Why is it still in the product?**
-Kruskal-Wallis across seven genres: H = 4.59, **p = 0.598** — and the group ordering
-no longer even matches the multiplier's assumption. We report it as a null
-because a validation study that can only confirm isn't one. But the honest reading is
-*underpowered, not disproven* — resampling gives the test 32% power at this n, 90%
-only near n ≈ 400. Removing the multiplier flips 34.4% of served session bands (paper
-§6.5 sensitivity analysis), so for months we kept it, flagged as the ensemble's
-least-evidenced component, rather than make a change that large on a null this weak.
-**Decision (7 Oct 2026): it comes out of the served score in the weeks after Review 2.**
-The argument that settled it: the validated score never included it — the survey scores
-answers through the behaviour model alone — so removing it makes what parents see equal
-to what we validated, and the burden of proof sits on keeping an untested multiplier,
-not on removing it. Because 34.4% of bands shift, it ships as a versioned score with a
-note to parents, not a silent swap. A properly powered study (n ≈ 400) could bring it
-back only if it finds an effect; until the change ships, an environment variable
-already switches it off without a code change.
+**Q (owner: Kanak for the change, Kaustubh for the test): Your genre multiplier failed the survey test. What did you do about it?**
+We removed it from the served score: **score version 2, deployed 23 Nov 2026** (commit
+`e9d16c8`, CI green; the live `/api/model_card` reports `score_version` 2). The test:
+Kruskal-Wallis across seven genres, H = 4.59, **p = 0.598**, and the group ordering does
+not even match the multiplier's assumption. We report it as a null because a validation
+study that can only confirm isn't one — but the honest reading is *underpowered, not
+disproven*: resampling gives the test 32% power at this n, 90% only near n ≈ 400. The
+argument that settled it (team decision, 7 Oct 2026): the validated computation never
+included genre — both survey scripts score answers through the behaviour model alone and
+import neither `GENRE_RISK_WEIGHTS` nor `GAME_GENRES` — so a hand-set factor from 0.70
+(Casual) to 1.25 (Battle Royale) sat outside what we validated, its only test found no
+support, and the burden of proof sits on keeping it, not on removing it.
+- **The formula, exactly.** v1: `final = clip(g · Σ w_k·s_k / Σ w_k, 0, 1)`, with `g` the
+  game's genre weight (1.0 when the game or genre is unlisted). v2:
+  `final = clip(Σ w_k·s_k / Σ w_k, 0, 1)` — the same 40/30/30 weights renormalised over the
+  channels present, the same three channel scores, the same 0.33/0.67 bands and
+  observation-mode cap; only `g` is gone (and the clip no longer does anything, because a
+  weighted mean of scores in [0, 1] stays in [0, 1]).
+- **Versioned, not a silent swap.** On the production pilot the change moves **34.4%** of
+  served bands (45 of 131 sessions; before it: 63 Low, 68 Some, 0 High concern), so a
+  child's trend could jump with no change in play. Every prediction row therefore stores
+  `score_version` (NULL = v1 history, never back-filled, read back as version 1);
+  `ml/analyze_fusion_sensitivity.py` re-scores each stored row with the formula that
+  served it, and `ml/monitor_drift.py` compares fused scores only within one version, so
+  the change cannot read as drift.
+- **The parent note.** Parents of a child with v1 history get one informational note (type
+  `score_update`, severity low) on that child's first v2 score — at most once per child
+  (partial unique index `idx_alerts_one_score_update` + `INSERT … ON CONFLICT DO NOTHING`),
+  never pushed, not rateable, not counted in agreement statistics, and routed to the
+  ParentApp's quiet Activity channel. Verbatim (`SCORE_V2_PARENT_NOTICE`, `backend/app.py`):
+  *"We updated how the risk score is calculated (score version 2). The game-genre
+  adjustment was removed because our validation study found no evidence that the type of
+  game changes the risk. Earlier sessions were scored the old way, so the concern level
+  from now on may differ from before even if play has not changed. Nothing else about
+  monitoring has changed."*
+- **The evidence.** `docs/genre_removal.json`; 8 new tests (genre no longer changes the
+  served score; live, end and replayed predictions carry their version; the note reaches a
+  child with v1 history exactly once and never a child without; it is information, not a
+  rateable risk alert; re-running the schema setup and the SQLite migration keep the
+  versions; drift compares within one version); 190 backend tests pass on SQLite, 189 +
+  the one SQLite-only skip on Postgres 16; the migration was rehearsed on a Postgres 16
+  database built by the pre-v2 backend (v1 rows stayed NULL, exactly one note even from a
+  cold second worker, a raw duplicate refused).
+- **No configuration switch, ever.** No environment variable or setting ever controlled
+  the multiplier; an earlier version of this answer claimed one, which was false and is
+  withdrawn from every document. It is deliberately not configurable now either: bringing
+  genre back would need new evidence (a powered study, n ≈ 400), a code change and a new
+  score version.
+
+**Q (owner: Kaustubh): So is the served score now the validated score?**
+Only for sessions scored on behaviour alone — say that precisely. The survey validated one
+computation, the behaviour channel (`0.5·P(Some) + 1.0·P(High)` from the calibrated
+forest), on anonymous adults' self-reported answers mapped to band midpoints: no device
+telemetry, no children, no chat or voice, no 40/30/30 fusion, no band thresholds, no
+observation-mode cap. When chat or voice is present, the v2 score is still a fusion whose
+weights are priors — in the v1 pilot analysis, re-scoring from behaviour alone matched the
+served band in only 67.7% of 130 sessions. Removal also does not show that genre has no
+effect: p = 0.598 at 32% power is a weak null. And 34.4% is how many bands *moved*, not
+how many were wrong — there is no ground truth for those 45 sessions, and the sweep did
+not record direction (by construction, a genre weighted above 1.0 — Battle Royale, FPS,
+MOBA, MMO, RPG — could only move Some → Low concern, and Strategy, Sandbox or Casual only
+Low → Some or Some → High). The case for removal is narrower and stronger than "genre
+doesn't matter": the multiplier sat outside the validated computation, and its only test
+found no support.
+
+**Q (owner: Kanak): You decided on 7 Oct and committed to it at Review 2. Why did it ship only on 23 Nov?**
+Own the slip first: at Review 2 (13 Oct) we promised it for 19 Oct–2 Nov; it landed on 23
+Nov, three weeks late, and the timeline slide (33) says so in those words. The reason:
+[team: reason]. What the change had to carry — say it only if asked, and not as an excuse:
+a versioned column and migration on a live Postgres database, a once-only parent note that
+holds even with two server workers, version-aware analysis and drift tools, 8 new tests, a
+migration rehearsal on a database built by the pre-v2 backend, and re-syncing both papers,
+the report and the deck. Until 23 Nov, parents saw score version 1, with the multiplier.
 
 **Q: Your parent-facing "craving score", "tolerance score" — do those mean anything?**
 Mostly no, and we tested it rather than waiting to be asked. Against the IGDS9-SF item
@@ -560,8 +836,9 @@ validation study **refused** to support.
 In order: (1) a consented pilot with 10–20 families to replace synthetic behaviour
 labels with real ones and, critically, to reach a cohort with a genuine severity tail —
 that single change unlocks the caseness metrics §10 currently cannot compute;
-(2) re-run the genre test at n ≈ 400 where it has 90% power, and act on the answer
-either way; (3) child/teen speech adaptation for the voice model; (4) threshold
+(2) re-run the genre test at n ≈ 400, where it has 90% power — genre comes back into the
+score only if that study finds an effect, and then only as a new score version; (3)
+child/teen speech adaptation for the voice model; (4) threshold
 personalisation per family from the feedback tuner's posterior. Nothing on that list is
 a new model — the gap is data, not architecture.
 
@@ -605,8 +882,10 @@ witness, never the sole evidence.
 
 **Q: Did you measure battery drain / on-device latency?**
 Yes — and the measurement changed a product decision, which is the best kind. SERVER
-latency: concurrency smoke p50 66 ms / p95 684 ms at 24 threads, zero server errors;
-server memory hardened after a real 512 MB OOM under live voice load. DEVICE functional
+latency: concurrency smoke p50 66 ms / p95 684 ms at 24 threads (August run) and p50 64 ms /
+p95 607 ms on the 23 Nov score-v2 re-run, zero server errors both times; live, ~210 ms per
+warm request from Bengaluru and ~40 s on a free-tier cold start; server memory hardened
+after a real 512 MB OOM under live voice load. DEVICE functional
 latencies: session auto-start ~10 s, auto-end ~25 s, nudge ~12 s, tamper detection
 ~10–15 min, ChildApp cold start 569 ms (warm ~230 ms). ON-DEVICE RESOURCE COST:
 measured 2026-08-18 on a Galaxy M52 5G, two 15-minute Roblox sessions with the
@@ -641,3 +920,11 @@ APKs: no exploitable high-severity issue; the single flagged item is the standar
 dev-loopback cleartext exception (hardening item: scope it to debug builds). Full
 finding-by-finding triage in docs/SECURITY_AUDIT_MOBSF.md. A human pentest remains
 future work and is stated as such in §7 of the paper.
+
+**Q (owner: Kanak): Have you re-run the security scans since August?**
+Bandit, yes, on 24 Nov 2026. Diffed against the August audit commit, it found 14 findings
+in code added since: four high-severity flags for SHA-1 used only to build cache keys in
+the new tuning scripts — fixed (`usedforsecurity=False`, same digests) — and ten verified
+false positives (an SQL string built from a placeholder and a constant, the project's own
+model files loaded with pickle, fixed download addresses in developer scripts). Result:
+53 findings, all verified false positives, none high. Triage in docs/API_FUZZ_REPORT.md.

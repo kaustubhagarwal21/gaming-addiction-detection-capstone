@@ -1,6 +1,9 @@
-% One page per person — print 4 pages, hand one to each teammate.
-% Content is the owner-rows of docs/TEAM_BRIEFING.md, compressed to what you
-% hold in your hand while standing up. Rebuild:  latexmk -pdf docs/CHEAT_SHEETS.tex
+% One page per person for Review 3 (department window 23-27 Nov 2026; slot: fill in).
+% Print 4 pages, hand one to each teammate. Slide numbers and titles are the built deck
+% docs/PES_REVIEW3_DECK.pptx (seconds from docs/review3/*.json); every number is as
+% tools/project_numbers.py prints it -- LaTeX has no placeholders, so re-check this file
+% whenever that script's output changes. Owner rows: docs/TEAM_BRIEFING.md (Review 3).
+% Rebuild:  latexmk -pdf -interaction=nonstopmode -cd docs/CHEAT_SHEETS.tex   (exactly 4 pages)
 \documentclass[10pt,a4paper]{article}
 \usepackage[margin=14mm]{geometry}
 \usepackage[T1]{fontenc}
@@ -10,6 +13,7 @@
 \usepackage{xcolor}
 \usepackage{titlesec}
 \usepackage{tcolorbox}
+\usepackage{tabularx}
 \usepackage{helvet}
 \renewcommand{\familydefault}{\sfdefault}
 \setlength{\parindent}{0pt}
@@ -31,107 +35,177 @@
 % a hard question + the one-line answer you give
 \newcommand{\qa}[2]{\begin{minipage}{\linewidth}\small\textbf{\color{navy}#1}\\[0.3mm]\color{black!85}#2\end{minipage}\vspace{1.6mm}}
 
+% your slides: number & title (+ what to say if it is skipped) & target time
+\newenvironment{slides}{\small\renewcommand{\arraystretch}{1.02}%
+  \tabularx{\linewidth}{@{}>{\bfseries\color{navy}}r@{\hspace{2.5mm}}X@{\hspace{2mm}}>{\color{greyt}}r@{}}}%
+  {\endtabularx}
+\newcommand{\skp}{{\color{amber}\bfseries skip}~}
+\newcommand{\instead}[1]{\newline{\color{greyt}\footnotesize\textit{If skipped, say:} #1}}
+\newcommand{\mn}{\ensuremath{-}}
+
 \begin{document}
 
 % ===================================================================
-\person{Kaustubh Agarwal}{ML models, evaluation, external validation, the close}{slides 6--8, 11--12, 16--17 + demo}
+\person{Kaustubh Agarwal}{ML models, ablations, hyperparameters, survey, IEEE paper}{slides 10--12, 22--27, 36--40}
+
+\sect{Your slides --- 7:35 of talk (8:15 if slide 12 stays in)}
+\begin{slides}
+10 & Algorithm 2 --- Behaviour score: ten measured habits, calibrated and explained & 45\,s\\
+11 & Algorithm 3 --- Chat: score every line, alert only when near-certain & 50\,s\\
+12 & \emph{Training data: real corpora wherever they exist, simulation only for behaviour}\instead{behaviour labels are simulated because no public dataset pairs phone logs with severity; chat and voice learned from real corpora, and real game chat mattered most.} & \skp40\,s\\
+22 & Behaviour and survey size met estimates; three misses have measured causes & 60\,s\\
+23 & Our models beat simpler and bigger baselines, except on voice & 50\,s\\
+24 & Gaming-chat data is worth more than all other parts combined & 40\,s\\
+25 & Ablation across all models: features and real data carry accuracy & 40\,s\\
+26 & Tuning helps only where labels are simulated; deployed settings stay & 40\,s\\
+27 & How adults play tracks the IGDS9-SF; hours alone show no clear link & 55\,s\\
+36--38 & References --- point at them, do not read them & \\
+39 & IEEE draft complete, updated for score v2; submitting by January & 45\,s\\
+40 & Primary target: IEEE COMPSAC 2027 Digital Health, due 31 Jan 2027 & 30\,s\\
+\end{slides}
 
 \sect{Numbers cold}
-\begin{itemize}[leftmargin=4mm,itemsep=0.5mm,topsep=0mm]\small
-\item Behaviour \textbf{91.6\,\%} --- \emph{say "on synthetic labels" in the same breath}
-\item Chat \textbf{PR-AUC 0.825}; at the 0.95 alert threshold \textbf{P 0.956 / R 0.428}
-\item Voice \textbf{0.574} speaker-independent (random splits said 0.657 --- an 8.3-point leakage we found and corrected)
-\item \textbf{$\rho$ = 0.317} [0.137, 0.478], $n$ = 103 --- the pre-designated primary endpoint
-\item Screen-time baseline \textbf{0.147}; model ahead in \textbf{97.4\,\%} of resamples ($\Delta\rho$ = +0.167, CI grazes zero --- \emph{say "suggestive, not established"})
-\item \textbf{Partial $\rho$ = 0.303} [0.110, 0.476] --- hours removed, still excludes zero
-\item \textbf{Pattern $-$ volume = +0.199 [+0.019, +0.380]} --- formally tested, excludes zero. \emph{This is your strongest number. Reach for it whenever the $\Delta\rho$ is attacked.}
-\item Genre $p$ = 0.598 (32\,\% power) $\cdot$ 1 disordered respondent $\to$ $\sim$157 usable needed for caseness
-\item Svarah fairness: \textbf{0 false alerts / 9.6\,h}; WER 35\,\% $\to$ 61\,\% across L1 families
+\begin{itemize}[leftmargin=4mm,itemsep=0.3mm,topsep=0mm]\small
+\item Behaviour \textbf{91.6\,\%} [0.909, 0.923]; ECE 0.062\,$\to$\,0.015 after calibration --- \emph{on simulated labels: say so in the same breath}
+\item Chat \textbf{PR-AUC 0.825} [0.807, 0.841] (ablation protocol) $\cdot$ deployed, at the \textbf{0.95} threshold: \textbf{P 0.956 / R 0.428} $\cdot$ typed Hindi P 0.968 / 0.958. \emph{Never mix with the ablation pair (P 0.965 / R 0.363).}
+\item Voice deployed \textbf{0.574} on unseen speakers (a random split read 0.657: an 8.3-point leak) $\cdot$ ablation protocol 0.562 $\cdot$ wav2vec2 0.776 only vs 0.553, on the matched split
+\item Ablations: screen time alone 70.2\,\%, pattern 90.2\,\%, all 10 = 91.6\,\%, +\,10 proxies 91.9\,\% $\cdot$ chat without CONDA \textbf{0.511} $\cdot$ voice with 17 features 0.499 $\cdot$ behaviour alone matches the fused decision in 67.7\,\% of pilot sessions
+\item Tuning: 188 settings, CV on training data only, each test set touched once. Behaviour (120): CV macro-F1 0.9057--0.9291, deployed ranks 69/120; best 0.9273 vs 0.9160 = \textbf{+0.0113 [+0.0063, +0.0165]}, 1.9\,MB\,$\to$\,45.8\,MB. Chat (14): C\,=\,8 vs C\,=\,1 = \textbf{\mn0.0100 [\mn0.0167, \mn0.0035]}. Voice (54): \textbf{+0.0021 [\mn0.0117, +0.0154]}
+\item Survey: \textbf{103 scored} (134 raw) $\cdot$ \textbf{$\rho$ = 0.317 [0.137, 0.478]} $\cdot$ hours 0.147 [\mn0.053, 0.339] $\cdot$ partial \textbf{0.303 [0.110, 0.476]} $\cdot$ \textbf{pattern \mn\ volume = +0.199 [+0.019, +0.380]} (0.330 vs 0.128), excludes zero --- \emph{your strongest number} $\cdot$ score \mn\ hours +0.167 [\mn0.002, +0.341] --- \emph{suggestive} $\cdot$ genre $p$ 0.598 (32\,\% power) $\cdot$ 1 disordered respondent, $\sim$157 usable needed
 \end{itemize}
 
-\sect{Hardest questions}
-\qa{"0.32 is a weak correlation."}{$\sim$10\,\% shared variance, and 0.3--0.5 is the normal band for a brief screener against a full instrument (PHQ-2 vs PHQ-9). We claim construct carriage, not clinical accuracy. Then pivot to the baseline: the thing it beats is the screen-time counter every shipping tool uses.}
-\qa{"Why no sensitivity / specificity?"}{One respondent scored in the disordered range. The guard that refuses those metrics below a minimum positive count was written \emph{before} the data arrived. Reporting them off $n$=1 would be the dishonest choice.}
-\qa{"Your training labels are synthetic."}{Correct, and stated on every slide it matters. That is exactly why the survey exists --- it is where the served score meets a real clinical instrument.}
-\qa{"Your headline dropped from 0.352 to 0.317."}{Say it before they find it. A late batch of 22 arrived after the main wave; the rule for including late responses was fixed before any of it existed, so we folded it in and reported the attenuated number.}
-\qa{"Why is the genre multiplier still there?"}{It is coming out --- planned for the weeks after Review 2. It was never part of the score we validated, and the survey found no genre effect (p 0.598, though only 32\,\% power). Removal flips 34\,\% of bands, so we ship it as a versioned score and tell parents, not as a silent swap.}
+\sect{Hardest Review 3 questions}
+\qa{``Did you tune hyperparameters, or just use defaults?''}{Tuned: 188 settings, cross-validated on training data only; each test set scored once (deployed vs CV-best, paired bootstrap). Chat's C = 8 came from mostly non-gaming text; on gaming chat our C = 1 wins. Voice: no gain.}
+\qa{``Behaviour tuning gained accuracy. Why not deploy it?''}{Real but small (+0.0113), on simulated labels; on the real survey it is no better ($\rho$ 0.295 vs our 0.317, $-$0.022 [$-$0.073, +0.027]). Also 24$\times$ larger, needs a fairness re-audit; depth 6, min leaf 20 is deliberate. Reported, not adopted.}
+\qa{``What does the ablation show, model by model?''}{Data and features carry accuracy, not tuning. Without real gaming chat, chat PR-AUC falls from 0.825 to 0.511, the largest effect we measured. Screen time alone gets 70.2\,\% against 91.6\,\% for the ten features; the proxies add 0.3 points because they are computed from the same ten.}
+\qa{``Is $\rho$ = 0.317 strong enough to matter?''}{Moderate: enough to say the score carries meaning, not to judge any individual. Hours alone give 0.147 (interval includes zero). Lead with the paired contrast, +0.199 [+0.019, +0.380]; the gain over hours grazes zero: ``suggestive, not established''.}
+\qa{``Why no sensitivity or specificity?''}{There was one respondent in the disordered range, in a convenience sample of mostly young adults; about 157 usable responses would give the 10 cases needed. The guard that refuses those metrics was written before the data arrived. Both papers label every secondary analysis exploratory.}
+
+\sect{Demo role}
+{\small No phone to drive: take model questions by name (why this score: the SHAP top-4 reasons; why this alert: the calibrated 0.95 threshold). Morning of: \texttt{python -m pytest ml/tests/ -q} (7 guards).\par}
 
 \vfill
-{\color{greyt}\footnotesize \textbf{Hand-offs:} device/battery numbers $\to$ Khushee $\cdot$ thresholds \& fusion $\to$ Kanak $\cdot$ ethics framing $\to$ Vidisha. \textbf{Protect slide 12's time.} Never say "addicted" or "diagnosis".}
+{\color{greyt}\footnotesize \textbf{Hand-offs:} phone cost, capture, Nano's device rules $\to$ Khushee $\cdot$ serving, tests, deployment $\to$ Kanak $\cdot$ survey permission, ethics $\to$ Vidisha. \textbf{Genre:} ``done --- score v2''. Never ``addicted'' or ``diagnosis''. \textbf{Review 3:} [slot: fill in].\par}
 
 \newpage
 % ===================================================================
-\person{Khushee P Kiran}{ChildApp, passive capture, anti-tamper, device cost}{slides 4, 10 (capture half), 14 --- and you drive the demo}
+\person{Khushee P Kiran}{ChildApp, capture, anti-tamper, device cost --- you drive the demo}{slides 5, 8--9, 13, 17, 20, 28}
+
+\sect{Your slides --- 3:45 of talk (5:10 with 13 and 28), plus the 6-minute demo}
+\begin{slides}
+5 & Suggestions from Review 2 --- Gemini Nano studied: private and promising, not yet usable on children's phones & 45\,s\\
+8 & ChildApp detects installed games itself and captures only inside them & 45\,s\\
+9 & Algorithm 1 --- End-to-end workflow: phone captures, server scores, parent acts & 45\,s\\
+13 & \emph{Algorithm 4 --- Voice channel: tone plus words, and no audio kept}\instead{a speech gate drops clips without speech, the server turns each clip into an emotion and deletes the audio, and voice scores 0.574 on speakers it never heard.} & \skp45\,s\\
+17 & Project Demonstration --- The whole loop runs live: child phone, cloud, parent phone; then drive the demo & 35\,s\\
+20 & Test Plan --- Measured, not assumed: bugs found, one feature kept off & 55\,s\\
+28 & \emph{Default capture is light; Hindi + English speech-to-text failed our gate}\instead{the default costs 14\% of one core; Hindi plus English failed our own gate, so it stays off.} & \skp40\,s\\
+\end{slides}
 
 \sect{Numbers cold}
-\begin{itemize}[leftmargin=4mm,itemsep=0.5mm,topsep=0mm]\small
-\item Default path (English STT): \textbf{14\,\% of one core, 288\,MB mean / 301\,MB peak} --- passes every gate
-\item Dual Hindi+English STT: \textbf{51--72\,\% CPU, 399/419\,MB --- fails 2 of our 3 gates, which is why it ships default OFF}
-\item Measured 2026-08-18, Galaxy M52 5G, \textbf{two back-to-back 15-min Roblox sessions}, per-minute sampling
-\item Data: \textbf{7.16\,MB up / 0.19\,MB down} per 15-min session $\cdot$ temp drift 37.5\,\textrightarrow\,39.2\,\textdegree C $\cdot$ \textbf{no thermal throttling}
-\item Cold start \textbf{569\,ms} true-cold, $\sim$230\,ms warm $\cdot$ session auto-start $\sim$10\,s, auto-end $\sim$25\,s, nudge $\sim$12\,s
-\item For scale: \emph{Roblox itself} runs at 215\,\% CPU --- our monitor is a rounding error next to the game
-\item v2.4.0 signed release; signing cert unchanged since day one
+\begin{itemize}[leftmargin=4mm,itemsep=0.3mm,topsep=0mm]\small
+\item Default path (English speech-to-text): \textbf{14\,\% of one core, 288--301\,MB} --- passes our gate
+\item Hindi + English: \textbf{51--72\,\% CPU, 399--419\,MB} --- fails two of the gate's three criteria, so it ships \textbf{off by default}. Gate written into \texttt{TESTING.md} on 7 Aug (under 2$\times$ default CPU, under 400\,MB); drill on 18 Aug, Galaxy M52, two back-to-back 15-min Roblox sessions
+\item Roblox itself used 215\,\% CPU $\cdot$ ChildApp cold start \textbf{569\,ms} $\cdot$ session auto-start \textbf{$\sim$10\,s}, auto-end \textbf{$\sim$25\,s}, nudge \textbf{$\sim$12\,s}
+\item Voice: 10-s clips only while the game is in front; a speech gate; Vosk speech-to-text on the phone; the server extracts tone and deletes the audio $\cdot$ \textbf{0.574} on unseen speakers $\cdot$ typed Hindi precision 0.968 / 0.958
+\item Gemini Nano (Google's documentation, 23 Nov 2026): terms exclude apps likely used by \textbf{under-18s} $\cdot$ a foreground service gets \texttt{BACKGROUND\_USE\_BLOCKED} $\cdot$ AICore needs \textbf{Android 14}; our M52 (Snapdragon 778G) stops at 13; 110 supported devices, no Galaxy A, M or F $\cdot$ no audio in, no probabilities out $\cdot$ Prompt API beta, speech API alpha
 \end{itemize}
 
-\sect{Hardest questions}
-\qa{"Did you actually measure battery, or are you guessing?"}{Measured, and the honest footnote comes first: \texttt{batterystats} reports zero power while the phone is on USB for adb, so we report the charging-safe proxy Android's own model uses --- averaged per-app CPU time --- plus RAM, thermal and data. Full table in \texttt{TESTING.md}.}
-\qa{"Can a child just evade it?"}{Yes, in one disclosed way: browser and webview games. Our boundary is \emph{installed apps, not games}. Closing it needs screen-capture or URL surveillance, which we refuse --- a disclosed boundary beats a privacy regression.}
-\qa{"What if they switch keyboards?"}{Detected. The heartbeat carries capture-capability bits; the parent gets an alert and the child gets a self-heal prompt.}
-\qa{"Clear app data and the observation counter resets?"}{No --- the counter is server-side. And the heartbeat dying is itself the alert.}
-\qa{"Can adb uninstall it?"}{We tried. \texttt{DELETE\_FAILED\_DEVICE\_POLICY\_MANAGER} --- Device Admin blocks it, and disabling admin fires an instant parent alert.}
+\sect{Hardest Review 3 questions}
+\qa{``Why can't the ChildApp run Gemini Nano while the child plays, at least on supported phones?''}{Google permits Nano inference only when the calling app is the top foreground app, and during play the top app is the game. Our recorder and session monitor are foreground services, and Google's overview says those calls get \texttt{BACKGROUND\_USE\_BLOCKED}. And the terms exclude apps likely to be used by under-18s, on every phone, supported or not.}
+\qa{``Did you actually test Nano on a phone?''}{No, and we never claim we did: it is a documentation study, checked page by page on 23 Nov 2026. Our M52 is unsupported and none of us owns a supported phone. The test is ready (Kaustubh has the protocol): a borrowed supported phone, our held-out chat and the 933-row Hindi hold-out.}
+\qa{``Isn't on-device AI better for the child's privacy?''}{Yes, and that is why we studied it. Speech-to-text already runs on the phone; the server gets 10-second clips only while the game is in front and deletes the audio after extracting tone. Nano fits as a foreground feature on the parent's phone, behind a capability check, with today's system as the fallback.}
+\qa{``Why report CPU instead of battery drain?''}{The phone was on USB for adb, and Android reports zero battery use while charging, so we report per-app CPU time, the input Android's own battery estimate uses. The gate was written on 7 Aug, before the 18 Aug drill.}
+\qa{``Can a child dodge it?''}{Yes, in one disclosed way: games inside a browser or another app, because detection reads which installed app is in front and never inspects content. Switching keyboards is caught: the heartbeat reports it, the parent sees ``monitoring degraded'', the child gets a re-enable prompt.}
+\qa{``Is this demo data real?''}{Arjun's earlier history is seeded demo data: the seed script wrote those past scores, and no real child appears. Today's session is detected, captured and scored live by the deployed models (score version 2).}
+
+\sect{Demo role --- you drive}
+{\small \textbf{Morning of} (runbook pre-flight order): nothing to deploy. Phones online; reseed (DEMO\_RUNBOOK \S2, \texttt{SEED\_DEMO\_FORCE=1} with \texttt{DATABASE\_URL} + \texttt{PIN\_PEPPER}); then \texttt{cloud\_e2e.py} (proves the PINs); then the one-line cleanup; clear the variables. Wake the backend 30 and 2 min before (\texttt{/api/health}, $\sim$40\,s cold). Phones charged, on the room Wi-Fi, latest apps, permissions on; video on the laptop.
+\textbf{Live} (after Vidisha's tour): ChildApp as Arjun (PIN 1234): Home, check-in, Mira; open Roblox, type a line, speak, close it. Vidisha refreshes, rates, nudges ($\sim$12\,s). Then Logout (PIN refused), Accessibility off (parent alert), on. Network fails: play the video.\par}
 
 \vfill
-{\color{greyt}\footnotesize \textbf{Before the room:} both phones charged, on venue Wi-Fi, backend pre-warmed (\texttt{/api/health} $\to$ \texttt{models\_loaded: true}), video fallback on the laptop desktop. \textbf{Hand-offs:} model numbers $\to$ Kaustubh $\cdot$ server/CI $\to$ Kanak.}
+{\color{greyt}\footnotesize \textbf{Hand-offs:} model numbers and the Nano test protocol $\to$ Kaustubh $\cdot$ server, tests, cold start $\to$ Kanak $\cdot$ what the parent sees $\to$ Vidisha. Never claim Nano was tested on a phone. \textbf{Review 3:} [slot: fill in].\par}
 
 \newpage
 % ===================================================================
-\person{Kanak Goyal}{Backend, deployment, alerting \& fusion serving, dataset provenance}{slides 5, 9, 13, 14 (backend half)}
+\person{Kanak Goyal}{Backend, deployment, fusion, CI and testing}{slides 6--7, 14--15, 18--19, 21, 29, 33--34, 41--42}
+
+\sect{Your slides --- 5:35 of talk (7:35 with 14, 29 and 41)}
+\begin{slides}
+6 & System architecture: three tiers, and the two apps meet only at the server & 35\,s\\
+7 & Seven modules, one pipeline: phone captures, server scores, parent app explains & 40\,s\\
+14 & \emph{Backend: when a game ends, one request checks, scores and alerts}\instead{every session upload passes a token check and a consent check, and at session end the server computes, scores and alerts once.} & \skp45\,s\\
+15 & Algorithm 5 --- Fusion: average only what was captured; no genre factor in score v2 & 50\,s\\
+18 & Testing grew from manual checks to automated layers in CI & 45\,s\\
+19 & Five automated functional layers, all on open-source tools & 50\,s\\
+21 & Each member tested their own module; the gaps are named & 45\,s\\
+29 & \emph{Weights barely move bands; dropping genre moved a third, hence versioning}\instead{shifting the fusion weights barely moves bands, but dropping the genre weight moved 34.4\% of pilot bands, so every score now stores its version.} & \skp45\,s\\
+33 & Timeline --- The system is complete; the promised genre change landed three weeks late & 35\,s\\
+34 & Department-format report drafted; guide's corrections and plagiarism check next & 35\,s\\
+41--42 & \emph{Deployed on Render's free plan; parents control consent, export and deletion} $\cdot$ Thank You\instead{consent is versioned, raw audio is deleted, and parents can export or delete their child's data.} & \skp30\,s\\
+\end{slides}
 
 \sect{Numbers cold}
-\begin{itemize}[leftmargin=4mm,itemsep=0.5mm,topsep=0mm]\small
-\item Fusion \textbf{40/30/30}, renormalised over whichever channels are actually present
-\item Chat aggregation is \textbf{max, not mean} --- one severe message must not be averaged away
-\item Operating points: 0.85 $\to$ P 0.800/R 0.703 $\cdot$ 0.90 $\to$ 0.888/0.623 $\cdot$ \textbf{0.95 $\to$ 0.956/0.428 (deployed)}
-\item Feedback tuner: capped at \textbf{$\pm$0.05}, floored, and \textbf{human-applied} --- there is no automatic loop
-\item \textbf{181 backend tests} on SQLite \emph{and} Postgres 16, + 110 JVM + 7 research-integrity guards --- all in CI
-\item Load: \textbf{288 concurrent requests, 0 errors, p50 66\,ms} $\cdot$ 512\,MB serving budget
-\item Datasets: \textbf{11 adopted, 2 rejected with written evidence}, + StudentLife as a reality check
+\begin{itemize}[leftmargin=4mm,itemsep=0.3mm,topsep=0mm]\small
+\item \textbf{300 automated tests} = \textbf{190 backend} (Postgres 16: 189 + 1 SQLite-only skip) + \textbf{110 Android}, plus \textbf{7 guards}, on every push $\cdot$ coverage 75\,\% (80\,\% of served code)
+\item Load: \textbf{288 concurrent requests, 0 errors, p50 66\,ms, p95 684\,ms} (dev machine; 23 Nov re-run on v2: 0 errors)
+\item Fusion v2: \textbf{0.40 / 0.30 / 0.30} over the channels captured $\cdot$ chat = highest message score $\cdot$ under 0.33 Low, under 0.67 Some, else High $\cdot$ High shows as Some until 3 scored sessions $\cdot$ \textbf{no genre multiplier}
+\item Score version \textbf{2} live since \textbf{23 Nov 2026} $\cdot$ empty version = v1 history $\cdot$ one low-severity \texttt{score\_update} note, once $\cdot$ 8 new tests $\cdot$ migration rehearsed on Postgres 16 $\cdot$ genre removal moves \textbf{34.4\,\%} of 131 pilot bands; weight shifts a median \textbf{0.8\,\%}
+\item Deployed alert point \textbf{0.95: P 0.956 / R 0.428} $\cdot$ the ParentApp polls every 25\,s; FCM push for High concern and tamper events
+\item Render free plan (Docker, 512\,MB) + Neon $\cdot$ sleeps after $\sim$15 idle min; first request \textbf{$\sim$40\,s} $\cdot$ keep-alive off since 30 Jul (Neon quota)
 \end{itemize}
 
-\sect{Hardest questions}
-\qa{"Why threshold 0.95 instead of best-F1?"}{Base-rate arithmetic. A false alarm costs parental trust, and trust is the product. At best-F1 roughly 1 in 5 alerts is wrong; at 0.95 it is about 1 in 23. We chose precision and we say what it costs us --- recall drops to 0.428.}
-\qa{"Can an anxious parent drag the thresholds down until everything alerts?"}{No. The tuner is capped at $\pm$0.05, floored, and never applies itself --- a human does. There is no closed feedback loop for exactly this reason.}
-\qa{"Why RF and logistic regression instead of BERT?"}{Measured, not assumed: off-the-shelf toxic-BERT scores 0.709 on our split against our 0.825, inside a 512\,MB serving budget. We report the comparison rather than claiming transformers were infeasible.}
-\qa{"Why did you reject those Kaggle datasets?"}{We downloaded and inspected them. Synthetic provenance in one; the other measures engagement, which is not addiction. Both rejections are written up with the evidence --- §7 of the notes.}
-\qa{"Where are the fusion weights validated?"}{Straight answer: they are clinically-motivated priors, and the sensitivity analysis is in the paper --- we show how much the served bands move as they change. A validated weighting needs the telemetry-linked cohort, which is stage two.}
+\sect{Hardest Review 3 questions}
+\qa{``What is your test plan, and why these tests?''}{Five functional layers, each catching what the others miss: unit; API integration on SQLite and Postgres 16 (production runs Postgres); contract (spec vs routes, survey form vs parser, both apps' labels); the production-mode sweep; the live-cloud check. Non-functional: load, fuzzing and security scans, accent audit, phone drill.}
+\qa{``Where did you test, and who tested what?''}{Laptop, GitHub Actions, Render + Neon, real phones. Me: backend suites, fuzzing, load test, CI. Khushee: ChildApp tests, phone and tamper drills. Vidisha: ParentApp, consent, export and deletion. Kaustubh: models, ablations, guards. Named gaps: no automated phone UI tests, no load test on the live server, no human penetration test.}
+\qa{``What changed in fusion for score v2? Did old scores change?''}{Only the genre multiplier went: the weighted mean over the channels present is now the whole score. Old predictions keep their score and an empty version (v1); new ones store 2. Parents with v1 history get one quiet note, exactly once; drift compares within one version.}
+\qa{``Why did the genre removal take until now?''}{Honestly, it slipped past our 19 Oct--2 Nov window and landed on 23 Nov, three weeks late: [team: reason]. It shipped as a versioned change: a stored version, the parent note, 8 new tests and a migration rehearsed on Postgres 16.}
+\qa{``Your server took 40 seconds to answer. Is that reliable?''}{That is the free plan's cold start after about 15 idle minutes. The keep-alive ping has been off since 30 Jul because it kept Neon awake and used up its free compute. We wake the server before every demo, and a paid instance removes the sleep. Warm: 288 concurrent requests, 0 errors.}
+
+\sect{Demo role}
+{\small Backend standby: check \texttt{/api/health} before the slot; Khushee gets the reseed values privately, never in the group. If the cloud stalls: the laptop backend over USB (DEMO\_RUNBOOK \S0, Option B) or the video.\par}
 
 \vfill
-{\color{greyt}\footnotesize \textbf{Hand-offs:} validation statistics and fusion-weight \emph{design} $\to$ Kaustubh $\cdot$ on-device cost $\to$ Khushee $\cdot$ consent/privacy $\to$ Vidisha.}
+{\color{greyt}\footnotesize \textbf{Hand-offs:} statistics, ablations, why 40/30/30 $\to$ Kaustubh $\cdot$ phone cost, capture, Nano $\to$ Khushee $\cdot$ consent, privacy $\to$ Vidisha. \textbf{Plagiarism:} checked only at the PESU library (limit 15\,\%), not done yet [team: update if done]. Never claim the guide's approval early. \textbf{Review 3:} [slot: fill in].\par}
 
 \newpage
 % ===================================================================
-\person{Vidisha Murali}{ParentApp, ethics, privacy, scope, the India story --- and you open}{slides 2--3, 10 (chat/fairness half), 15}
+\person{Vidisha Murali}{ParentApp, ethics, privacy, scope, applicability --- you open the room}{slides 1--4, 16, 30--32, 35 + demo}
+
+\sect{Your slides --- 4:50 of talk (5:35 with 32), plus narrating the ParentApp}
+\begin{slides}
+1--2 & Title, Outline --- a few seconds; say the one-sentence summary & \\
+3 & Abstract --- We screen how a child plays, not just how long & 50\,s\\
+4 & Suggestions from Review 2 --- Genre weight removed and versioned; Gemini Nano studied; child study remains & 60\,s\\
+16 & ParentApp explains each score; parents can rate risk and chat alerts & 40\,s\\
+17 & Demo --- narrate the ParentApp while Khushee drives & demo\\
+30 & No false alerts for any accent; claims stay within stated limits & 50\,s\\
+31 & Applicability --- Four domains share our problem: totals miss the harmful pattern & 45\,s\\
+32 & \emph{Real benefits, but each domain must earn its own evidence}\instead{the method transfers, the trained models do not: without real gaming chat our chat PR-AUC fell from 0.825 to 0.511, so each new domain needs its own data, consent, ethics review and validation.} & \skp45\,s\\
+35 & Conclusion --- Built, deployed and externally checked; what remains is data & 45\,s\\
+\end{slides}
 
 \sect{Numbers cold}
-\begin{itemize}[leftmargin=4mm,itemsep=0.5mm,topsep=0mm]\small
-\item Export scope \textbf{=} deletion scope, 15 tables, credentials excluded
-\item Consent is \textbf{versioned and fails closed} --- 403 until re-consent
-\item \textbf{Raw audio is never retained}: STT on-device, features extracted, audio deleted
-\item \textbf{ParentApp is yours}: SHAP top-3 reasons on every score, observation mode (no top band before 3 scored sessions), transparency screen, weekly PDF --- narrate these while Khushee drives the demo
-\item Hindi $\geq$ \textbf{0.95 precision} on all three registers (Devanagari, romanised, mixed)
-\item Survey: \textbf{adults 18+, anonymous}, no names/emails/identifiers, consent before the first question
-\item \textbf{Guide notified in writing 14 Aug 2026} --- official PES account, all four of us on the mail, design disclosed, explicit "does the department need more approval?"
+\begin{itemize}[leftmargin=4mm,itemsep=0.3mm,topsep=0mm]\small
+\item Slide 4: (1) genre removed \textbf{23 Nov 2026} $\cdot$ (2) score v\textbf{2} + one-time note $\cdot$ (3) report, slides, papers re-synced $\cdot$ (4) \textbf{6-page} IEEE draft, due 31 Jan 2027 $\cdot$ (5) child study \textbf{not started} (ethics approval first) $\cdot$ (6) report drafted, \textbf{140 pp} $\cdot$ (7) panel: \textbf{Gemini Nano} studied
+\item Survey: adults 18+, anonymous, consent before the first question $\cdot$ \textbf{103 scored}, \textbf{$\rho$ = 0.317} $\cdot$ guide notified in writing \textbf{14 Aug 2026}, while the form was open --- \emph{not} an ethics approval
+\item Accent audit: \textbf{0 false alerts} in 9.6\,h (6,656 clips, 117 speakers) $\cdot$ word errors 34.6\,\% Dravidian, 38.1\,\% Indo-Aryan, \textbf{60.8\,\% Tibeto-Burman}
+\item Typed Hindi precision 0.968 / 0.958 $\cdot$ ParentApp screens are English only: \textbf{no Hindi UI} $\cdot$ consent versioned, fails closed (403) $\cdot$ raw audio deleted $\cdot$ export scope = deletion scope $\cdot$ pilot: one family, 23 days, 131 sessions
+\item Applicability: pattern 0.330 vs volume 0.128 (+0.199 [+0.019, +0.380]) $\cdot$ chat without gaming chat 0.825\,$\to$\,0.511
 \end{itemize}
 
-\sect{Hardest questions}
-\qa{"Did you take permission for the survey? Where is the ethics approval?"}{\emph{Learn this one verbatim --- §10 of the notes.} There is a written record: 14 Aug 2026, official PES account, guide plus all teammates, full design disclosed, explicit approval query. That is faculty notification, \textbf{not} an ethics-committee determination, and no paper of ours says otherwise. \textbf{Concede the timing before they ask:} it went out while the form was still open --- after the main wave. Notification should have preceded the first response; it did not, and we corrected course mid-window. \textbf{If asked "did she reply?"} --- state only what the record documents and stop. We claim no reply, no approval, and no absence-of-objection.}
-\qa{"You alert on swear words but stay silent on self-harm."}{Name the asymmetry first --- it is real and we published it. It is a refusal to hard-code a contested clinical judgement into an automatic escalation. The tiered wellbeing-check is documented as a proposal and deliberately not shipped.}
-\qa{"Why only children? Why not adults?"}{A guardian with a duty of care is what makes screening someone who has not asked for it both possible and proportionate. The same system pointed at an adult is either a self-help journal or spyware.}
-\qa{"What does the parent actually see --- and can they misread it?"}{Bands with plain-language reasons (SHAP top-3), never a diagnosis. Observation mode refuses the top band until three scored sessions exist; the transparency screen lists exactly what is captured and when; the weekly PDF is the same numbers, not a new verdict.}
-\qa{"You are recording a child's microphone."}{Layered, and every layer is checkable: consent $\to$ on-device STT $\to$ server-side deletion $\to$ VAD gate $\to$ export and delete rights that share one scope.}
+\sect{Hardest Review 3 questions}
+\qa{``What did you do with our Review 2 suggestions?''}{Walk the seven rows: the genre weight removed and versioned, with a one-time note to parents; report, slides and papers re-synced; the IEEE draft complete; the report drafted; Gemini Nano studied (Khushee, next slide). Say the miss before they do: the child study has not started, because it needs ethics-committee approval first.}
+\qa{``Did you take permission for the survey? Where is the ethics approval?''}{\emph{Learn this verbatim (DEFENSE\_NOTES \S10).} Anonymous, adults-only, consent-gated. The guide was notified in writing on 14 Aug 2026 from the official PES account, all four of us on the mail, the design disclosed, with an explicit approval query. That is faculty notification, \textbf{not} an ethics-committee determination. \textbf{Concede the timing first:} it went out while the form was open, after the main wave. \textbf{``Did she reply?''} State only what the record documents and stop: we claim no reply and no approval.}
+\qa{``Does it beat Bark or Google Family Link?''}{We cannot claim that: they publish neither models nor error rates, so we compare capabilities. Our one head-to-head is self-reported screen time: 0.317 vs 0.147, +0.167 [\mn0.002, +0.341], grazing zero: suggestive.}
+\qa{``Would your system work in another domain?''}{The method transfers, the trained models do not: without real gaming chat, chat PR-AUC fell from 0.825 to 0.511. Each domain needs its own data, consent, ethics review and validation. Online money gaming is banned in India by the 2025 Act, so the gambling row is for regulated markets abroad.}
+\qa{``What are your limitations, and what do they imply?''}{Behaviour accuracy is on simulated labels; adults only, one disordered-range respondent, so no cut-off accuracy; hand-set weights and cut-offs; browser games and spoken Hindi are blind spots; Tibeto-Burman speakers see 60.8\,\% word errors. A band opens a conversation; no alert does not mean no abuse.}
+\qa{``Can a parent misread a band? Is the app in Hindi?''}{Low, Some or High concern, with reasons and a screening disclaimer; an empty channel shows ``not captured''. Screens are English today; Hindi shows in the data (Chat Analysis tags each line's script).}
+
+\sect{Demo role --- you narrate the ParentApp}
+{\small FAM789 + 0000, Arjun. Tour: Today (Some concern $\sim$55\,\%; High 85\,\% yesterday), top-4 reasons, rate the seeded alert, Chat Analysis, Emotion, \emph{What we can and can't see}. Play: ``Playing Roblox now''; weekly PDF in the end wait; refresh, rate, nudge ($\sim$12\,s). Say the app's band, never ``addicted''.\par}
 
 \vfill
-{\color{greyt}\footnotesize \textbf{You open the room} --- the framing you set in slides 2--3 is the frame they judge the rest by. \textbf{Hand-offs:} fairness \emph{numbers} $\to$ Kaustubh (you own \emph{why it matters}) $\cdot$ capture mechanics $\to$ Khushee.}
+{\color{greyt}\footnotesize \textbf{Hand-offs:} statistics $\to$ Kaustubh $\cdot$ capture, Gemini Nano $\to$ Khushee $\cdot$ tests, server, timeline $\to$ Kanak. \textbf{You open the room:} slides 3--4 set the frame they judge the rest by. \textbf{Review 3:} [slot: fill in].\par}
 
 \end{document}

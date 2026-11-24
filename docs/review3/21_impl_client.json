@@ -1,0 +1,197 @@
+[
+  {
+    "order": 210,
+    "id": "client_childapp_module",
+    "heading": "Implementation Details",
+    "subheading": "ChildApp detects installed games itself and captures only inside them",
+    "presenter": "Khushee",
+    "kind": "table",
+    "seconds": 45,
+    "skip_if_short": false,
+    "intro": "Module: **ChildApp**, Kotlin for Android 8+. Background services do the work; the child never presses Start.",
+    "table": {
+      "header": [
+        "Step",
+        "Class · Android API",
+        "What the code does"
+      ],
+      "rows": [
+        [
+          "Detect",
+          "PassiveMonitorService, GameDetector · UsageStatsManager",
+          "Every 5 s: which app is in front? A game = on our list, or Android labels it a game."
+        ],
+        [
+          "Start",
+          "PassiveMonitorService → GameMonitorService · Retrofit",
+          "Screen unlocked and a game in front: POST /api/session/start."
+        ],
+        [
+          "Chat",
+          "GamingKeyboardService (our keyboard), ChatAccessibilityService",
+          "Upload a typed line only if this session's game is in front. Never from password fields."
+        ],
+        [
+          "Voice",
+          "VoiceRecorderService · AudioRecord, Vosk",
+          "Same rule for the mic. Speech becomes text on the phone; 10-second clips go to the server."
+        ],
+        [
+          "End",
+          "PassiveMonitorService, SessionEndLogic",
+          "Away more than 20 s: end the session at the moment play stopped."
+        ]
+      ],
+      "col_widths_in": [
+        1.3,
+        4.2,
+        6.6
+      ]
+    },
+    "footer": "Stays alive: BootReceiver (after reboot), 3-minute heartbeat, Device Admin tamper alert, WorkManager retries.",
+    "notes": "The ChildApp is our data-collection module, in Kotlin for Android 8 and above. The child never presses Start. PassiveMonitorService is a foreground service, which Android keeps alive. Every five seconds it asks UsageStatsManager, Android's log of app use, which app is in front. GameDetector calls it a game if it is on our curated list, or if Android labels it a game. If the screen is unlocked, we open a session on the server and start GameMonitorService. Chat comes from our own keyboard and from an accessibility service. Both, and the microphone, work only while that exact game is in front. After 20 seconds away, the session ends at the moment the child left.\n\nNUMBERS BEHIND THIS SLIDE: Poll every 5 s while the screen is on or a session is open, 30 s when locked and idle (PassiveMonitorService: POLL_MS, IDLE_POLL_MS). Grace 20 s, or 120 s while a game hands off to Google sign-in, the Play Store or an ad browser tab (GRACE_MS, NEUTRAL_GRACE_MS; docs/DESIGN_CONSTANTS.md); a switch straight to another game ends the first session at once. GameDetector order: curated list, then a deny-list of system apps, then Android's game category plus a launcher icon; parents can add or exclude apps (ManageGamesActivity). Mic: 16 kHz mono, 10-second clips (VoiceRecorderService, Constants.VOICE_SEGMENT_DURATION_MS), Vosk Indian-English model. Heartbeat every 3 min, plus an immediate one when a permission flips (HEARTBEAT_MS). Measured on a Galaxy M52 (TESTING.md device drill): session auto-start {session_autostart}, auto-end {session_autoend}, default capture {cpu_default} of one core and {mem_default} of RAM. Family pilot: {pilot_days} days, {pilot_sessions} auto-detected sessions (PROJECT_PAPER.tex, Results: 'Live family pilot').\n\nLIKELY QUESTIONS:\nQ: Can a child dodge it? A: Yes, for games inside a browser or another app: detection reads which installed app is in front and never inspects content. Switching keyboards is caught: the heartbeat reports it, the parent sees 'monitoring degraded', and the child gets a re-enable prompt.\nQ: Why UsageStats and not accessibility window events? A: Window events fire once and do not repeat while a game draws on its own surface, so one stray overlay event can stick. The latest 'resumed' event from UsageStats stays correct; ForegroundResolver keeps the window tracker only as a fallback.\nQ: What if the phone is offline when a game starts? A: Starting needs the server, so the monitor saves an offline marker; OfflineSessionBuffer back-fills that interval through /api/session/backfill later, and WorkManager retries even after the app is killed."
+  },
+  {
+    "order": 215,
+    "id": "client_algo1_workflow",
+    "heading": "Implementation Details",
+    "subheading": "Algorithm 1 - End-to-end workflow: phone captures, server scores, parent acts",
+    "presenter": "Khushee",
+    "kind": "pseudocode",
+    "seconds": 45,
+    "skip_if_short": false,
+    "code": {
+      "title": "One gaming session, from phone to parent",
+      "lines": [
+        "# 1. CHILD PHONE: PassiveMonitorService checks every 5 s",
+        "if screen unlocked and a game is in front: start session",
+        "if away from that game > 20 s: end session at the moment they left",
+        "typed chat (custom keyboard / accessibility) -> POST /chat",
+        "mic, only while that exact game is in front:",
+        "  Vosk speech-to-text on the phone -> POST /chat as voice_stt",
+        "  every 10 s: send the audio clip -> POST /voice",
+        "every 3 min: heartbeat (app alive, permissions still granted)",
+        "# 2. BACKEND: score each item the moment it arrives",
+        "chat line: tox = noisy_or(keyword score, ML score)",
+        "  tox >= {alert_threshold} -> alert; 3 lines >= 0.6 in session -> streak alert",
+        "voice clip: speech gate -> 36 features -> emotion -> delete audio",
+        "session end: compute 10 behaviour features from play history",
+        "  b = calibrated RF, c = MAX typed-chat score, v = mean voice risk",
+        "  risk = weighted avg of present b/c/v (0.4/0.3/0.3)",
+        "  # score v{score_version}: no genre multiplier (no survey support)",
+        "  band = Low / Some / High (High -> Some if fewer than 3 sessions)",
+        "  Some/High -> alert (polled); High also pushed to every guardian",
+        "# 3. PARENT APP: dashboard, SHAP reasons, parent rates each alert",
+        "tune_from_feedback.py proposes thresholds; a human applies them"
+      ]
+    },
+    "side_title": "In plain words",
+    "side_bullets": [
+      "The phone spots a game by itself. Only while it is open, it sends typed chat, spoken words as text, and 10-second voice clips.",
+      "Each chat line is scored the moment it arrives, so a clearly abusive message alerts the parent without waiting for the session to end.",
+      "When play stops, the server turns habits, chat and voice into one score and a Low, Some or High concern band. Score version {score_version} has no genre weight.",
+      "Parents see the reasons and rate each alert. The ratings suggest new thresholds, but a person decides whether to apply them."
+    ],
+    "code_ref": "PassiveMonitorService.kt; backend/app.py: save_chat(), save_voice(), end_session(), run_prediction(), _maybe_create_alert()",
+    "notes": "This is one gaming session, end to end. On the phone, the monitor checks every five seconds. A game in front starts a session; twenty seconds away ends it, dated to when the child left. While the game is open, typed chat, transcribed speech and ten-second voice clips go to the server. The server scores each chat line on arrival, so a clearly abusive line alerts the parent at once. At session end it computes ten behaviour features and fuses the three channels over whichever were captured. Since score version {score_version}, there is no genre multiplier. Parents see the reasons and rate each alert, and those ratings only suggest new thresholds.\n\nNUMBERS BEHIND THIS SLIDE: Phone timings from PassiveMonitorService and Constants.kt: poll 5 s (30 s when locked and idle), grace 20 s (120 s during sign-in or ad hand-offs), voice clips 10 s, heartbeat 3 min. Measured: auto-start {session_autostart}, auto-end {session_autoend} (TESTING.md device drill). Chat: noisy-OR means a line is flagged if either the keyword list or the trained model is confident, 1 - (1 - kw)(1 - ml). The per-line alert at {alert_threshold} (CHAT_ALERT_T) gives precision {chat_p_deployed} and recall {chat_r_deployed} on held-out real gaming chat; a streak alert fires when 3 lines in one session score at least 0.6 (CHAT_STREAK_N, CHAT_STREAK_BAR). Fusion 0.40 / 0.30 / 0.30, renormalised over the channels present; bands cut at 0.33 and 0.67 (RISK_T1, RISK_T2); High is capped to Some until 3 sessions are scored (run_prediction). Server watchdog: an open session is closed after 12 min of heartbeat silence or after 6 h (app.py SESSION_SILENT_MIN, STALE_SESSION_HOURS; docs/DESIGN_CONSTANTS.md lists the 6 h). Genre weight removed on {genre_removed_on} as score v{score_version}: the survey found no significant genre effect (p = {genre_p}; only {genre_power} power, so not disproven), the survey-validated behaviour computation never used it, and removing it changes the band of {genre_band_shift} of the {pilot_sessions} pilot sessions.\n\nLIKELY QUESTIONS:\nQ: Why date the end to when the child left? A: Otherwise the 20-second grace would count as play. The phone sends ended_seconds_ago and end_session() back-dates the end; if the request fails, the phone retries with the same saved instant.\nQ: What if the phone dies mid-session? A: The server closes the session once heartbeats have been silent for 12 minutes, or after 6 hours, and still scores it and alerts (_close_stale_sessions); Kanak owns that watchdog.\nQ: Why did the genre multiplier go? A: It was hand-set, the survey found no genre effect (underpowered, so not disproven), and the survey-validated computation never included it. Because it moves {genre_band_shift} of pilot bands, it shipped as a versioned score with a one-time note to parents; Kaustubh has the evidence."
+  },
+  {
+    "order": 256,
+    "id": "client_algo4_voice",
+    "heading": "Implementation Details",
+    "subheading": "Algorithm 4 - Voice channel: tone plus words, and no audio kept",
+    "presenter": "Khushee",
+    "kind": "pseudocode",
+    "seconds": 45,
+    "skip_if_short": true,
+    "code": {
+      "title": "Voice: from 10-second clip to session voice score",
+      "lines": [
+        "# Phone: mic at 16 kHz, only while the session's game is in front",
+        "for each phrase Vosk transcribes on the phone:",
+        "  POST text to /chat as voice_stt   # alert check, not chat score",
+        "every 10 s: POST that audio as a WAV to /voice   # at most 2 MB",
+        "# Server: save_voice() -> analyse_audio()",
+        "if clip is silent or speech_ratio < 0.35:   # VAD gate (webrtcvad)",
+        "  store as missing: capture_valid = 0   # not as neutral",
+        "f = 36 acoustic features (MFCC, pitch, energy, spectrum)",
+        "p = HistGradientBoosting.predict_proba(f)  # P(4 emotions)",
+        "words = voice_stt lines from the last 20 s",
+        "# fuse_emotion(): tone gives arousal, words give valence",
+        "arousal = probability-weighted arousal of p   # calm vs animated",
+        "valence = weighted blend(tone prior, word valence, word toxicity)",
+        "emotion = nearest of 4 emotion points on the (valence, arousal) map",
+        "intensity = max(p)",
+        "delete the WAV; keep only (emotion, intensity, p)",
+        "# Session voice score, in run_prediction()",
+        "VOICE_RISK: angry 0.9, frustrated 0.7, excited 0.4, neutral 0.1",
+        "v = mean over valid clips of VOICE_RISK[emotion] * intensity"
+      ]
+    },
+    "side_title": "In plain words",
+    "side_bullets": [
+      "While the game is on screen, the phone sends words transcribed on the phone itself, and 10-second clips that the server deletes after analysis.",
+      "A speech detector (VAD) drops clips that are mostly game sound or silence. Those count as missing voice, never as a calm child.",
+      "Tone tells calm from animated; words tell positive from negative. Together they stop loud but happy speech from being read as angry.",
+      "On speakers never heard in training, accuracy is {voice_acc} on four emotions. Training speech is acted adults, not children, so voice is supporting evidence only."
+    ],
+    "code_ref": "VoiceRecorderService.kt; backend/audio_features.py; backend/app.py: save_voice(), analyse_audio(), fuse_emotion(), run_prediction()",
+    "notes": "The voice channel has two paths. On the phone, VoiceRecorderService opens the microphone at 16 kilohertz, only while the session's exact game is in front. Vosk, an offline speech-recognition library, turns speech into text on the phone, and that text goes through the chat model, so spoken abuse can raise an alert. Every ten seconds the audio itself goes to the server. A voice-activity detector, or VAD, rejects clips that are mostly game sound; they count as missing voice, not neutral. The rest become 36 acoustic numbers, and a gradient-boosted tree model gives four emotion probabilities. Tone gives arousal, recent words give valence, and then the clip is deleted.\n\nIf time is short, skip this slide and say: a speech gate drops clips without speech, the server turns each clip into an emotion and deletes the audio, and voice scores {voice_acc} on speakers it never heard.\n\nNUMBERS BEHIND THIS SLIDE: 16 kHz mono, 10-second clips, at most one upload in flight (VoiceRecorderService, Constants.VOICE_SEGMENT_DURATION_MS); the server refuses clips over 2 MB (save_voice). Speech gate: webrtcvad at its strictest setting; in production a clip needs 35% speech frames (VOICE_VAD_MIN_SPEECH = 0.35 in render.yaml; the code default and the Review 2 slide say 0.1). We raised it after the pilot, where 77% of voice events read 'frustrated' during casual play (PROJECT_PAPER.tex, Results: 'Live family pilot'). 36 features = 13 MFCC means, 13 MFCC standard deviations, and mean and spread of pitch, energy, spectral centroid, zero-crossing rate and roll-off (backend/audio_features.py; MFCCs summarise the shape of the sound spectrum). Words: up to 5 voice_stt lines from the last 20 s. Deployed accuracy {voice_acc} speaker-independent (ablation protocol {voice_acc_abl}); a random split gives {voice_random_split}, a leakage gap of {voice_leak_gap} points; {voice_corpora} corpora, {voice_speakers} speakers, {voice_languages} languages. VOICE_RISK angry 0.9, frustrated 0.7, excited 0.4, neutral 0.1; voice weight 0.30 in fusion.\n\nLIKELY QUESTIONS:\nQ: You are recording a child's microphone. How is that justified? A: The limits are layered: parent consent, the mic only while the game is in front, text made on the phone, audio deleted after analysis, and parents can export or delete everything. Vidisha owns the privacy answer.\nQ: Why only {voice_acc}? A: Chance is 0.25 for four emotions, and this is the honest unseen-speaker number; a random split shows {voice_random_split} because the model memorises voices. On the same unseen speakers, frozen wav2vec2 embeddings reach {voice_emb} against 0.553 for our 36 features, but they do not fit our 512 MB server; Kaustubh has the details.\nQ: What about in-game voice chat, or spoken Hindi? A: A game that holds the mic leaves us silence, which the gate marks as missing, so fusion uses the other channels. Hindi speech-to-text is a parent-gated beta, off by default because it used {cpu_dual} CPU and {mem_dual} RAM on our test phone, against {cpu_default} and {mem_default} for English only."
+  },
+  {
+    "order": 270,
+    "id": "client_parentapp_module",
+    "heading": "Implementation Details",
+    "subheading": "ParentApp explains each score; parents can rate risk and chat alerts",
+    "presenter": "Vidisha",
+    "kind": "table",
+    "seconds": 40,
+    "skip_if_short": false,
+    "intro": "Module: **ParentApp**, Kotlin for Android 8+. It runs no model; every number comes from the server.",
+    "table": {
+      "header": [
+        "Screen (activity)",
+        "What the parent sees",
+        "How the code gets it"
+      ],
+      "rows": [
+        [
+          "ParentalDashboardActivity",
+          "Low / Some / High concern, 14-day trend, live status; 'building baseline' below 3 sessions",
+          "GET /api/dashboard/parent every 15 s; MPAndroidChart"
+        ],
+        [
+          "Reasons card (dashboard)",
+          "Top SHAP reasons: habits that pushed this score up or down",
+          "SHAP run on the server"
+        ],
+        [
+          "AlertsActivity",
+          "Each risk or toxicity alert, with Accurate / False alarm buttons",
+          "POST /api/feedback; polled every 25 s; Firebase push for High"
+        ],
+        [
+          "WeeklyReportActivity, dashboard buttons",
+          "Week summary; Save PDF to share; send a nudge to the child",
+          "Server-built PDF; POST /api/parent/nudge"
+        ],
+        [
+          "ChatAnalysisActivity, EmotionInsightsActivity",
+          "Flagged lines tagged typed or spoken, Hindi or English; emotion mix",
+          "GET /api/dashboard/chat_analysis, /emotions"
+        ],
+        [
+          "SettingsActivity",
+          "'How the risk score works'; 'What we can and can't see'",
+          "GET /api/model_card"
+        ]
+      ],
+      "col_widths_in": [
+        3.4,
+        5.4,
+        3.3
+      ]
+    },
+    "notes": "The ParentApp is the presentation module, in Kotlin for Android 8 and above. ParentalDashboardActivity shows the day's band, Low, Some or High concern, never a diagnosis, with a 14-day trend and a live status strip. Until three sessions are scored, it shows 'building baseline'. The reasons card lists SHAP factors: each habit's push up or down. In AlertsActivity a parent marks each risk or toxicity alert Accurate or False alarm; these verdicts are our only real-world labels. Parents can also send a nudge or share the weekly PDF. Settings holds two transparency screens: how the score works, and what we cannot see.\n\nNUMBERS BEHIND THIS SLIDE: Dashboard refresh every 15 s, redrawn only when the data changes (ParentalDashboardActivity, DASH_REFRESH_MS); background alert poll every 25 s (AlertPollingService, Constants.POLL_INTERVAL_MS); High concern is also pushed by Firebase Cloud Messaging to every guardian device (backend _push_to_family). Band lines on the trend chart at 0.33 and 0.67 (RISK_T1, RISK_T2, sent by the server); 'building baseline' below 3 scored sessions. The reasons card shows the top 4 SHAP factors (_shap_explain_behavior default); the weekly PDF shows the top 3. A nudge reaches the child in {nudge_latency} (TESTING.md). 'How the risk score works' shows chat precision {chat_p_deployed} and recall {chat_r_deployed} at {alert_threshold} on real gaming chat, Hindi precision {hindi_p_deva} in Devanagari and {hindi_p_roman} romanised on {hindi_heldout_rows} held-out posts, voice accuracy {voice_acc}, and behaviour accuracy {beh_acc}, which the screen itself says comes from synthetic data. Scores since {genre_removed_on} are version {score_version}, without the genre weight; a family whose child had older scores gets one informational note in AlertsActivity (backend _maybe_insert_score_v2_notice, alert type score_update, no rating buttons). Feedback tuner: moves a threshold at most 0.05 per run and not at all below five verdicts (PROJECT_PAPER.tex, Methodology: 'Model selection, empirically').\n\nLIKELY QUESTIONS:\nQ: Can a parent misread the score? A: The bands say Low, Some or High concern, and every view carries the screening disclaimer. A channel with no data shows 'not captured', so a quiet game is never read as a clean result.\nQ: What happens to the Accurate and False alarm verdicts? A: Each is stored with the score at that moment; ml/tune_from_feedback.py turns them into suggested thresholds, and a person applies them through environment variables. Kanak owns the tuner.\nQ: Is the app in Hindi? A: The screens are in English today. Hindi shows up in the data: Chat Analysis tags each line's script, and 'How the risk score works' reports precision on both Devanagari and romanised Hindi."
+  }
+]

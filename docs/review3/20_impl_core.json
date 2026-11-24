@@ -1,0 +1,176 @@
+[
+  {
+    "order": 190,
+    "id": "impl_architecture",
+    "heading": "Implementation Details",
+    "subheading": "System architecture: three tiers, and the two apps meet only at the server",
+    "presenter": "Kanak",
+    "kind": "chart",
+    "seconds": 35,
+    "skip_if_short": false,
+    "chart": {
+      "image": "docs/figures/report/ch5_architecture.png",
+      "caption": "Three-tier architecture (report, Chapter 5); the numbered arrows are the six interactions."
+    },
+    "side_bullets": [
+      "**Child app:** finds the game, captures typed chat and voice, queues uploads when offline.",
+      "**Server:** one HTTPS API behind token, role and consent guards; three models, fusion, alerts.",
+      "**Parent app:** polls alerts every 25 s; urgent ones also arrive by Firebase push.",
+      "**Data:** Neon Postgres in production, SQLite in tests, through the same SQL."
+    ],
+    "notes": "Three tiers sit behind every slide that follows. On the left, the Child app collects: it finds the game in front, captures typed chat and voice, and queues whatever it cannot send yet. In the middle, the Flask server on Render is the only meeting point; the two phones never talk to each other. Requests pass the guards first: a signed token, the parent role where needed, and current consent for uploads. On the right, the Parent app polls for alerts every 25 seconds, and urgent ones also arrive by Firebase push.\n\nNUMBERS BEHIND THIS SLIDE: Figure from the department report, Chapter 5 (docs/figures/report/ch5_architecture.png). Arrows: 1 child uploads sessions, chat and audio; 2 child polls nudges and limits; 3 parent views, verdicts and nudges; 4 SQL over TLS to Neon; 5 push for urgent alerts; 6 encrypted on-device storage. API: 53 documented operations, all fuzzed by Schemathesis with no server errors (PROJECT_PAPER §6.7). Database: 17 tables (CREATE TABLE in backend/app.py init_db); the same SQL runs on SQLite in tests, and the {backend_tests} backend tests run on both. Server: Docker on Render's free plan, 512 MB, gunicorn with one worker and 4 threads (backend/Dockerfile). Delivery: ParentApp polls every 25 s (Constants.POLL_INTERVAL_MS); High concern and tamper events are also pushed by FCM to every guardian device (_push_to_family). Child heartbeat every 3 min (PassiveMonitorService HEARTBEAT_MS).\n\nLIKELY QUESTIONS:\nQ: Why do both apps go through the server instead of talking directly? A: One door means one place to check tokens, roles and consent, and one copy of the data that a parent can export or delete; a direct phone-to-phone link would bypass all three.\nQ: What happens when the server or the network is down? A: The Child app keeps chat lines and offline sessions in encrypted local storage and WorkManager retries them later. The free server sleeps when idle, so the first request after a pause can take 30 to 60 seconds; we wake it before the demo.\nQ: Why push only some alerts? A: Polling every 25 s needs no third party for ordinary alerts; Firebase push is kept for High concern and tamper events, so parents are not flooded. Vidisha covers what the parent sees."
+  },
+  {
+    "order": 200,
+    "id": "impl_module_map",
+    "heading": "Implementation Details",
+    "subheading": "Seven modules, one pipeline: phone captures, server scores, parent app explains",
+    "presenter": "Kanak",
+    "kind": "table",
+    "seconds": 40,
+    "skip_if_short": false,
+    "table": {
+      "header": [
+        "Module",
+        "Technology used",
+        "What the code does",
+        "Owner"
+      ],
+      "rows": [
+        [
+          "ChildApp capture",
+          "Kotlin 1.9.22; UsageStats, custom keyboard, Accessibility, Device Admin",
+          "Spots the game, starts and ends sessions, captures typed chat, heartbeats",
+          "Khushee"
+        ],
+        [
+          "Voice channel",
+          "Vosk 0.3.47 (phone); webrtcvad, librosa 0.10.2, HistGradientBoosting",
+          "Phone transcribes; server gates non-speech, labels emotion, deletes audio",
+          "Khushee, Kaustubh"
+        ],
+        [
+          "Backend API",
+          "Python 3.11, Flask 3.1.3, gunicorn 22.0; Neon Postgres or SQLite",
+          "Token and consent check per upload; one SQL path, two databases",
+          "Kanak"
+        ],
+        [
+          "Behaviour model",
+          "scikit-learn 1.8.0 Random Forest, isotonic calibration; SHAP 0.51.0",
+          "10 play-timing features → Low/Some/High probabilities, top reasons",
+          "Kaustubh"
+        ],
+        [
+          "Chat model",
+          "TF-IDF (word, char_wb) → Logistic Regression; keyword list, noisy-OR",
+          "Scores each line on arrival; alerts at ≥ {alert_threshold}",
+          "Kaustubh"
+        ],
+        [
+          "Fusion + alerts",
+          "NumPy in run_prediction(); Firebase Admin 6.5.0 push",
+          "Weighted mean of present channels → band → alert; High pushed",
+          "Kanak"
+        ],
+        [
+          "ParentApp",
+          "Kotlin 1.9.22, Material 1.11.0, MPAndroidChart 3.1.0, Firebase Messaging 23.4.1",
+          "Band with reasons, alerts with Accurate/False-alarm verdicts, weekly PDF, nudges",
+          "Vidisha"
+        ]
+      ],
+      "col_widths_in": [
+        1.75,
+        4.35,
+        4.6,
+        1.4
+      ]
+    },
+    "footer": "Docker on Render (free plan, 512 MB) with Neon Postgres; GitHub Actions reruns {total_tests} tests and {ml_guards} research-integrity guards on every push.",
+    "notes": "Here are the seven modules, with each one's technology and owner. The ChildApp, in Kotlin, uses UsageStats, Android's record of which app is in front, to spot a game, and our own keyboard and an accessibility service for typed chat. For voice, Vosk turns speech into text on the phone; the server gates out non-speech, labels the emotion and deletes the audio. My part is the backend: Flask under gunicorn, in Docker on Render, with Neon Postgres. The models are small scikit-learn models because the free server has 512 MB. Fusion makes one band, and the ParentApp shows it with reasons.\n\nNUMBERS BEHIND THIS SLIDE: Versions come from backend/requirements.txt, backend/Dockerfile (python:3.11-slim; gunicorn with 1 worker and 4 threads) and the Android build.gradle files (Kotlin 1.9.22, Android Gradle Plugin 8.2.2, min SDK 26 = Android 8, target SDK 34, Retrofit 2.9.0, OkHttp 4.12.0, WorkManager 2.9.1, vosk-android 0.3.47 with the small Indian-English model). Also on the server: webrtcvad-wheels 2.0.14 (the speech gate), psycopg2-binary 2.9.9, Flask-Limiter 3.8.0, fpdf2 2.7.9 (the weekly PDF is built on the server); tokens are HMAC-signed with itsdangerous. Voice row: Khushee owns the phone side, Kaustubh the emotion model. Random Forest: 200 trees, depth 6 (backend/models/model_metadata.json). 36 acoustic features per 10-second clip (PROJECT_PAPER §5.3). Behaviour accuracy {beh_acc} is on SYNTHETIC labels. Chat on held-out real gaming chat at the {alert_threshold} alert threshold: precision {chat_p_deployed}, recall {chat_r_deployed}. Voice {voice_acc} on speakers never heard in training. Tests: {backend_tests} backend + {android_tests} Android = {total_tests}, plus {ml_guards} guards. Free server memory 512 MB (PROJECT_PAPER §3.2).\n\nLIKELY QUESTIONS:\nQ: Why small classical models and Flask instead of deep learning? A: One 512 MB server process holds all three models. We measured the alternative: toxic-BERT reached PR-AUC {toxic_bert} on the same held-out gaming chat where our pipeline scores {chat_prauc} (ablation protocol). Kaustubh has the model details.\nQ: Are the behaviour features computed on the phone? A: No. For behaviour the phone only reports when sessions start and end; compute_behavioral_features() builds the 10 features on the server from stored session history, so a reinstall or a wrong phone clock cannot change them.\nQ: Where does the data live, and who can read it? A: In Neon Postgres. Every data call needs a signed token, a child's token reaches only that child, and parent-only routes also call deny_non_parent(). Vidisha covers consent, export and deletion."
+  },
+  {
+    "order": 258,
+    "id": "impl_backend_request",
+    "heading": "Implementation Details",
+    "subheading": "Backend: when a game ends, one request checks, scores and alerts",
+    "presenter": "Kanak",
+    "kind": "steps",
+    "seconds": 45,
+    "skip_if_short": true,
+    "steps": [
+      {
+        "title": "Check the caller",
+        "body": "guard_session() finds the session's child; guard() checks the signed token.",
+        "result": "Otherwise 401 or 403."
+      },
+      {
+        "title": "Close the session",
+        "body": "end_session() stamps the end time, then checks current parent consent.",
+        "result": "No consent: closed, never scored."
+      },
+      {
+        "title": "Compute features",
+        "body": "compute_behavioral_features() builds 10 features from the last 30 days.",
+        "result": "Uses earlier sessions only."
+      },
+      {
+        "title": "Score",
+        "body": "run_prediction() scores behaviour, then fuses it with stored chat and voice scores.",
+        "result": "Saved as score version {score_version}."
+      },
+      {
+        "title": "Alert",
+        "body": "_maybe_create_alert() writes the alert; _push_high_risk() pushes High concern.",
+        "result": "ParentApp polls every 25 s."
+      }
+    ],
+    "footer": "_finalize_session_once() wraps steps 3–5 in one database claim: a retry never alerts twice.",
+    "notes": "Here is one real request: the phone telling the server that a game has ended. First, guard() checks the signed token and that this child belongs to the caller; if not, we answer 401 or 403. Second, end_session() stamps the end time; without current parent consent, the session is closed but never scored. Third, compute_behavioral_features() builds the 10 features from earlier sessions only. Fourth, run_prediction() scores behaviour and fuses it with the chat and voice scores stored on arrival. Fifth, the alert is written, and High concern is pushed. One database claim covers steps three to five, so a retry never alerts twice.\n\nIf time is short, skip this slide and say: every session upload passes a token check and a consent check, and at session end the server computes, scores and alerts once.\n\nNUMBERS BEHIND THIS SLIDE: Tokens are HMAC-signed with itsdangerous and expire after 30 days (AUTH_TOKEN_TTL_SECONDS default); production sets AUTH_ENFORCE=1 (render.yaml). The phone sends ended_seconds_ago (0 to 7 days), so its clock never matters; one session is capped at 24 h. Features use sessions that began in the 30 days before this one, at most 200. The claim is a 2-minute lease; on an error the attempt's rows are deleted, the phone gets 503 and retries. ParentApp polls GET /api/alerts every 25 s (android/ParentApp Constants.POLL_INTERVAL_MS). Load test on the dev machine: {load_requests} mixed requests, 0 errors, median {load_p50}, 95th percentile {load_p95} (PROJECT_PAPER §6.7). Chat lines do not wait for session end: save_chat() scores each line on arrival and alerts at {alert_threshold} or above.\n\nLIKELY QUESTIONS:\nQ: What if the phone sends the end twice, or two server threads race? A: _finalize_session_once() claims the session row first. A second caller waits for that result or gets 503 and retries, so the score, the alert and the streak are written once.\nQ: What if a voice clip arrives after the session was scored? A: save_voice() marks the session for a late re-score, and the alert is reconciled by the revise path of Algorithm 5.\nQ: How is one child kept from reading another child's data? A: guard() compares the target child with the token's allowed ids or the parent's family, and parent-only routes also call deny_non_parent(). The {backend_tests} backend tests check this on SQLite and Postgres in CI."
+  },
+  {
+    "order": 260,
+    "id": "algo5_fusion_band_alert",
+    "heading": "Implementation Details",
+    "subheading": "Algorithm 5 - Fusion: average only what was captured; no genre factor in score v{score_version}",
+    "presenter": "Kanak",
+    "kind": "pseudocode",
+    "seconds": 50,
+    "skip_if_short": false,
+    "code": {
+      "title": "Average what was captured, pick a band, alert with care",
+      "lines": [
+        "# b, c, v = behaviour, chat, voice scores (0..1), if captured",
+        "RISK_T1, RISK_T2 = 0.33, 0.67        # env vars can override",
+        "parts = []                           # (weight, score) pairs",
+        "if behaviour present: parts.append((0.40, b))",
+        "if chat present:      parts.append((0.30, c))",
+        "if voice present:     parts.append((0.30, v))",
+        "if parts is empty: score = None; band = unknown   # no evidence",
+        "else:",
+        "  score = sum(w * s) / sum(w) over parts   # renormalise",
+        "  score = clip(score, 0, 1)                # no genre multiplier",
+        "  band = risk_category(score)        # cut at RISK_T1, RISK_T2",
+        "if band == High and scored_sessions < 3: band = Some  # observe",
+        "store scores, band, channels present, score_version={score_version}",
+        "# Alert at session end, or on a late re-score (revise)",
+        "if band in (Low, unknown): correct old_alert if revising; return",
+        "severity = high if band == High else medium",
+        "if old_alert and revise and severity rose: retire old; insert new",
+        "elif old_alert: edit old_alert in place       # no re-alarm",
+        "else: insert new alert",
+        "deliver: guardians poll every 25 s; High also pushed by FCM"
+      ]
+    },
+    "side_title": "In plain words",
+    "side_bullets": [
+      "**Renormalise:** average only the channels this session captured. A game with no text chat is judged on behaviour and voice, not on a made-up chat score.",
+      "**Score version {score_version} ({genre_removed_on}):** no genre multiplier. The survey found no genre effect; the validated behaviour score never had one. Existing families get a one-time note.",
+      "**Bands:** under 0.33 Low concern, under 0.67 Some, otherwise High. With fewer than 3 scored sessions, this one included, High shows as Some.",
+      "**Alerts:** if late evidence raises the band, a new alert goes out; if it lowers the band, the old alert is quietly corrected."
+    ],
+    "code_ref": "backend/app.py: run_prediction(), risk_category(), _maybe_create_alert(), _push_high_risk()",
+    "notes": "Algorithm 5 runs when a session ends. We take a weighted mean of only the channels captured, 40, 30 and 30, divided by the weights present, so a silent game is not judged on a made-up voice score. Since score version {score_version}, that mean is the whole score: the genre multiplier is gone, because the survey found no genre effect and the validated behaviour score never had one. risk_category() cuts at 0.33 and 0.67. Weights and cut-offs are priors, not fitted; we measured how much they move bands instead. Below three scored sessions we never show High concern. Some concern raises a medium alert, High a high one that is also pushed. Later evidence that raises the band alerts again; evidence that lowers it corrects the old one.\n\nNUMBERS BEHIND THIS SLIDE: Weights 0.40 / 0.30 / 0.30 and cut-offs RISK_T1 0.33, RISK_T2 0.67 are hand-set priors, both cut-offs environment variables (backend/app.py; PROJECT_PAPER §4.5). Inputs: behaviour = P(Some) x 0.5 + P(High) x 1.0 from the calibrated Random Forest; chat = the highest per-message score this session, typed chat only; voice = mean of emotion risk x intensity (VOICE_RISK: angry 0.9, frustrated 0.7, excited 0.4, neutral 0.1). Genre multiplier removed {genre_removed_on}: the survey's genre test gave p {genre_p} across {genre_groups} genres, at only {genre_power} power; on the {pilot_sessions} pilot sessions removal moves {genre_band_shift} of bands. Same pilot, old score: shifting weights by up to 0.15 changed a median {weight_flip_median} of bands, worst {weight_flip_max}; shifting a cut-off by 0.05 changed up to {threshold_flip_max} (PROJECT_PAPER §6.9). The survey validated the behaviour channel only, so with chat or voice present the fused score is still built on priors. Alerts: ParentApp polls every 25 s; FCM push is for High concern only.\n\nLIKELY QUESTIONS:\nQ: Why 40/30/30, and why not learn the weights? A: Our training labels are synthetic, so fitting weights on them would be circular, and behaviour leads because the clinical definitions are behavioural. Kaustubh owns the weight design; on the pilot, shifting the weights changed a median {weight_flip_median} of bands.\nQ: Does removing the genre weight rewrite what parents saw before? A: No. Old predictions keep their stored score, with an empty score_version that marks the old formula; new ones are version {score_version}. On the pilot it would have moved {genre_band_shift} of bands, so parents with older scores get one in-app note instead of a silent change.\nQ: The internal band keys in the code sound clinical. Why? A: They are legacy storage keys. RISK_DISPLAY on the server and RiskPresentation in both apps show only Low, Some or High concern, and every result carries a screening disclaimer."
+  }
+]

@@ -1,0 +1,59 @@
+[
+  {
+    "order": 115,
+    "id": "review2_gemini_nano",
+    "heading": "Suggestions from Review 2",
+    "subheading": "Gemini Nano studied: private and promising, not yet usable on children's phones",
+    "presenter": "Khushee",
+    "kind": "table",
+    "seconds": 45,
+    "skip_if_short": false,
+    "intro": "**Suggestion:** use Google's on-device Gemini Nano API for text and voice instead of our own models (checked against Google's documentation, 23 Nov 2026).",
+    "table": {
+      "header": [
+        "What our system needs",
+        "Gemini Nano today",
+        "Effect"
+      ],
+      "rows": [
+        [
+          "Runs on a **child's** phone",
+          "Google's terms bar apps likely to be accessed by anyone **under 18**",
+          "**Ruled out** on every phone"
+        ],
+        [
+          "Scores while the **game** is on screen",
+          "Runs only when the calling app is **in front**; background calls are refused",
+          "**Blocked** during play"
+        ],
+        [
+          "Runs on families' phones",
+          "110 supported devices: no Galaxy A, M or F, not our **Galaxy M52**",
+          "Our test phone and Samsung's volume phones excluded"
+        ],
+        [
+          "Hears **tone** of voice",
+          "Text and images in, no audio; speech API gives words, not tone",
+          "Voice model **cannot be replaced**"
+        ],
+        [
+          "**Calibrated** scores, English and Hindi",
+          "Text out, no probabilities; no published toxicity or Hindi accuracy",
+          "Nothing calibrated to feed our {alert_threshold} threshold"
+        ],
+        [
+          "A stable API",
+          "Prompt API beta, speech alpha; no SLA; unpublished quotas",
+          "Too early to depend on"
+        ]
+      ],
+      "col_widths_in": [
+        3.6,
+        5.0,
+        3.5
+      ]
+    },
+    "footer": "**Decision:** keep our validated server-side models. **Next:** benchmark Nano on our test set when we can use a supported phone.",
+    "notes": "We were asked whether Google's Gemini Nano could replace our chat and voice models. We took it seriously, because on-device AI has a real privacy benefit: the child's chat and voice would never leave the phone. On 23 November we checked Google's own documentation against our needs. Two findings block it on every phone. Google's terms forbid these APIs in apps likely to be used by anyone under 18, and our child app runs on a child's phone. And Nano only runs while the calling app is in front, but during play the game is in front. The supported list also has no Galaxy A, M or F phone, including our test phone. Two more findings matter for the models. Nano takes text and images, not audio, so it cannot hear tone. And it returns text without probabilities, so our {alert_threshold} alert threshold would lose its meaning. So we keep our validated models, and will benchmark Nano as soon as we can use a supported phone.\n\nNUMBERS BEHIND THIS SLIDE: All from Google's own pages, downloaded and checked on 23 Nov 2026; the full record with every link is docs/GEMINI_NANO_FEASIBILITY.md. Terms (ML Kit GenAI Additional Terms, developers.google.com/ml-kit/genai-terms): the APIs may not be used in an app 'directed towards or is likely to be accessed by individuals under the age of 18'; the same terms bar clinical use and production use of Preview services. Background (ML Kit GenAI overview, developers.google.com/ml-kit/genai, updated 10 Nov 2026): inference is permitted only when the app is 'the top foreground application'; a foreground service gets the error BACKGROUND_USE_BLOCKED; the rule has been documented since May 2025, then as a BUSY error. Devices (same page): the Prompt API list has 110 device models; the only Samsung entries are Galaxy S25/S26, Tab S12 and Z Flip/Fold models. AICore needs Android 14 or later (support.google.com/android/answer/17065362); our Galaxy M52 (Snapdragon 778G, SM7325) ends at Android 13 (GSMArena). A few phones under Rs 30,000 are supported (POCO X7 Pro, Rs 26,999 at launch), so never say 'flagship-only'. In 2025, 78% of phones shipped in India cost Rs 30,000 or less (Counterpoint). Google reports Nano on over 140 million devices (July 2026). Voice: Prompt API input is text and images; speech recognition returns text, word timings and a 0-100 audio level, with no pitch, emotion or confidence. Our tone model reads 36 features: {voice_acc} on unseen speakers (4 classes, chance 0.25). Chat: Nano returns text plus a finish reason (STOP, MAX_TOKENS or OTHER), no probabilities, at most 8 deduplicated candidates, and different Nano versions may answer the same prompt differently; the Prompt API page lists no languages. Ours, as served: PR-AUC {chat_prauc_served} on held-out gaming chat; at {alert_threshold}, precision {chat_p_deployed} and recall {chat_r_deployed}; Hindi precision {hindi_p_deva} (Devanagari) and {hindi_p_roman} (romanised). Google's own Nano 4 example prompt is a profanity and hate-speech check, so never say Nano cannot classify toxicity: the gaps are calibration, validation and access. Maturity: Prompt API beta, speech APIs alpha, task APIs 1.0.0-beta1, no SLA or deprecation policy; a per-app request quota and a long-duration (for example daily) battery quota, both with unpublished limits. Nothing on this slide was measured on Nano: we have no supported phone.\n\nLIKELY QUESTIONS: (1) Isn't on-device better for privacy? Yes, and that is why we studied it: with Nano the child's chat and voice would stay on the phone. We already transcribe speech on the phone with Vosk, and the server deletes each 10-second clip once it has extracted the tone features, but typed lines, transcripts and those clips do reach our server. Nano cannot give our users that gain today, because the terms exclude apps used by children and inference is blocked while the game is in front (Khushee has the capture details). (2) Why not use it only where it is available? The terms and the background rule apply on every phone, supported or not. Even on a supported phone, a second scoring path would give a different score for the same line, so one alert threshold would no longer mean the same thing for every family. Where Nano fits is a foreground feature on the parent's phone, behind a capability check, with today's system as the fallback (Khushee has the device side). (3) Did you test it? No, honestly. Our Galaxy M52 is not supported and none of us owns a supported phone, so we have no accuracy, latency or battery number for Nano; this is a documentation study, checked page by page on 23 Nov 2026. The test is ready: on a borrowed supported phone, run Nano over our held-out gaming chat and the {hindi_heldout_rows}-row Hindi hold-out, compare PR-AUC and precision at the alert threshold with our served model ({chat_prauc_served}; {chat_p_deployed}), and run our device drill during a game."
+  }
+]

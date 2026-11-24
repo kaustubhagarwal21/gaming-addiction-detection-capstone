@@ -1,0 +1,231 @@
+[
+  {
+    "order": 300,
+    "id": "demo_overview",
+    "heading": "Project Demonstration",
+    "subheading": "The whole loop runs live: child phone, cloud, parent phone",
+    "presenter": "Khushee",
+    "kind": "steps",
+    "seconds": 35,
+    "skip_if_short": false,
+    "steps": [
+      {
+        "title": "User interface",
+        "body": "ChildApp: home, daily check-in, Mira counsellor chat. ParentApp: dashboard, alerts, chat and emotion views.",
+        "result": "Two real phones, live cloud server."
+      },
+      {
+        "title": "Module-wise functionality",
+        "body": "Chat and voice capture, scoring with reasons, alert ratings, nudges, weekly PDF, tamper alerts.",
+        "result": "Chat capture off: parent alerted within seconds."
+      },
+      {
+        "title": "Module integration, live",
+        "body": "Open Roblox: session starts in {session_autostart}. Type and speak. Close it: session ends {session_autoend} later.",
+        "result": "Score, reasons, alert reach the parent, who rates it; nudge back in {nudge_latency}."
+      }
+    ],
+    "footer": "Khushee drives; Vidisha narrates. History is seeded demo data; today's session is live. Backup: recorded video.",
+    "notes": "Here is the map for the next six minutes, one box per demo criterion. Interface: both apps on two real phones and our live server. Modules: capture, scored reasons, alert ratings, nudges, the weekly PDF and the tamper alert. Integration: I open Roblox, type, speak and close it; Vidisha then shows the new score, its reasons and alert, rates it, and nudges my phone. Arjun's earlier history is seeded demo data; today's session is live. If the network fails, we play our recorded video.\n\nNUMBERS BEHIND THIS SLIDE: Session auto-start {session_autostart} after the game opens; auto-end {session_autoend} after it closes; a parent nudge reaches the child in {nudge_latency} (DEMO_RUNBOOK section 3). Code: the ChildApp's PassiveMonitorService runs the usage-stats loop, the end-of-session grace period, the nudge loop, and an immediate heartbeat whenever a capture permission changes, which is why the Accessibility tamper reaches the parent within seconds. backend/app.py run_prediction() fuses the channels and computes the SHAP reasons (SHAP splits one score into each feature's share); _maybe_create_alert() raises an alert only at Some or High concern. Served score: version {score_version}, genre weight removed {genre_removed_on}. Seeded history: backend/seed_demo.py SESSION_PLAN writes Arjun's past sessions and their scores by hand, so those past scores are not model outputs.\n\nLIKELY QUESTIONS:\nQ: Is this real data? A: The earlier history and its scores are seeded demo data from our seed script, and no real child appears. Today's session is detected, captured and scored live by the deployed models.\nQ: What if the server or the Wi-Fi fails? A: We wake the free server from its health page before the slot; if it still stalls we switch to the laptop backend over USB. If the phones fail, we play the recorded video, which follows the same order.\nQ: Is the genre weight still in this score? A: No. Since {genre_removed_on} the served score is version {score_version}, without it, and parents get a one-time in-app note; Kaustubh can explain why.\n\nDEMO RUN ORDER (about six minutes; the timed script at the top of DEMO_RUNBOOK, which the backup video follows beat for beat, so a switch to the video keeps the story): Before the slot, open the /api/health page until models_loaded is true and check that the demo family loads; both phones charged and on Wi-Fi. (A) Parent tour on seeded data, Vidisha: Arjun's dashboard (after a fresh reseed: Today, Some concern, about 55%; the 14-day trend climbing to High concern, 85%, yesterday) and the 'Latest session factors & daily signals' card, the SHAP reasons; rate the seeded alert 'Arjun reached High concern — score 85%.' Accurate and point at the agreement banner; Chat Analysis and Emotion Insights; Settings, 'What we can and can't see'. (B) Child phone, Khushee: Home, the daily check-in and one line to Mira; open Roblox and let the session start by itself; type one line on our Wellbeing Keyboard and say one sentence; close Roblox, and while the session ends and is scored (about 25 seconds) Vidisha downloads the weekly PDF. Vidisha pulls to refresh, shows the new session and its reasons, rates its alert (raised only at Some or High concern), then sends 'Time to take a break' and it lands on the child phone in about 12 seconds. (C) Tamper: Logout asks for the parent PIN and refuses a wrong one; turn Accessibility off, show 'Monitoring degraded — chat capture off' and the permission alert, then turn it back on. If the one-time note about the new score version appears, explain it in one line. Behind schedule: cut Emotion Insights, then the check-in, then Mira; never the live loop or the permission alert."
+  },
+  {
+    "order": 400,
+    "id": "test_timeline",
+    "heading": "Test Plan and Strategy",
+    "subheading": "Testing grew from manual checks to automated layers in CI",
+    "presenter": "Kanak",
+    "kind": "table",
+    "seconds": 45,
+    "skip_if_short": false,
+    "table": {
+      "header": [
+        "When (2026)",
+        "Testing activity",
+        "What it showed"
+      ],
+      "rows": [
+        [
+          "Feb–May",
+          "Phase-2 prototype: models scored on held-out data; manual end-to-end smoke checklist",
+          "Working prototype; no CI yet"
+        ],
+        [
+          "29 May–10 Jun",
+          "Suite rebuilt on a throwaway database; live-cloud check; production-mode sweep; real-phone checklist",
+          "Phone-only bugs found, fixed by 10 Jun"
+        ],
+        [
+          "6–28 Jul",
+          "CI on every push (Postgres 16, Android tests); load test; {pilot_days}-day family pilot",
+          "Pilot exposed screens disagreeing on risk; fixed, test-pinned"
+        ],
+        [
+          "4–18 Aug",
+          "Fuzzing and security scans; survey-parsing test; speech-to-text accent audit; phone resource drill",
+          "Login-check bug fixed; survey parser fixed before launch; Hindi+English speech-to-text off by default"
+        ],
+        [
+          "24–30 Aug",
+          "Score-drift alarm traced to test data, blind spot fixed; paper-vs-data guards join CI",
+          "Papers' headline survey numbers checked on every push"
+        ],
+        [
+          "Sep–Nov",
+          "Monday drift checks; CI on each push; genre weight removed (score {score_version})",
+          "{total_tests} automated tests and {ml_guards} guards in CI"
+        ]
+      ],
+      "col_widths_in": [
+        1.7,
+        6.0,
+        4.4
+      ]
+    },
+    "notes": "Our testing grew in layers; dates from May on come from git. In Phase 2, February to May, we scored the prototype's models on held-out data and walked a manual end-to-end checklist. From 29 May we rebuilt the backend suite on a throwaway database, added a live-cloud check, and took both apps onto real phones, which found bugs no API test could. From 6 July, continuous integration reran our tests on every push, while the family pilot ran for {pilot_days} days. August added fuzzing, meaning generated requests nobody wrote by hand, plus security scans, the accent audit and the phone drill. A weekly drift check watches the live scores, and in November the genre weight left the score, now version {score_version}.\n\nNUMBERS BEHIND THIS SLIDE: Dates from git log on backend/tests, ml/tests, the Android test folders, TESTING.md and .github/workflows. 29 May: repository created, carrying in the first API tests, a Postgres smoke test and the manual smoke checklist. 31 May: live-cloud check. 2 Jun: suite rebuilt on a throwaway database. 10 Jun: production-mode sweep, the TESTING.md phone checklist, and fixes for three phone-found defects: a launch crash on Android 12+, a 512 MB server out-of-memory under live voice load, and a repeating notification (PROJECT_PAPER §6.8). 6 Jul: CI with the Postgres 16 job, first Android unit tests, the load-test script and the weekly drift monitor. 6–28 Jul: family pilot, {pilot_days} days (PROJECT_PAPER §6.9); 19 Jul: one risk headline on every screen, pinned by a test. 4 Aug: fuzzing, CVE audit, bandit, secret scan, coverage, MobSF. 7 Aug: survey-parsing contract test. 9 Aug: paper-vs-data guard. 14 Aug: accent audit. 18 Aug: phone drill. 24–25 Aug: drift postmortem. 30 Aug: guards join CI. {genre_removed_on}: genre weight removed, score {score_version}; it changes the band of {genre_band_shift} of the {pilot_sessions} pilot sessions. Now: {backend_tests} backend + {android_tests} Android = {total_tests} automated tests, plus {ml_guards} guards. Git history starts on 29 May, so the Feb–May row comes from the Phase-2 report and the files the first commit carried in. The drift check compares each week's served scores with earlier weeks (PSI and KS tests).\n\nLIKELY QUESTIONS:\nQ: Why does your git history start in May? A: The deployable product got its own repository on 29 May. The Phase-2 prototype work is in our Phase-2 report, and the first commit carried its checklist and first API tests in.\nQ: Has CI ever gone red? A: Yes. On 11 July a test-setup problem failed CI and was fixed the same day. On 24 August the drift monitor fired on demo and drill data, not the model, and the postmortem fixed a blind spot in the monitor.\nQ: Why remove the genre weight? A: The survey found no genre effect (p {genre_p}, though at only {genre_power} power) and the validated score never included it, so we removed it as promised at Review 2. Kaustubh owns the details."
+  },
+  {
+    "order": 410,
+    "id": "test_functional",
+    "heading": "Test Plan and Strategy",
+    "subheading": "Five automated functional layers, all on open-source tools",
+    "presenter": "Kanak",
+    "kind": "table",
+    "seconds": 50,
+    "skip_if_short": false,
+    "table": {
+      "header": [
+        "Method",
+        "What it checks",
+        "Why this method",
+        "Tool"
+      ],
+      "rows": [
+        [
+          "Unit",
+          "Scoring helpers, chat fusion; phone logic like the offline queue and keyboard",
+          "Exact and fast, so every push runs them",
+          "pytest, JUnit 4"
+        ],
+        [
+          "Integration (API)",
+          "API endpoints through the real server code, on a throwaway database",
+          "Bugs hide where parts meet; production runs Postgres",
+          "pytest on SQLite and Postgres 16"
+        ],
+        [
+          "Contract",
+          "API spec vs server routes; survey form vs parser; both apps' risk labels identical",
+          "Parts built separately must not drift apart",
+          "pytest, CI file diff"
+        ],
+        [
+          "System (production mode)",
+          "Every app flow with real tokens, login enforced",
+          "Same security setting families get",
+          "functional_sweep.py"
+        ],
+        [
+          "End-to-end (live cloud)",
+          "Every screen's endpoint on the deployed server, plus its login guards",
+          "Proves what is deployed, not just local code",
+          "cloud_e2e.py"
+        ]
+      ],
+      "col_widths_in": [
+        2.1,
+        4.5,
+        3.3,
+        2.2
+      ]
+    },
+    "footer": "On every push: {backend_tests} backend + {android_tests} Android = {total_tests} automated tests, plus {ml_guards} research-integrity guards.",
+    "notes": "Each functional layer tests something the others cannot. Unit tests check one piece of logic, like the chat fusion or the phone's offline chat queue; they are exact and fast, so every push runs them. Integration tests drive the API through the real server code on a throwaway database, on SQLite and on Postgres 16, because production runs Postgres and SQL that passes on one can fail on the other. Contract tests catch silent drift between parts built separately: the API spec against the server's routes, the survey form against its parser, the risk labels both apps share. The production-mode sweep replays every app flow with login enforced, and the cloud check hits the deployed server itself. CI runs the {total_tests} automated tests and {ml_guards} guards on every push.\n\nNUMBERS BEHIND THIS SLIDE: {backend_tests} backend tests in one pytest suite, run twice in CI (SQLite and Postgres 16); {android_tests} Android JVM tests in JUnit 4, which test the apps' decision logic without a phone; {total_tests} automated tests in all, plus {ml_guards} research-integrity guards counted separately (docs/test_counts.json). Production-mode functional sweep: 89 checks, 89/89 on 23 Nov after score v2 (TESTING.md); live-cloud check: 25 checks. Statement coverage: 75% overall, 80% of the code the server runs (PROJECT_PAPER §6.7). Contract tests in code: backend/tests/test_api.py test_openapi_lists_every_runtime_api_route(); backend/tests/test_ml_units.py test_feature_vector_contract(); ml/tests/test_survey_parsing.py; and the ci.yml job shared-source-sync, which diffs the two apps' RiskPresentation files. Login guards: 401 means no valid token; 403 means a valid token asking for another family's data.\n\nLIKELY QUESTIONS:\nQ: What is your code coverage? A: 75% of statements overall and 80% of the code the server actually serves (PROJECT_PAPER §6.7). Most of the rest is error handling for database or push-service outages, which a self-contained suite cannot trigger.\nQ: Why are the sweep and the cloud check not in CI? A: The cloud check needs the live server and the demo family's logins, so we run it before demos and after changes. The sweep could join CI cheaply; that is a fair next step.\nQ: Do the Android tests run on a phone? A: No, they are JVM unit tests of the apps' logic. Phone behaviour is covered by Khushee's real-device checks on the next slide."
+  },
+  {
+    "order": 420,
+    "id": "test_nonfunctional",
+    "heading": "Test Plan and Strategy",
+    "subheading": "Measured, not assumed: bugs found, one feature kept off",
+    "presenter": "Khushee",
+    "kind": "table",
+    "seconds": 55,
+    "skip_if_short": false,
+    "table": {
+      "header": [
+        "Quality",
+        "How we tested it",
+        "Result"
+      ],
+      "rows": [
+        [
+          "Performance",
+          "{load_requests} mixed requests, 24 parallel threads, real server",
+          "No errors; median {load_p50}, 95th percentile {load_p95}"
+        ],
+        [
+          "Security",
+          "Generated API requests (Schemathesis); code scan (bandit); vulnerability check (pip-audit); secret scan; app scan (MobSF)",
+          "One bug (login checked too late) and six known vulnerabilities fixed; no exploitable high-severity issue"
+        ],
+        [
+          "Phone cost",
+          "Galaxy M52: two 15-minute Roblox sessions, sampled every minute",
+          "Default {cpu_default} of a core, {mem_default}; Hindi+English speech-to-text {cpu_dual}, {mem_dual}: failed, kept off"
+        ],
+        [
+          "Phone function",
+          "Every screen and tamper drill, by hand, on real phones",
+          "3 bugs the API tests missed, e.g. a launch crash"
+        ],
+        [
+          "Accent fairness",
+          "Our speech-to-text on {clips} Indian-English clips, then the chat scorer",
+          "{false_alerts} false alerts; word errors {wer_drav} to {wer_tb} across accents"
+        ],
+        [
+          "Research integrity",
+          "{ml_guards} guards check the survey parser and papers' headline numbers",
+          "CI fails if a paper drifts from the data"
+        ]
+      ],
+      "col_widths_in": [
+        1.9,
+        5.2,
+        5.0
+      ]
+    },
+    "notes": "These tests ask how well the system works, not only whether it works. Speed: {load_requests} mixed requests from 24 threads hit a real server with no errors and a median of {load_p50}. Security: a fuzzer generated valid and invalid requests for every API operation and found one real bug, an endpoint that read the request before checking the login. Testing every screen by hand on real phones found three bugs our API tests had missed. On a Galaxy M52 we played Roblox for two 15-minute sessions: our default costs {cpu_default} of one core, but Hindi plus English speech-to-text cost {cpu_dual} and {mem_dual}, failing our own gate, so it stays off by default. The accent audit raised {false_alerts} false alerts but heard some accents far worse than others. And the guards fail CI if a paper's number drifts from the data.\n\nNUMBERS BEHIND THIS SLIDE: Load: {load_requests} mixed requests over 24 threads, no server errors, median {load_p50}, 95th percentile {load_p95}, measured on the development machine (PROJECT_PAPER §6.7). Security (PROJECT_PAPER §6.7): Schemathesis, built on the Hypothesis property-testing library, fuzzed all 53 documented operations with no server errors under production login settings and found one real bug: an endpoint parsed its body before checking the token, so an anonymous caller saw 415 instead of 401. Bandit raised 44 medium findings: 43 verified false positives and one real eval() in test code, now replaced. pip-audit led to six known vulnerabilities being retired by upgrades; detect-secrets found no tracked private key, keystore or server secret. MobSF v4.5.1 on both signed APKs: no exploitable high-severity issue (PROJECT_PAPER §7). Phone bugs: three, found by real-device testing (PROJECT_PAPER §6.8), for example a launch crash on Android 12+. Phone drill on a Galaxy M52 5G (PROJECT_PAPER §9): default {cpu_default} of one core and {mem_default} mean to peak, no thermal throttling; Hindi+English {cpu_dual} and {mem_dual}, about 4–5x the CPU and over the 400 MB line for eight of fifteen minutes, so it failed two of the gate's three criteria; cold start {cold_start}; Roblox itself used 215%. Accent audit (PROJECT_PAPER §6.4): {clips} clips, {speech_hours} h, {speakers} speakers; {false_alerts} false alerts; word error rate {wer_overall} overall, {wer_drav} Dravidian, {wer_ia} Indo-Aryan, {wer_tb} Tibeto-Burman. Guards: {ml_guards}. All of these tools are free and open source.\n\nLIKELY QUESTIONS:\nQ: Why report CPU instead of battery drain? A: The phone was on USB for adb, and Android's battery attribution reads zero while charging, so we report per-app CPU time, the input Android's own drain estimate uses (PROJECT_PAPER §9).\nQ: What exactly was the security bug? A (Kanak): One endpoint read the request body before checking the login token, so an anonymous caller could learn the endpoint existed. We moved the check first and added a regression test.\nQ: Is the accent result too good to be true? A (Kaustubh): {false_alerts} false alerts in {clips} harmless clips bounds the false-alert rate at about 0.045% (PROJECT_PAPER §6.4). The real gap is recall: the Northeast's Tibeto-Burman speakers see {wer_tb} word errors, so toxic speech there is more often missed."
+  },
+  {
+    "order": 430,
+    "id": "test_env_roles",
+    "heading": "Test Plan and Strategy",
+    "subheading": "Each member tested their own module; the gaps are named",
+    "presenter": "Kanak",
+    "kind": "twocol",
+    "seconds": 45,
+    "skip_if_short": false,
+    "cols": [
+      {
+        "title": "Environment and team roles",
+        "bullets": [
+          "**Where:** laptop (SQLite); GitHub Actions (SQLite, Postgres 16); Render + Neon cloud; real phones.",
+          "**Kanak:** backend suites, fuzzing, load test, CI.",
+          "**Khushee:** ChildApp tests, phone and tamper drills.",
+          "**Vidisha:** ParentApp tests; consent, export and deletion checks.",
+          "**Kaustubh:** model evaluation, ablations, guards."
+        ]
+      },
+      {
+        "title": "Benefits and drawbacks",
+        "bullets": [
+          "**Benefit:** layers catch different bugs; phones and fuzzing found ones our tests missed.",
+          "**Drawback:** no automated UI tests on a phone.",
+          "**Drawback:** synthetic behaviour labels; the external check used adults only.",
+          "**Drawback:** load test on a laptop; no human penetration test yet."
+        ]
+      }
+    ],
+    "notes": "Here is where the tests ran and who owned them. Suites run on a laptop with SQLite, and GitHub Actions repeats them on every push, on SQLite and Postgres 16. The cloud check hits the live Render server and its Neon database, and real phones run the device checks. Each of us owned our module's tests: I had the backend suites, fuzzing, load test and CI; Khushee the ChildApp and phone drills; Vidisha the ParentApp, consent and deletion checks; Kaustubh model evaluation, ablations and the guards. The drawbacks, plainly: no automated phone UI tests, synthetic behaviour labels, an adult-only external check, and a load test on a laptop, not the live server.\n\nNUMBERS BEHIND THIS SLIDE: Laptop: SQLite, the same suites as CI. Ablations: one component removed at a time to measure what it adds (PROJECT_PAPER §6.5). CI on GitHub Actions: a SQLite job, a Postgres 16 service job, Android Lint plus JVM tests for both apps, the {ml_guards} guards, and a check that both apps' risk-label code is identical. Cloud: Render (Docker) with Neon Postgres, used by the cloud check and the pilot. Phones: an Android 16 phone for the full real-device pass (PROJECT_PAPER §6.8) and a Galaxy M52 5G for the resource drill (PROJECT_PAPER §9). Counts: {backend_tests} backend, {android_tests} Android, {total_tests} automated tests, plus {ml_guards} guards. Drawback evidence: behaviour accuracy {beh_acc} is on synthetic labels; the survey scored {n_scored} adults, rank correlation {rho}, with only {prevalence_k} respondent in the disordered range, so no sensitivity or specificity yet; the load test (median {load_p50}) ran on the development machine; a human penetration test is future work (PROJECT_PAPER §7). Roles follow the team's agreed module ownership.\n\nLIKELY QUESTIONS:\nQ: Why no automated UI tests? A: Capture depends on usage access, the microphone and accessibility, which emulators fake poorly, so we moved the decision logic into JVM unit tests and check screens by hand on real phones. Device UI tests are future work.\nQ: Why not load-test the live server? A: The free tier has tight memory and database-compute limits, so we measured on a development machine. Repeating it on the deployed server after each deploy is the open step we name here.\nQ: Did any child take part in testing? A: One consented family's child used the app in our {pilot_days}-day pilot, which tested the engineering, not the score's accuracy. Validating the score with children needs ethics review first; Vidisha can expand."
+  }
+]

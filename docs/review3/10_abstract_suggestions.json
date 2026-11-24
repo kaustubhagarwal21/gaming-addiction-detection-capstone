@@ -1,0 +1,90 @@
+[
+  {
+    "order": 100,
+    "id": "abstract_scope",
+    "heading": "Abstract",
+    "subheading": "We screen how a child plays, not just how long",
+    "presenter": "Vidisha",
+    "kind": "bullets",
+    "seconds": 50,
+    "skip_if_short": false,
+    "intro": "Most parental-control apps count hours. Hours cannot tell healthy from compulsive play.",
+    "bullets": [
+      "**For whom:** parents of children who play games on Android.",
+      "**What it does:** the child's phone captures play, chat and voice; three cloud models score them; parents see Low, Some or High concern, with reasons.",
+      "**In scope:** installed game apps; the child's own typed chat (English, Hindi) and spoken English.",
+      "**Out of scope:** browser games; diagnosis; validation on children (we surveyed adults).",
+      "**Result:** for {n_scored} adult gamers, our behaviour score tracked IGDS9-SF, a standard gaming-disorder questionnaire: a moderate link (rank correlation {rho})."
+    ],
+    "notes": "We built a deployed screening system for parents that measures how a child plays, not just how long. Most parental-control apps count hours, so three hours of healthy play look the same as three hours of compulsive play. Our child app captures game sessions, the child's own chat and their voice on an Android phone. Three cloud models score them, and the parent app shows Low, Some or High concern, with reasons in plain words. Our scope, up front: we watch installed game apps, not browser games. We screen; we never diagnose. And we surveyed adults, not children. The headline: for {n_scored} adult gamers, our behaviour score tracked IGDS9-SF, a standard nine-question gaming-disorder questionnaire. The link is moderate, and how people play tracked it better than how long they play.\n\nNUMBERS BEHIND THIS SLIDE: Survey: anonymous adults aged 18 or over; {n_raw} raw responses, {n_usable} usable, {n_scored} with a computable score. Rank correlation (Spearman ρ: 0 means no link, 1 means identical ordering) {rho}, 95% interval {rho_ci}. Screen-time hours alone: {rho_hours} {rho_hours_ci}, an interval that spans zero. Pattern features {pattern} against volume features {volume}; the formal pattern-minus-volume difference is {contrast} {contrast_ci} and excludes zero, our strongest claim. With hours held fixed the score keeps {partial} {partial_ci}. The gain over hours alone, {delta} {delta_ci}, only grazes zero, so call it suggestive. Only {prevalence_k} respondent was in the disordered range, so no sensitivity or specificity. Behaviour accuracy {beh_acc} is on synthetic labels (a simulation grounded on two real surveys), not a clinical accuracy. Typed Hindi abuse precision at the {alert_threshold} alert threshold: {hindi_p_deva} in Devanagari, {hindi_p_roman} romanised; the Devanagari keyboard layout is still a beta. Spoken Hindi is off by default: Hindi plus English speech-to-text together used {cpu_dual} CPU and {mem_dual}, failing our phone budget (default path {cpu_default} of one core, {mem_default}). Family pilot: {pilot_days} days, consented, {pilot_sessions} completed sessions.\n\nLIKELY QUESTIONS: (1) Why leave out browser games? Detection works from which installed app is in the foreground and never inspects web addresses or page content, so a game inside a browser is invisible. Closing that gap would need screen capture or URL tracking, which breaks our privacy design, so we disclose the boundary to parents instead (Khushee has the capture details). (2) You surveyed adults, so how do you know it works for children? We do not claim that yet: the survey shows the score means something for adult gamers, and the child study needs ethics-committee approval we do not have, so it is future work (next slide). (3) Did you take permission for the survey? It was anonymous, adults-only, consent-gated and voluntary, and we notified our guide in writing on 14 Aug 2026, while the form was still open and after the main wave, which should have come first (PROJECT_PAPER.tex, Ethics and Limitations). That is faculty notification, not ethics-committee approval, and we claim no reply or approval."
+  },
+  {
+    "order": 110,
+    "id": "review2_suggestions",
+    "heading": "Suggestions from Review 2",
+    "subheading": "Genre weight removed and versioned; Gemini Nano studied; child study remains",
+    "presenter": "Vidisha",
+    "kind": "table",
+    "seconds": 60,
+    "skip_if_short": false,
+    "table": {
+      "header": [
+        "#",
+        "Suggestion / commitment",
+        "Feasibility",
+        "Progress shown today (slide)"
+      ],
+      "rows": [
+        [
+          "1",
+          "Remove the hand-set genre weight from the score",
+          "Yes: never in the validated score",
+          "**DONE**, {genre_removed_on} → Implementation Details"
+        ],
+        [
+          "2",
+          "Version the score and tell parents",
+          "Yes",
+          "**DONE:** score version {score_version}; one-time in-app note"
+        ],
+        [
+          "3",
+          "Re-sync report, papers and decks",
+          "Yes",
+          "**DONE:** report, slides and both papers match score v{score_version} (papers updated 23 Nov) → IEEE Draft"
+        ],
+        [
+          "4",
+          "Polish and submit the IEEE paper",
+          "Yes",
+          "**IN PROGRESS:** {ieee_pp}-page draft updated 23 Nov; submit by 31 Jan 2027 → IEEE Draft"
+        ],
+        [
+          "5",
+          "Validate on children: parents answer IGDS9-SF, linked to measured play",
+          "Not yet: needs ethics-committee approval first",
+          "**NOT STARTED** → Future Work"
+        ],
+        [
+          "6",
+          "Complete the report in department format",
+          "Yes",
+          "**DRAFTED:** {report_pp} pages; guide's corrections next → Project Report"
+        ],
+        [
+          "7",
+          "Panel: research whether the Gemini Nano API (on-device AI) can replace our text and voice models",
+          "Studied: not usable now (terms exclude apps used by under-18s; no background use; our phones unsupported)",
+          "**DONE:** feasibility study and decision record → next slide"
+        ]
+      ],
+      "col_widths_in": [
+        0.5,
+        4.4,
+        3.4,
+        3.8
+      ]
+    },
+    "notes": "At Review 2 we made six commitments, and the panel asked us to study one more idea. One: the hand-set genre weight is gone, because the survey found no genre effect and the validated score never used it. Two: it moves {genre_band_shift} of pilot sessions to another band, so every score now carries its version, and existing families get a one-time note. Three: the report, these slides and both papers now match the new score. Four: the IEEE draft is complete and goes to COMPSAC by 31 January. Five: the child study has not started; it needs ethics-committee approval first. Six: the report is drafted and awaits our guide's corrections. Seven, the panel's suggestion: we researched whether Google's Gemini Nano could replace our text and voice models; the next slide shows what we found and why we have not adopted it yet.\n\nNUMBERS BEHIND THIS SLIDE: Genre test: Kruskal-Wallis (a rank test across groups) over {genre_groups} genres, H = {genre_H}, p = {genre_p}, at only {genre_power} power, so it shows no evidence of an effect, not proof of none; about 400 scoreable respondents would give 90% power (PROJECT_PAPER.tex, External construct validation, Result 5). The old hand-set weights ran from 0.70 for casual games to 1.25 for battle royale (docs/genre_removal.json, v1_genre_weights). Re-scoring the {pilot_sessions} completed pilot sessions without the weight moves {genre_band_shift} of them to a different band. Score version {score_version}, removed on {genre_removed_on}. IEEE draft: {ieee_pp} pages. Report draft: {report_pp} pages. Row 3: both papers were updated on 23 Nov 2026 (docs/IEEE_PAPER.tex, docs/PROJECT_PAPER.tex) and now describe score version {score_version}, like the report chapters. The child study is the only route to sensitivity and specificity: the adult survey had {prevalence_k} respondent in the disordered range.\n\nLIKELY QUESTIONS: (1) The genre test was underpowered, so why remove the weight rather than keep it? The weight sat outside the score we validated and the one test of it found no support, so the burden of proof sits on keeping it; for sessions scored on behaviour alone, the served score now equals the validated one. A study of about 400 people could bring it back only if it finds an effect (Kaustubh has the statistics). (2) What happens to old scores, and did anything break? Kanak answers how each score records its version and how existing families get the note. CI runs {backend_tests} backend and {android_tests} Android tests ({total_tests} in all), plus {ml_guards} research-integrity guards, on every push to main. (3) Did the IEEE paper get the multiple-comparison correction promised at Review 2? Not as a formal correction: the rank correlation was the one primary endpoint, fixed before data collection, and the paper now states that every secondary analysis is exploratory (IEEE Draft slide); Kaustubh has the details.\n\nBEFORE PRESENTING: row 7 is the panel's Gemini Nano suggestion; if the team remembers any other remark, add a row (the remark in the panel's words, feasibility, and the slide that shows progress). Score version {score_version} and the one-time parent note have been live on the server since 23 Nov (the public model card reports score_version {score_version}), so rows 1 and 2 need no rewording. If Prof. Sawant has already returned corrections, update row 6."
+  }
+]
