@@ -45,6 +45,9 @@ grounding the system currently borrows from the IGDS9-SF Latin-America dataset
   construct-validity endpoint, the incremental-validity test against screen time, the
   pattern-vs-volume feature comparison, a local replication of the chat-channel
   premise, and two negative results (genre multiplier, derived-proxy naming). The
+  genre null is one of the two reasons score v2 (23 Nov 2026) removed the genre
+  multiplier from the served score; the other is that the multiplier sat outside the
+  behaviour-channel computation this survey validated. The
   seven gaming-pattern questions are what made that possible — they map onto the
   model's ten objective features, so each respondent could be *scored* by the
   deployed pipeline and not merely counted.

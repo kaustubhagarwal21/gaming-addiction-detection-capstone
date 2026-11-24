@@ -12,7 +12,8 @@
 #   4. After it's live, point both apps' Server URL at https://<service>.onrender.com/
 #
 # Notes: the free web instance cold-starts after idle (~30–60s the first hit while
-# models load) — keep it warm with .github/workflows/keepalive.yml before a demo.
+# models load). The keepalive schedule (.github/workflows/keepalive.yml) is disabled
+# since 2026-07-30, so wake the service by hand (open /api/health) before a demo.
 # ─────────────────────────────────────────────────────────────────────────
 services:
   - type: web

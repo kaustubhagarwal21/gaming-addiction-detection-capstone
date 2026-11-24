@@ -91,6 +91,40 @@ snapshot name.
 file, so not exploitable — but `eval` has no business there. Replaced with
 `ast.literal_eval`; bandit now reports **zero** B307. Suite still 180 passing.
 
+### Re-triage, 2026-11-24 (bandit 1.8.6)
+
+The August numbers above are left as recorded. A re-run on 2026-11-24 reported **57**
+findings. Diffing it against bandit run on the audit commit itself (`b1211ee`, 43
+findings, keyed by file + rule + code text) gives **14 new findings**, plus **3 of the
+August B608 queries whose text changed** when score v2 was added. All 17 were checked the
+same way as in August (every interpolated SQL expression extracted with `ast` and traced
+to its source):
+
+- **4 × B324 `hashlib.sha1` (HIGH): fixed.** All four were in the new `ml/hparam_chat.py`
+  and `ml/hparam_voice.py` scripts, where sha1 only builds cache keys and data-identity
+  digests. They now pass `usedforsecurity=False`, which leaves the digests unchanged
+  (the voice feature cache still hits). Bandit reports **zero** B324.
+- **1 new B608 + 3 edited B608: false positives.** The new one: `backend/app.py` matches
+  the score-v2 notice type as a literal (`type='score_update'`, the `SCORE_V2_NOTICE_TYPE`
+  constant) so the partial unique index `idx_alerts_one_score_update` can serve the
+  lookup; `user_id` is still a bound parameter. The edited ones, in
+  `ml/analyze_fusion_sensitivity.py` and `ml/monitor_drift.py` (×2), now also interpolate
+  a code-chosen `p.score_version` column or `NULL`. Across all 34 B608 findings the
+  interpolated names are dialect placeholders (`_PH`, generated `?` runs), constant
+  table/column lists (`_SESSION_TABLES`, `_USER_TABLES`, `BEHAVIORAL_FEATURES`,
+  `DEMO_USER_IDS`), code-chosen fragments (that column-or-`NULL`, a CLI-selected session
+  filter) or `_exclusion_sql()`, which generates placeholders and returns its values as
+  parameters.
+- **6 × B301 `pickle`: false positives.** `ml/eval_asr_fairness.py` (×2),
+  `ml/eval_calibration.py` (×3) and `ml/smoke_stt_shootout.py` load the project's own
+  `backend/models/*.pkl`.
+- **3 × B310 `urlretrieve`: false positives.** Fixed dataset/model download URLs in
+  `ml/analyze_studentlife.py` (StudentLife mirror), `ml/eval_asr_fairness.py` and
+  `ml/smoke_stt_shootout.py` (Vosk models).
+
+Result after the fix: **53 findings, all verified false positives** (34 B608, 11 B301,
+6 B310, 1 B104, 1 B615); nothing at HIGH severity.
+
 ## detect-secrets: the public-repo check
 
 The repository is public, so a leaked signing key or service-account credential

@@ -27,8 +27,19 @@ instance (currently Neon) supplied through `DATABASE_URL`.
    and Save. (No more `adb reverse` / IP juggling.)
 
 Notes: the free web instance cold-starts after idle (~30–60 s first hit while the
-models load). Database retention, capacity, and backups are controlled by the
+models load). The scheduled keepalive in `.github/workflows/keepalive.yml` has been
+off since 30 Jul 2026 (a permanently warm instance held Postgres connections open, so
+Neon's compute never suspended and the free quota ran out), so wake the service
+before a demo: that workflow's manual *Run workflow* button, or one request to
+`/api/health`. Database retention, capacity, and backups are controlled by the
 external Postgres provider and its selected plan.
+
+Schema changes apply at startup: every worker runs the idempotent `init_db()`. Score
+version 2 (`e9d16c8`, deployed 23 Nov 2026) added `predictions.score_version`
+(existing rows stay NULL = v1 history; new rows store 2) and the partial unique index
+`idx_alerts_one_score_update`, which keeps the one-time parent note to one per child.
+The upgrade was rehearsed on Postgres 16 before the push; `/api/model_card` reports
+the served `score_version`.
 
 ---
 

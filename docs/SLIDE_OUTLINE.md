@@ -1,5 +1,7 @@
 # Defense Slide Outline — PW26_SAS-03
 
+> **Legacy note (24 Nov 2026):** this outline describes the August 2026 defense deck; the genre weight it discusses has since been removed from the served score (score v2, 23 Nov 2026).
+
 Paste-ready content for the PES capstone template. Each slide: the **on-slide
 bullets** (keep them this short — the notes carry the words), any **figure/table**
 to place, and **speaker notes** (~60 s each; 17 slides ≈ 16 min). Every number is
