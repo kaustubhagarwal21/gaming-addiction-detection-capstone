@@ -4,7 +4,7 @@
   "paper": {
     "file": "docs/IEEE_PAPER.tex",
     "title": "Measuring How People Play, Not Just How Long: A Multimodal, Privacy-Conscious Gaming-Risk Monitor for Guardians, with Construct-Validity Evidence",
-    "shape": "{ieee_pp} pages in the IEEEtran conference format, with 31 references (docs/ieee_refs.tex). The source already has an anonymous-build switch (\\anontrue) for double-blind venues.",
+    "shape": "{ieee_pp} pages in the IEEEtran conference format, with 33 references (docs/ieee_refs.tex). The source already has an anonymous-build switch (\\anontrue) for double-blind venues.",
     "profile": "Applied ML plus mobile health. It describes a deployed system (two Android apps and a cloud backend), held-out evaluation with ablations, and an external validity check on {n_scored} adult survey respondents (moderate rank correlation {rho} with IGDS9-SF; the pattern-minus-volume contrast {contrast} {contrast_ci} excludes zero). Known weak points: behaviour accuracy ({beh_acc}) is measured on synthetic labels, the survey cohort is adults, and the survey had no ethics-committee review. The only record is a documented notification to the guide, which was sent while the form was still open."
   },
   "venues": [
@@ -210,7 +210,7 @@
         "source_url": "https://embc.embs.org/2027/papers/",
         "note": "Stated as final and not extendable."
       },
-      "format": "A strict 4 + 1 page limit: 4 pages of content, with the 5th page for references only, and at most 20 references. The draft has {ieee_pp} pages and 31 references, so it needs to lose about a third.",
+      "format": "A strict 4 + 1 page limit: 4 pages of content, with the 5th page for references only, and at most 20 references. The draft has {ieee_pp} pages and 33 references, so it needs to lose more than a third.",
       "review": "Not stated.",
       "fit": "The topic fits the Biomedical & Health Informatics track, but the length limit would remove most of the evaluation.",
       "risk": "This is the highest ethics risk. EMBS has published this rule for its conferences (EMBC 2016 proceedings page; BHI-BSN 2018 ethics page): papers reporting human-subject data need 'formal review and approval, or formal review and waiver, by an appropriate institutional review board or ethics committee', stated in the paper. The 2027 pages do not repeat it; they only require compliance with the EMBS Code of Ethics. Our survey had a documented guide notification, not that review. EMBS also enforces a no-show policy: authors who do not present stay on a list for at least two years.",

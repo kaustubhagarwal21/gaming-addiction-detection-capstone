@@ -150,7 +150,7 @@ They talk to the live cloud backend — no GitHub or build tools needed.
 - [DEMO_RUNBOOK.md](DEMO_RUNBOOK.md) — demo walkthrough
 - [TESTING.md](TESTING.md) — automated test layers + on-device manual checklist
 - [docs/PROJECT_PAPER.tex](docs/PROJECT_PAPER.tex) — the full project paper: architecture, models, honest metrics, limitations
-- [docs/IEEE_PAPER.tex](docs/IEEE_PAPER.tex) — the **IEEE conference-format** version (6 pages, two-column, 31 refs): a distillation of the full report with identical numbers; build with `latexmk -pdf docs/IEEE_PAPER.tex`
+- [docs/IEEE_PAPER.tex](docs/IEEE_PAPER.tex) — the **IEEE conference-format** version (6 pages, two-column, 33 refs): a distillation of the full report with identical numbers; build with `latexmk -pdf docs/IEEE_PAPER.tex`
 - [docs/VALIDATION_PLAN.md](docs/VALIDATION_PLAN.md) — real-data validation record: the public-dataset tier and the IGDS9-SF construct-validity survey are **executed and closed** (134 raw / 104 usable; behaviour-model score ↔ IGDS9-SF ρ = 0.317, leading the self-reported screen-time baseline in 97% of paired resamples); the remaining per-child cohort is scoped there
 - [PRIVACY.md](PRIVACY.md) — privacy & data handling
 
