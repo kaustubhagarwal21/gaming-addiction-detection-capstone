@@ -518,7 +518,11 @@ Layered mitigations, all implemented: (1) explicit onboarding consent, and the c
 can revoke any capture permission — revocation triggers a parent alert rather than
 silent failure; (2) speech-to-text runs **on-device** (Vosk); (3) uploaded audio
 segments are deleted server-side immediately after acoustic-feature extraction — raw
-voice is not retained; (4) webrtcvad gates capture to actual speech; (5) parents get
+voice is not retained; (4) recording happens only while a tracked game is in the
+foreground, and the server's voice-activity check (webrtcvad) scores only segments
+that contain speech — be exact here: the phone itself does not filter for speech, so
+every 10-second segment recorded during a game is uploaded, checked and then deleted;
+(5) parents get
 `/api/user/export` (full JSON of everything held, credentials excluded) and
 `/api/user/delete_data` (scope identical to export — what you can see is exactly what
 gets erased). We also state plainly: this is parental monitoring of a minor, not
