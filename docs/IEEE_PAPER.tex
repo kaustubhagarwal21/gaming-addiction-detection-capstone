@@ -39,279 +39,291 @@ A Multimodal, Privacy-Conscious Gaming-Risk Monitor for Guardians, with Construc
 \maketitle
 
 \begin{abstract}
-Consumer parental-control tools report \emph{how long} a child played; they cannot
-distinguish three hours of healthy play from three hours of compulsive play. We present
-a deployed, three-tier gaming-risk monitor --- a passive-capture Android child app, a
-cloud ML backend, and a parent app --- that fuses three channels: ten \emph{measured}
-behavioural features (late-night ratio, rapid re-logins, binges, streaks), calibrated
-chat toxicity across English, romanised Hindi and Devanagari, and on-device
-speech-to-text plus acoustic emotion. All models are lightweight, calibrated and
-SHAP-explainable; raw audio is never retained. Each channel is evaluated on real
-held-out data with bootstrap confidence intervals and one-component ablations
-(chat PR-AUC $0.821$ in-domain as served, $\geq$$0.95$ alert precision on every register;
-voice $0.574$ speaker-independent, exposing an 8.3-point leakage inflation in random splits).
-Critically, we then validate the served risk score \emph{externally}: in an anonymous
-adult IGDS9-SF survey ($134$ raw; $104$ usable, $103$ scoreable), the score correlates with the clinical
-instrument at Spearman $\rho{=}0.317$ ($95\%$ CI $[0.137,0.478]$; the
-pre-designated primary endpoint), leads the self-reported screen-time baseline in
-$97.4\%$ of paired resamples ($\Delta\rho{=}{+}0.167$, $95\%$ CI $[-0.002,+0.341]$
---- suggestive, not established two-sided), survives partialling that baseline out
-($\rho{=}0.303$, CI excluding zero), and the signal is carried by \emph{pattern}
-features over \emph{volume} features by a formally tested margin (paired composite
-difference $+0.199$, $95\%$ CI $[+0.019,+0.380]$) --- the design premise confirmed rather than
-assumed. The same study returns two results against the system (an unsupported genre
-multiplier; four of five parent-facing proxy names failing to track their namesake
-items), which we report and act on: because the multiplier was never part of the
-computation the survey validated and its only test found no support, we removed it from the served score
-as a versioned change (score version~2) disclosed to parents. An accent-fairness
-audit on 6{,}656 Indian-English
-clips finds zero false toxicity alerts in every accent group but a coverage gap
-(WER $35\%$ Dravidian $\rightarrow$ $61\%$ Tibeto-Burman). Limits are stated plainly:
-behavioural training labels remain synthetic, caseness metrics are uncomputable at the
-observed severity base rate, and the cohort is adults, not the adolescent target.
+Parental-control tools report \emph{how long} a child plays, not whether the play is
+healthy or compulsive. We present a deployed system that screens for gaming risk from
+\emph{how} a child plays. An Android app on the child's phone records ten behavioural
+features, the child's typed chat and short voice segments during games. A cloud backend
+scores behaviour, chat toxicity in English and Hindi, and voice emotion, and fuses the
+three scores into one risk band, shown to the parent with reasons. Raw audio is deleted
+after feature extraction. On held-out in-domain data the chat model reaches an area
+under the precision--recall curve of $0.821$ on gaming chat and at least $0.95$ alert
+precision in English, romanised Hindi and Devanagari; the four-class voice model
+reaches $0.574$ accuracy on unseen speakers. We then tested the served behaviour score
+against a gaming-disorder questionnaire (IGDS9-SF) in an anonymous survey of adult
+gamers ($134$ responses, $103$ scored). They correlated at Spearman $\rho{=}0.317$
+($95\%$ CI $[0.137,0.478]$). Features of the pattern of play tracked the questionnaire
+better than features of its volume (difference $+0.199$, $95\%$ CI $[+0.019,+0.380]$);
+the score's advantage over self-reported hours was suggestive, not established. Two
+results went against the system. A hand-set genre weight had no support and was removed
+from the fused score, and four of five parent-facing labels did not track the items
+they were named after and were renamed. Training labels for behaviour are synthetic,
+the survey covered adults, not adolescents, and clinical accuracy has not been measured.
 \end{abstract}
 
 \begin{IEEEkeywords}
 gaming disorder, screening, multimodal fusion, calibration, construct validity,
-IGDS9-SF, toxicity detection, code-mixed Hindi, fairness, mobile health
+IGDS9-SF, toxicity detection, romanised Hindi, fairness, mobile health
 \end{IEEEkeywords}
 
 % =====================================================================
 \section{Introduction}
-Internet Gaming Disorder (IGD) is recognised behaviourally by DSM-5 and
-ICD-11~\cite{icd11}: impaired control, escalating priority of gaming, continuation
-despite harm. Parents notice late and from the outside. The two families of existing
-tools each miss the pattern: self-report questionnaires require the child's honest
-cooperation --- and denial is itself a diagnostic criterion --- while screen-time
-counters measure volume, which objective-telemetry studies find to be a weak
-correlate of well-being outcomes~\cite{johannes2021,vuorre2022}. Section~II situates
-this work; in brief, no prior system combines passive multi-signal capture, a
-guardian-facing risk channel, and an external validity check against a clinical IGD
-instrument.
+DSM-5~\cite{dsm5} and ICD-11~\cite{icd11} describe Internet Gaming Disorder (IGD) in
+terms of behaviour: impaired control over gaming, gaming taking priority over other
+activities, and continued gaming despite harm. Parents usually notice late, and only
+from the outside. Self-report questionnaires depend on honest answers from the child,
+and deceiving others about the amount of play is itself one of the DSM-5 criteria.
+Screen-time counters measure volume, which large telemetry studies find to be only
+weakly related to well-being~\cite{johannes2021,vuorre2022}. To our knowledge, no
+earlier system combines passive capture of several signals, a risk signal for
+guardians, and a check of that signal against a clinical IGD instrument
+(\S\ref{sec:related}).
 
-We built and deployed such a system and, distinctively, evaluated it the way a
-screening instrument should be: real data where it exists, stated limits where it
-does not, and an external validation against a clinical instrument that could --- and
-partly did --- fail. Contributions:
+We built and deployed such a system and evaluated it as a screening tool. Each channel
+is tested on real held-out data where such data exist, and we state the limits where
+they do not. In an adult survey, we tested the behaviour score against a clinical
+questionnaire. The main correlation held; two components did not. Our contributions are:
 \begin{enumerate}
-\item A deployed three-tier platform (two native Android apps, cloud Flask backend)
-  with a train/serve-aligned behavioural pipeline: ten measured features are the only
-  model inputs; ten psychometric proxies derived from them serve as explanations,
-  keeping SHAP~\cite{shap2017} attributions non-circular.
-\item An availability-weighted ensemble that renormalises over the channels present,
-  with isotonic calibration (behaviour ECE $0.062\!\rightarrow\!0.015$) and a
-  precision-first alert threshold chosen as a product decision, not a metric.
-\item An India-ready abuse channel: dual-script Hindi trained on HASOC~\cite{hasoc2019}
-  with a clean-Hindi counterweight~\cite{wikihi} that drains a measured script-level
-  toxicity prior; a native Devanagari keyboard so canvas games are not blind spots;
-  and an accent-fairness audit on Svarah~\cite{svarah2023}.
-\item External construct validation of the served score against IGDS9-SF~\cite{igds9sf}
-  in $104$ usable respondents, with incremental validity over screen time, a
-  pattern-versus-volume decomposition, and two negative results reported.
-\item An evaluation protocol designed to be falsifiable: speaker-independent splits, one-component
-  ablations with bootstrap CIs, three transformer baselines, and continuous-integration
-  guards that fail the build if the paper's numbers diverge from the committed data.
+\item A deployed platform: two Android apps and a cloud backend. The behaviour model's
+  only inputs are ten measured features. Ten proxy scores, derived from them by code
+  that training and serving share, are shown to parents but never fed to the model, so
+  SHAP~\cite{shap2017} explains only measured features.
+\item Fusion that renormalises its weights over the channels present, isotonic
+  calibration (expected calibration error, ECE, $0.031\!\rightarrow\!0.012$ for chat),
+  and an alert threshold set for high precision.
+\item Chat scoring for Indian users: Hindi in both scripts from
+  HASOC~\cite{hasoc2019}; clean Hindi text~\cite{wikihi}, added so that Devanagari
+  script alone does not raise the toxicity score; a custom keyboard with a Devanagari
+  layout for games whose text the accessibility service cannot read; and an accent
+  audit of the speech path on Svarah~\cite{svarah2023}.
+\item An external check of the behaviour score against the Internet Gaming Disorder
+  Scale--Short-Form (IGDS9-SF)~\cite{igds9sf} in $103$ scored survey responses,
+  including two results against the system.
+\item An evaluation protocol built to expose optimistic results: speaker-independent
+  splits, one-component ablations with bootstrap confidence intervals, transformer
+  baselines, and an automated check of the paper's survey numbers.
 \end{enumerate}
 
 % =====================================================================
-\section{Related Work}
-Passive smartphone sensing of behaviour and mental state has a decade of precedent:
+\section{Related Work}\label{sec:related}
+Passive smartphone sensing of behaviour and mental state has a decade of precedent.
 StudentLife inferred stress and academic outcomes from phone telemetry in a student
-cohort~\cite{studentlife2014}, and Shin and Dey detected \emph{problematic} smartphone
-use from passive usage features validated against a self-report scale~\cite{shin2013},
-with qualitative grounding in Lee et al.'s study of smartphone overuse~\cite{lee2014}.
-Our behavioural channel follows this tradition but targets gaming-specific pattern
-features and serves a guardian, not the user. On the outcome side, large
-objective-telemetry studies find raw play \emph{time} only weakly related to
-well-being~\cite{johannes2021,vuorre2022} --- the empirical basis for our
-pattern-over-volume design premise. IGD-specific computational work has modelled
-survey data~\cite{huang2024,strojny2024} or reviewed family factors~\cite{ergin2025}
-rather than deploying capture. Commercial guardian tools (screen-time dashboards;
-content monitors such as Bark) do deploy multi-signal capture, but report volume or
-keyword hits rather than a validated severity construct, and the HCI literature
-documents both their surveillance risks and children's own views of
-them~\cite{ghosh2018} --- concerns our consent, transparency and
-visibility-over-prevention design responds to (\S\ref{sec:ethics}). The specific gap
-this paper addresses is the conjunction: passive multimodal capture, a
-guardian-facing calibrated risk signal for IGD specifically, and an external
-construct-validity check of the served score against a clinical
-instrument~\cite{igds9sf}.
+cohort~\cite{studentlife2014}. Shin and Dey detected problematic smartphone use from
+passive usage features and validated it against a self-report scale~\cite{shin2013},
+and Lee et al.\ explored smartphone overuse among college students~\cite{lee2014}. Our
+behavioural channel follows this tradition, but it targets pattern features specific to
+gaming and it serves a guardian, not the user. The weak link between play time and
+well-being~\cite{johannes2021,vuorre2022} motivates our premise that the pattern of
+play matters more than its volume. Work on IGD has modelled survey
+data~\cite{huang2024,strojny2024} or reviewed family factors~\cite{ergin2025}, but none
+deploys passive capture. Commercial tools for guardians, such as screen-time dashboards
+and content monitors like Bark, do capture several signals. They report volume or
+keyword hits, however, and not a validated measure of severity. Ghosh et al.\ document
+the surveillance risks of such tools and what children think of
+them~\cite{ghosh2018}. Our design responds to those concerns with consent, transparency
+and a preference for informing the parent over blocking the child
+(\S\ref{sec:ethics}). None checks a deployed, guardian-facing risk signal against a
+clinical instrument~\cite{igds9sf}; that is the gap we begin to address.
 
 % =====================================================================
 \section{System Architecture}
-\textbf{Data-collection tier (Child app).} A foreground service detects game sessions
-from the foreground package (curated allowlist $\rightarrow$ OS game category
-$\rightarrow$ parent override), records ten objective session features, captures typed
-chat through a custom keyboard (IME) --- which, unlike the accessibility API, reads
-text in canvas/engine games such as Roblox --- and an accessibility fallback, and
-records short microphone segments only while a tracked game is foreground, gated by
-voice-activity detection. Speech-to-text runs on-device (Vosk~\cite{vosk}, Indian
-English); transcripts and a short WAV go over HTTPS; the server deletes audio after
-feature extraction. Consent is versioned and fails closed; anti-tamper covers
-force-stop, uninstall (optional Device Admin), and capture-permission revocation, each
-raising a guardian alert rather than a silent gap.
+\textbf{Data-collection tier (Child app).} A foreground service detects a game session
+from the foreground package, using a parent override, then a curated allowlist, then
+the operating system's game category. It records ten objective features per session.
+Typed chat is captured by a custom keyboard, which, unlike the accessibility API, also
+works in canvas-rendered games such as Roblox; an accessibility service is the
+fallback. Typed text and short microphone segments are recorded only while a tracked
+game is in the foreground, and password fields are skipped. Speech is transcribed on
+the phone with Vosk~\cite{vosk} (Indian English). The transcript and a short WAV file
+are sent over HTTPS; the server scores only segments with voice activity and deletes
+the audio after feature extraction. Consent is versioned and fails closed: when the
+consent version changes, the server refuses uploads until the parent consents again. If
+the app is force-stopped, uninstalled (an optional Device Admin step obstructs this) or
+loses a capture permission, the parent is alerted, so monitoring does not stop silently.
 
-\textbf{Serving tier.} A Flask backend (Render; Neon Postgres in production, SQLite in
-development, one code path tested on both) scores each channel, fuses them, produces
-SHAP explanations, raises alerts to every guardian device, runs a weekly drift monitor
-(PSI/KS) against production, and exposes symmetric \emph{export} and \emph{delete}
-endpoints sharing one table inventory.
+\textbf{Serving tier.} The backend is a Flask application on Render. It uses Postgres
+(Neon) in production and SQLite in development, with one code path tested on both. It
+scores each channel, fuses the scores, computes SHAP explanations and sends alerts to
+every parent device. A weekly job checks the production scores for distribution drift.
+The export and delete endpoints share one list of tables, so whatever can be exported
+can also be deleted.
 
-\textbf{Presentation tier (Parent app).} Risk band with plain-language ``why'',
-14-day trend, alerts with accurate/false-alarm verdicts feeding a Beta-posterior
-threshold tuner (capped $\pm0.05$ per run, human-applied), nudges to the child, and a
-``what we can and cannot see'' screen naming the blind spots.
+\textbf{Presentation tier (Parent app).} The parent sees the risk band with
+plain-language reasons, a 14-day trend and alerts. Marking an alert accurate or a false
+alarm feeds a Beta-posterior threshold tuner, whose suggestion is capped at $\pm0.05$
+per run and applied only by a person. The parent can nudge the child, and a ``what we
+can and cannot see'' screen lists the system's blind spots.
 
 % =====================================================================
 \section{Methodology}
 \subsection{Behavioural features and labels}
-The model consumes ten \emph{objective} features: five volume (daily/weekly hours,
-sessions/day, session duration, days/week) and five pattern (late-night ratio, longest
-streak, binges/week, break between sessions, rapid re-login ratio). Ten psychometric
-proxies (``craving'', ``tolerance'', \dots) are deterministic functions of these ten,
-derived through one shared function at train and serve time; they are shown to parents
-and never fed to the model. No public dataset pairs per-session device telemetry with
-IGD labels --- we audited candidates and rejected two Kaggle sets after inspection
-(synthetic provenance; engagement labels) --- so labels are \emph{synthetic screening
-priors}, with play-time distributions grounded in a real survey of $13{,}464$ gamers
-and the severity base rate ($6.4\%$ scoring $\geq$$36$) taken from the open $11{,}191$-row
-release of a seven-country IGDS9-SF study of League of Legends players~\cite{igdslatam2024}. We state throughout that the resulting accuracy
-bounds separability of the synthetic distribution, not clinical validity; \S\ref{sec:survey}
-is where the score meets real labels.
+The behaviour model uses ten \emph{objective} features. Five describe volume: daily
+hours, weekly hours, sessions per day, session duration and days played per week. Five
+describe pattern: late-night ratio, longest streak, binges per week, break between
+sessions and rapid re-login ratio. Ten proxy scores with names such as ``craving'' and
+``tolerance'' are computed from these ten features by one function that training and
+serving share. The proxies are shown to parents and are never model inputs. We found no
+public dataset that pairs per-session device telemetry with IGD labels. We rejected two
+Kaggle candidates after inspection: one is synthetic and labels engagement, and the
+other has no gaming sessions. The training data are therefore \emph{synthetic}: three
+simulated classes with hand-set feature distributions, with play time following a
+survey of $13{,}464$ gamers~\cite{sauter2017}. The base rate of severe cases ($6.4\%$
+scoring $\geq$$36$), which motivates precision-first alerting, is from the open
+$11{,}191$-row release of a seven-country IGDS9-SF study of League of Legends
+players~\cite{igdslatam2024}. The model's accuracy therefore measures how separable the
+synthetic classes are, not clinical validity. The score meets real questionnaire
+answers in \S\ref{sec:survey}.
 
 \subsection{Models}
-\textbf{Behaviour}: Random Forest (200 trees, depth 6) on the ten features, chosen by a
-tabular bake-off, then isotonic-calibrated on a held-out split. \textbf{Chat}: TF-IDF
-(word 1--2 + char\_wb 3--5 grams) $\rightarrow$ logistic regression $\rightarrow$
-isotonic, trained on five real corpora --- Jigsaw~\cite{jigsaw2018},
-CONDA in-game chat~\cite{conda2021}, Davidson~\cite{davidson2017}, HASOC 2019
-Hindi~\cite{hasoc2019} in Devanagari and a colloquial romanisation, and a clean-Hindi
-Wikipedia counterweight~\cite{wikihi} --- and noisy-OR fused with a curated
-Hinglish/Devanagari lexicon screened against Bohra et al.~\cite{bohra2018}.
-\textbf{Voice}: 36 acoustic features $\rightarrow$ HistGradientBoosting trained on
-four real speech corpora (RAVDESS~\cite{ravdess2018}, CREMA-D~\cite{cremad2014},
-EMO-DB~\cite{emodb2005}, URDU~\cite{urdu2018}; $9{,}817$ clips, 154 speakers, three
-languages) through the exact serving extractor; plus the STT$\rightarrow$chat path.
+\textbf{Behaviour.} We use a random forest (200 trees, depth 6) on the ten features,
+kept after comparing tabular models because it supports exact SHAP and calibrated with
+isotonic regression on a held-out split. \textbf{Chat.} TF-IDF word 1--2-grams and
+within-word character 3--5-grams feed a logistic regression with isotonic calibration.
+The model is trained on five real corpora: Jigsaw~\cite{jigsaw2018}, CONDA in-game
+chat~\cite{conda2021}, Davidson~\cite{davidson2017}, HASOC 2019
+Hindi~\cite{hasoc2019} in Devanagari and machine-romanised, and clean Hindi text from
+Wikipedia~\cite{wikihi}. Its score is combined by noisy-OR with a curated lexicon of
+English, Hinglish and Devanagari terms, screened against Bohra et
+al.~\cite{bohra2018}. \textbf{Voice.} A histogram gradient-boosting classifier on 36
+acoustic features is trained on four emotional-speech corpora
+(RAVDESS~\cite{ravdess2018}, CREMA-D~\cite{cremad2014}, EMO-DB~\cite{emodb2005},
+URDU~\cite{urdu2018}; $9{,}817$ clips, 154 speakers, three languages). Training uses
+the serving feature extractor. Transcribed speech is also scored by the chat model.
 
 \subsection{Fusion and alerting}
-Session risk is a weighted fusion (prior $0.4/0.3/0.3$) \emph{renormalised over the
-channels present}, so a missing modality contributes nothing rather than a false
-neutral. Session chat risk is the \emph{maximum} per-message calibrated score. Alerts
-fire at $0.95$, deliberately above best-F1 ($0.85$): at the realistic $\sim$$3.5\%$
-toxic base rate a $0.5$ threshold yields precision $0.235$ --- three false alarms per
-real one --- and parents stop reading alerts. All thresholds are environment-tunable.
+The session risk is a weighted mean of the channel scores, with hand-set weights
+$0.4/0.3/0.3$ for behaviour, chat and voice, \emph{renormalised over the channels
+present} so that a missing channel adds nothing. Cut-offs at $0.33$ and $0.67$ give the
+low, some and high concern bands. The behaviour score is
+$P(\text{high})+0.5\,P(\text{some})$ from the forest. The chat score is the maximum
+over the session's typed messages. The voice score averages, over the session's
+segments, a hand-set risk per emotion (angry $0.9$, frustrated $0.7$, excited $0.4$,
+neutral $0.1$) weighted by intensity. A chat alert is raised at $0.95$, above the
+best-F1 threshold ($0.85$), to limit false alarms: on a general stream with $3.5\%$
+toxic messages, precision is $0.235$ at a threshold of $0.5$ and $0.433$ at $0.95$.
 
 \subsection{Evaluation protocol}
-Every model is evaluated on held-out data it never trained on with recorded seeds.
-Voice uses \emph{speaker-independent} splits; chat's headline is \emph{in-domain}
-(CONDA validation split, $21.5\%$ toxic). Ablations remove one component per row on a
-fixed test set with bootstrap $95\%$ CIs (1{,}000 resamples); ``better'' is claimed
-only when intervals separate. MCC and PR-AUC are reported alongside F1 because base
-rates are extreme. Calibration is shown directly (top-label ECE, reliability
-diagrams), not only via Brier.
+Every model is tested on held-out data, with recorded random seeds. The voice test set
+is speaker-independent: its speakers do not appear in training. The main chat result is
+in-domain: it uses the CONDA validation split ($7{,}721$ lines, $21.5\%$ toxic;
+Fig.~\ref{fig:pr}). Each ablation removes one component, keeps the test set fixed and
+reports a bootstrap $95\%$ confidence interval (CI) from $1{,}000$ resamples. We call
+one configuration better than another only when their intervals do not overlap. Because
+the classes are imbalanced, we report the Matthews correlation coefficient (MCC) and
+the area under the precision--recall curve (PR-AUC) alongside F1. Calibration is shown
+directly, with top-label ECE and reliability diagrams, and not only through the Brier
+score.
 
 % =====================================================================
 \section{Results}
 \subsection{Per-channel results}
-\textbf{Behaviour.} Test accuracy $0.916$, macro-F1 $0.918$, 5-fold CV
-$0.921\pm0.002$ ($23{,}000$ / $5{,}750$ rows); errors fall only in \emph{adjacent}
-bands. Isotonic calibration lowers Brier $0.134\!\rightarrow\!0.128$ and top-label
-ECE $0.062\!\rightarrow\!0.015$ (worst-bin gap $0.50\!\rightarrow\!0.05$;
-Fig.~\ref{fig:rel}). Ablation (Table~\ref{tab:abl}): an hours-only model reaches
-$0.702$ and commits two-band errors every richer set avoids; the five pattern features
-alone recover $0.902$ versus $0.871$ for the five volume features.
+\textbf{Behaviour.} On the synthetic labels, test accuracy is $0.916$ and macro-F1 is
+$0.918$; 5-fold cross-validation gives $0.921\pm0.002$ ($23{,}000$ training and
+$5{,}750$ test rows). All errors fall between adjacent bands. Isotonic calibration
+lowers the Brier score $0.134\!\rightarrow\!0.128$ and top-label ECE
+$0.062\!\rightarrow\!0.015$ (Fig.~\ref{fig:rel}). In the ablation
+(Table~\ref{tab:abl}), a model given only screen-time hours reaches $0.702$ and makes
+errors two bands apart, which no richer feature set makes. The five pattern features
+alone reach $0.902$, against $0.871$ for the five volume features.
 
-\textbf{Chat.} In-domain PR-AUC $0.821$ as served ($0.825$ $[0.807,0.841]$ for the
-recipe under the ablation protocol); at the alert threshold, the served model's
-precision $0.956$, recall $0.428$, MCC $0.589$ (Fig.~\ref{fig:pr}). Off-the-shelf
-toxic-BERT~\cite{detoxify2020} scores $0.709$ on the same split. On the HASOC held-out
-Hindi set (933 rows) the deployed pipeline reaches precision $0.968$ / recall $0.425$
-(Devanagari) and $0.958$ / $0.366$ (romanised) at the unchanged $0.95$ threshold ---
-from near-zero coverage before adoption. Removing CONDA domain data collapses PR-AUC to
-$0.511$; removing char\_wb n-grams costs $0.030$; removing keyword fusion costs recall
-at the alert threshold $0.363\!\rightarrow\!0.278$ (MCC $0.541\!\rightarrow\!0.472$)
-under the ablation protocol.
+\textbf{Chat.} The served model reaches an in-domain PR-AUC of $0.821$; the same recipe
+retrained under the ablation protocol reaches $0.825$ $[0.807,0.841]$
+(Fig.~\ref{fig:pr}). At the alert threshold the served model has precision $0.956$,
+recall $0.428$ and MCC $0.589$. Off-the-shelf toxic-BERT~\cite{detoxify2020} has PR-AUC
+$0.709$ on that split. On the HASOC Hindi test set (933 rows, $52.9\%$ offensive), at
+the same threshold, the served model reaches precision $0.968$ and recall $0.425$ in
+Devanagari, and $0.958$ and $0.366$ when machine-romanised. Before the Hindi corpora
+were added, its Hindi recall was near zero. Under the ablation protocol, removing the
+CONDA domain data lowers PR-AUC to $0.511$, removing character n-grams costs $0.030$
+(intervals overlap), and removing keyword fusion lowers recall at the alert threshold
+$0.363\!\rightarrow\!0.278$ (MCC $0.541\!\rightarrow\!0.472$).
 
-\textbf{Voice.} Speaker-independent accuracy $0.574$, macro-F1 $0.568$ (chance
-$0.25$); random splits had reported $0.657$, an 8.3-point speaker-leakage inflation we
-corrected. The channel is deliberately tied-lowest in the fusion prior (0.3, with chat) and an optional
-witness in fusion. On one matched speaker-independent split without augmentation,
-frozen wav2vec~2.0 embeddings reach $0.776$ where our 36 features reach $0.553$, so a
-distilled on-device encoder is the identified next step rather than a claim of this paper.
+\textbf{Voice.} On unseen speakers, four-class accuracy (angry, excited, frustrated,
+neutral) is $0.574$ and macro-F1 is $0.568$. An earlier random split gave $0.657$; the
+8.3-point gap came from speakers present in both training and test. Voice has weight
+$0.3$ in fusion, and a session without voice is scored on the other channels. On one
+matched speaker-independent split without augmentation, frozen embeddings of an
+emotion-tuned wav2vec~2.0 model~\cite{wagner2023} reach $0.776$ where our 36 features
+reach $0.553$. A distilled on-phone encoder is the next step; we do not claim it here.
 
-\textbf{Tuning.} A grid search of the hand-set hyperparameters on training data only
-(188 settings; each test set scored once, deployed vs.\ winner, paired bootstrap)
-changed nothing: voice gains $+0.0021$ $[-0.0117, +0.0154]$; chat's winner ($C{=}8$,
-picked on a pool only 7\% gaming chat) loses $-0.0100$ $[-0.0167, -0.0035]$ PR-AUC,
-and in-domain selection picks the deployed $C{=}1$; behaviour's winner adds $+0.0113$
-accuracy on generated labels but not on the survey ($\rho=0.295$ vs.\ $0.317$,
-difference $-0.022$ $[-0.073, +0.027]$).
+\textbf{Tuning.} A grid search over 188 settings of the hand-set hyperparameters, on
+training data only, led to no change. Each test set was scored once, deployed setting
+against search winner, with a paired bootstrap. For voice the winner gains $+0.0021$
+$[-0.0117, +0.0154]$. For chat the winner ($C{=}8$) was picked on a pool with only 7\%
+gaming chat; its PR-AUC is lower ($-0.0100$ $[-0.0167, -0.0035]$), and selection on
+gaming chat alone picks the deployed $C{=}1$. For behaviour the winner adds $+0.0113$
+accuracy on the synthetic labels but is no better on the survey ($\rho{=}0.295$ against
+$0.317$, difference $-0.022$ $[-0.073, +0.027]$).
 
 \begin{table}[t]
 \centering\footnotesize
-\caption{Selected ablations (held-out; bootstrap 95\% CIs). One component removed
-per row, each row \emph{retrained from scratch} on its own fixed evaluation protocol
---- voice rows use the ablation's un-augmented speaker-independent test set (1{,}880
-clips), so the full-recipe row ($0.562$) differs from the deployed training run's
-held-out figure ($0.574$); chat rows likewise differ slightly from the deployed
-artefact's serving metrics.}
+\caption{Selected ablations on held-out data (bootstrap 95\% CIs); every row is
+retrained. Behaviour rows use synthetic labels. Voice rows use the ablation's
+speaker-independent test set without augmentation (1{,}880 clips), so the full-recipe
+row ($0.562$) differs from the served model's $0.574$; the chat full recipe likewise
+differs from the served $0.821$.}
 \label{tab:abl}
 \begin{tabular}{@{}llc@{}}
 \toprule
 Channel & Configuration & Metric \\
 \midrule
-Chat (PR-AUC) & full recipe (deployed) & $0.825$ $[0.807,0.841]$ \\
+Chat (PR-AUC) & full recipe & $0.825$ $[0.807,0.841]$ \\
  & $-$ keyword fusion & $0.814$ $[0.796,0.830]$ \\
- & $-$ char\_wb n-grams & $0.794$ $[0.777,0.811]$ \\
+ & $-$ character n-grams & $0.794$ $[0.777,0.811]$ \\
  & $-$ Davidson corpus & $0.794$ $[0.775,0.812]$ \\
  & $-$ CONDA domain data & $\mathbf{0.511}$ $[0.487,0.535]$ \\
 \midrule
-Behaviour (acc.) & objective-10 (deployed) & $0.916$ \\
- & all-20 incl.\ derived proxies & $0.919$ \\
- & pattern features only (5) & $0.902$ \\
- & volume features only (5) & $0.871$ \\
- & screen-time only (baseline) & $\mathbf{0.702}$ \\
+Behaviour (acc.) & objective-10 (deployed) & $0.916$ $[0.909,0.923]$ \\
+ & all-20 incl.\ derived proxies & $0.919$ $[0.912,0.926]$ \\
+ & pattern features only (5) & $0.902$ $[0.894,0.910]$ \\
+ & volume features only (5) & $0.871$ $[0.861,0.879]$ \\
+ & screen-time only (baseline) & $\mathbf{0.702}$ $[0.690,0.714]$ \\
 \midrule
-Voice (acc.) & full (36 feats, 4 corpora) & $0.562$ \\
- & $-$ augmentation & $0.566$ (neutral) \\
- & English-only corpora & $0.546$ \\
- & 17-feature prefix & $0.499$ \\
+Voice (acc.) & full (36 feats, 4 corpora) & $0.562$ $[0.540,0.584]$ \\
+ & $-$ augmentation & $0.566$ $[0.545,0.589]$ \\
+ & English-only corpora & $0.546$ $[0.525,0.568]$ \\
+ & earlier 17-feature set & $0.499$ $[0.476,0.521]$ \\
 \bottomrule
 \end{tabular}
 \end{table}
 
 \begin{figure}[t]
 \centering
-\includegraphics[width=0.9\linewidth]{pr_chat.pdf}
-\caption{Precision--recall on held-out real gaming chat (CONDA validation split).
-The deployed pipeline dominates the original general-corpus recipe across the curve.}
+\includegraphics[width=0.8\linewidth]{pr_chat.pdf}
+\caption{Precision--recall on held-out gaming chat (CONDA validation split); both
+recipes are retrained under the ablation protocol. ``Deployed pipeline'' is the full
+recipe (PR-AUC $0.825$; the served model reaches $0.821$). ``Original'' is our first
+recipe: general corpora and word n-grams only.}
 \label{fig:pr}
 \end{figure}
 
 \begin{figure*}[t]
 \centering
-\includegraphics[width=0.85\textwidth]{reliability.pdf}
-\caption{Reliability diagrams (top-label, 10 bins) for both calibrated channels.
-Calibration cuts behaviour ECE $0.062\!\rightarrow\!0.015$ and chat $0.031\!\rightarrow\!0.012$.}
+\includegraphics[width=0.76\textwidth]{reliability.pdf}
+\caption{Reliability diagrams (top-label, 10 bins) for the behaviour and chat models
+before and after isotonic calibration; a perfectly calibrated model lies on the
+diagonal. Calibration lowers ECE from $0.062$ to $0.015$ for behaviour and from $0.031$
+to $0.012$ for chat.}
 \label{fig:rel}
 \end{figure*}
 
 \subsection{External construct validation}\label{sec:survey}
-Every behaviour-model number above is measured against synthetic labels, so the central
-claim --- that \emph{how} a person plays carries screening signal that \emph{how long}
-does not --- had never met a real instrument. We ran an anonymous, adults-only web
-survey pairing the nine IGDS9-SF items~\cite{igds9sf} with seven multiple-choice
-gaming-pattern questions that map onto the ten objective features by documented band
-midpoints. Each respondent was scored through the \emph{deployed serving path} (shared
-derivation, fitted scaler, calibrated forest, identical risk formula). The main
-wave (7--9 Aug) stood at $112$ raw responses; the form remained open and a passive
-late batch of $22$ arrived 13--20 Aug. Per a rule fixed before any late data
-existed, all analyses use the final $134$ raw responses: $104$ usable (20 failed
-eligibility, 10 an attention check), $103$ scoreable. (The pre-batch snapshot read
-$\rho{=}0.352$ $[0.158,0.521]$; the late batch attenuated it, and the attenuated
-value is what we report.) The cohort is young ($79.6\%$ aged 18--24) and non-clinical: IGDS totals averaged
-$17.6$ (SD $6.0$; range $9$--$37$); one respondent was in the disordered range. The model was fitted before the survey
-existed and nothing was tuned on it.
+All behaviour results above are measured against synthetic labels. The central claim,
+that \emph{how} a person plays carries a screening signal that \emph{how long} does
+not, had therefore never been tested against a real instrument. We ran an anonymous web
+survey of adults that paired the nine IGDS9-SF items~\cite{igds9sf} with seven
+multiple-choice questions about gaming patterns. Each answer band was mapped to its
+documented midpoint to give the ten objective features. Each respondent was then scored
+as the deployed serving path scores a session: the fitted scaler, the calibrated forest
+and the same risk formula. The main wave (7--9 Aug.\ 2026) gave $112$ raw responses.
+The form stayed open, and $22$ more arrived on 13--20 Aug.\ without further recruiting.
+Following a rule fixed before any late data existed, all analyses use the final $134$
+raw responses. Of these, $104$ were usable ($20$ failed eligibility, $10$ an attention
+check), and the $103$ who answered every pattern item were scored. Before the late
+batch the correlation was $\rho{=}0.352$ $[0.158,0.521]$; the late batch lowered it,
+and we report the lower value. The respondents were young ($79.6\%$ aged 18--24) and
+non-clinical: IGDS9-SF totals averaged $17.6$ (SD $6.0$, range $9$--$37$), and one
+respondent was in the disordered range. The model was fitted before the survey existed,
+and nothing was tuned on the survey.
 
 \begin{table}[t]
 \centering\footnotesize
@@ -321,9 +333,9 @@ existed and nothing was tuned on it.
 \toprule
 Predictor & $\rho$ & 95\% CI \\
 \midrule
-\textbf{Served risk score} & $\mathbf{0.317}$ & $[0.137, 0.478]$ \\
+\textbf{Served behaviour score} & $\mathbf{0.317}$ & $[0.137, 0.478]$ \\
 Self-reported hours/week (baseline) & $0.147$ & $[-0.053, 0.339]$ \\
-Paired difference (model $-$ hours) & $+0.167$ & $[-0.002, +0.341]$ \\
+Paired difference (score $-$ hours) & $+0.167$ & $[-0.002, +0.341]$ \\
 \textbf{Partial (hours removed)} & $\mathbf{0.303}$ & $[0.110, 0.476]$ \\
 \midrule
 Pattern-feature composite & $0.330$ & $[0.154, 0.489]$ \\
@@ -336,156 +348,163 @@ Excluding 9 straight-liners ($n{=}94$) & $0.292$ & $[0.104, 0.461]$ \\
 
 \begin{figure}[!htb]
 \centering
-\includegraphics[width=\linewidth]{survey_features.pdf}
-\caption{Per-feature $|\rho|$ against IGDS9-SF total ($n{=}103$; per-feature
-SEs ${\approx}0.10$, so individual rankings are descriptive). The formal test is the
-paired composite contrast: pattern $-$ volume $= +0.199$, $95\%$ CI $[+0.019,+0.380]$.}
+\includegraphics[width=0.94\linewidth]{survey_features.pdf}
+\caption{Per-feature $|\rho|$ against the IGDS9-SF total ($n{=}103$). Standard errors
+are about $0.10$, so the ranking of features is descriptive. The test is the paired
+contrast of composites (sums of sign-corrected $z$-scores): pattern $-$ volume
+$= +0.199$, $95\%$ CI $[+0.019,+0.380]$.}
 \label{fig:feat}
 \end{figure}
 
-\textbf{Results} (Table~\ref{tab:survey}, Fig.~\ref{fig:feat}). The
-construct-validity correlation was the pre-designated primary endpoint (stated in
-the analysis script's documentation before data collection); the remaining results
-are secondary. The secondary analyses are exploratory and are not corrected for
-multiple comparisons. The served score tracks the instrument at $\rho{=}0.317$, CI
-excluding zero. The screen-time baseline every commercial tool ships reaches
-$0.147$ with a CI spanning zero; a paired bootstrap puts the model ahead in
-$97.4\%$ of resamples ($\Delta\rho{=}{+}0.167$, one-sided $p{\approx}0.026$), but
-the two-sided interval grazes zero ($[-0.002,+0.341]$; it excluded zero pre-batch),
-so superiority over the baseline is suggestive, not established. The partial
-correlation establishes \emph{non-redundancy}: partialling hours out barely moves
-the score's correlation ($0.303$, CI excluding zero) --- the score is not screen
-time in another unit, though with a single-item, noisily measured covariate this
-under-controls for true screen time~\cite{westfall2016} and cannot itself
-establish superiority. The pattern-over-volume premise \emph{is} formally
-supported: a paired bootstrap on the composite difference gives
-$+0.199$ ($95\%$ CI $[+0.019,+0.380]$), and descriptively all five pattern
-features out-rank all five volume features ($0.330$ vs $0.128$ composites). Self-reported toxic-chat involvement tracks severity at
-$0.323$, replicating in this population the $r{=}{+}0.156$ premise borrowed
-from~\cite{igdslatam2024}.
-\textbf{Two results against the system.} The genre multiplier, a hand-set per-genre
-weight ($0.70$--$1.25$) that score version~1 applied to the fused score, is unsupported
-(Kruskal--Wallis across seven genres, $H{=}4.59$, $p{=}0.598$ --- weakening at every
-growth of the sample, from $p{=}0.159$ at $n{=}80$ --- and the group ordering no
-longer matches the multiplier's assumption; power $32\%$, needing
-$n\!\approx\!400$). That null is underpowered, not disproven; but the multiplier also
-lay outside the validated computation (the survey scored the behaviour channel alone,
-with no genre factor), so rather than defend it we removed it from the served score.
-Removal changes the band of $34\%$ of the $131$ pilot sessions, so it shipped as a
-\emph{versioned} change (score version~2): every prediction now records its score
-version (legacy rows read as version~1), the analysis and drift tools are
-version-aware, and parents of children
-with version-1 history receive a one-time in-app note. Four of five parent-facing proxies fail to track
-the IGDS item they are named after (only ``craving'' holds, $\rho{=}0.322$; the
-rest read $+0.020$ to $+0.092$); we renamed the served labels to
-behaviour-descriptive wording. \textbf{Not established:} sensitivity /
-specificity at the $\geq$$36$ cut-off (one positive; the analysis refuses caseness
-metrics below ten by a guard written before the data arrived --- $\approx$$157$
-usable responses are needed at the $6.4\%$ base rate); transfer to adolescents; any
-longitudinal claim. A grid-searched threshold refit ($T_1{=}0.51,T_2{=}0.83$,
-$\kappa{=}0.177$) was measured and \emph{declined}: the fitted $T_2$ moved by
-$0.12$ on one late batch --- the demonstration that it encodes the sample's missing
-severity tail, not a clinical boundary.
+\textbf{Results} (Table~\ref{tab:survey}, Fig.~\ref{fig:feat}). The correlation between
+the score and the IGDS9-SF total was designated the primary endpoint in the analysis
+script's documentation before data collection. All other results are secondary and
+exploratory, and they are not corrected for multiple comparisons. The behaviour score
+correlates with the instrument at $\rho{=}0.317$; its CI excludes zero. Self-reported
+weekly hours, the quantity that commercial tools report, reach $0.147$ with a CI that
+includes zero. In a paired bootstrap the score is ahead of hours in $97.4\%$ of
+resamples ($\Delta\rho{=}{+}0.167$, one-sided $p{\approx}0.026$), but the two-sided
+interval $[-0.002,+0.341]$ just includes zero; before the late batch it excluded zero.
+The advantage over the baseline is therefore suggestive, not established. The partial
+correlation shows that the score is not redundant with hours: with hours partialled out
+it is $0.303$, with a CI that excludes zero. Because hours were measured with a single
+noisy item, this under-controls for true screen time~\cite{westfall2016} and does not
+by itself show that the score is better. The premise that pattern matters more than
+volume is supported by a paired test, itself a secondary analysis: the pattern
+composite exceeds the volume composite by $+0.199$ ($95\%$ CI $[+0.019,+0.380]$).
+Descriptively, each of the five pattern features correlates more strongly than each of
+the five volume features (composites $0.330$ and $0.128$). Self-reported involvement in
+toxic chat correlates with severity at $0.323$. This supports the chat premise, as does
+the $r{=}{+}0.156$ we computed from the open data of~\cite{igdslatam2024}.
 
-\textbf{What this validates, precisely --- and common-method variance.} The study
-validates the served risk \emph{formula} applied to self-reported pattern answers
-mapped to band midpoints; it does not yet validate the passive-sensing pipeline
-end-to-end, whose inputs are measured telemetry rather than recalled bands. Because
-both the predictor questions and the IGDS9-SF items are self-report from the same
-respondent in one sitting, part of the association may be common-method
-variance~\cite{podsakoff2003}. Three observations bound, without eliminating, that
-concern: the incremental effect over self-reported hours ($\Delta\rho{=}{+}0.167$,
-leading in $97.4\%$ of paired resamples) is a \emph{within-method} contrast, since
-hours are self-reported on the same form
-and share any method inflation --- though the score aggregates seven items while
-the baseline is a single item, so part of its advantage may be differential
-reliability rather than construct coverage~\cite{westfall2016}; the
-pattern-vs-volume separation is a \emph{between-feature} contrast that shared
-method cannot manufacture; and the
-predictor questions are behavioural frequencies, not attitudes, which typically
-attenuates rather than inflates method effects. The clean test remains a
-telemetry-linked cohort (\S\ref{sec:ethics}). On magnitude: $\rho{=}0.317$ ($\approx$$10\%$ shared
-variance) is modest in absolute terms, with a wide interval at $n{=}103$; it sits
-inside the $0.3$--$0.5$ range that criterion-validity coefficients for brief
-behavioural screeners against full instruments typically
-occupy~\cite{kroenke2003,cohen1988}, and is reported as evidence that the score
-carries the intended construct, not as evidence of clinical accuracy.
+\textbf{Two results against the system.} Score version~1 multiplied the fused score by
+a hand-set weight for the game's genre ($0.70$--$1.25$). The survey does not support
+this weight. A Kruskal--Wallis test across seven genres gives $H{=}4.59$, $p{=}0.598$.
+The $p$-value has risen each time the sample grew (it was $0.159$ at $n{=}80$), and the
+order of the genre groups no longer matches the order the weight assumed. The test has
+only $32\%$ power ($90\%$ needs $n\!\approx\!400$), so the result is weak evidence and
+not a disproof. The weight was also outside the computation that the survey validated,
+because the survey scored the behaviour channel alone, with no genre factor. We
+therefore removed it from the served score. Removal changes the band of $34\%$ of the
+$131$ sessions in a family pilot, so it shipped as a versioned change (score
+version~2). Every prediction records its version, and legacy rows count as version~1.
+The analysis and drift tools take the version into account, and parents of children
+with version-1 history receive a one-time note in the app. The second concerns the
+proxy scores shown to parents. Of the five with a matching IGDS9-SF item, four do not
+track it: only ``craving'' holds ($\rho{=}0.322$), and the others range from $+0.020$
+to $+0.092$. We renamed those four so that they describe behaviour.
+
+\textbf{Not established.} We cannot report sensitivity or specificity at the
+$\geq$$36$ cut-off. Only one respondent was above it, and the analysis script refuses
+to compute such caseness metrics with fewer than ten positives, by a guard written
+before the data arrived. At the $6.4\%$ base rate, $\approx$$157$ usable responses
+would be needed. Transfer to adolescents and any longitudinal claim are also untested.
+We refitted the band cut-offs to the survey ($T_1{=}0.51,T_2{=}0.83$; weighted
+$\kappa{=}0.177$ with IGDS9-SF bands) and did not adopt them. The fitted $T_2$ moved by
+$0.12$ when the late batch arrived, so it likely reflects the sample's lack of severe
+cases, not a clinical boundary.
+
+\textbf{What the survey validates, and common-method variance.} The survey validates
+the served risk \emph{formula} applied to self-reported answers mapped to band
+midpoints. It does not yet validate the passive pipeline end to end, whose inputs are
+measured telemetry and not recalled bands. The predictor questions and the IGDS9-SF
+items were answered by the same person in one sitting, so part of the association may
+be common-method variance~\cite{podsakoff2003}. Three observations limit this concern
+without removing it. First, the comparison with self-reported hours is made within one
+method: hours were reported on the same form and share any inflation. However, the
+score combines seven items and the baseline is one item, so part of the advantage may
+come from higher reliability and not from wider coverage of the
+construct~\cite{westfall2016}. Second, the pattern--volume gap is a contrast between
+features, which a method effect shared by all items would not produce. Third, the
+predictor questions ask how often behaviours occur, not about attitudes, which usually
+weakens method effects. The clean test is still a cohort with measured telemetry
+(\S\ref{sec:ethics}). The $\rho{=}0.317$ is modest: $\approx$$10\%$ shared variance,
+with a wide interval at $n{=}103$; it is a medium effect by Cohen's
+convention~\cite{cohen1988}. We report it as evidence that the score carries the
+intended construct, not of clinical accuracy.
 
 \subsection{Accent-fairness audit of the spoken-chat path}
-A transcription error that \emph{creates} a slur would concentrate false accusations on
-whoever the acoustic model serves worst. We transcribed all $6{,}656$ clips of
-Svarah~\cite{svarah2023} (9.6~h, 117 speakers, 65 districts) with the deployed
-recogniser and pushed every hypothesis through the served scorer at $0.95$. Result:
-\textbf{zero} false toxicity alerts in every accent group (rule-of-three bound
-$\leq0.045\%$ overall) despite a $38.6\%$ overall WER --- the chain degrades toward
-silence, not accusation. But coverage is not accent-uniform: WER is $34.6\%$ for
-Dravidian-L1 speakers, $38.1\%$ Indo-Aryan, and $60.8\%$ Tibeto-Burman
-(Tamil $30.9\%$ $\rightarrow$ Bodo $60.8\%$; gender balanced at $38.4/38.7\%$). The
-equity issue is a recall gap on Northeast-Indian accents, named as the highest-leverage
-STT improvement.
+If the speech recogniser mishears a harmless word as a slur, the false alert would fall
+most often on the speakers it recognises worst. To test this, we transcribed all
+$6{,}656$ clips of Svarah~\cite{svarah2023} (9.6~h, 117 speakers, 65 districts) with
+the deployed recogniser and scored every transcript with the served chat scorer at
+$0.95$. There were zero false toxicity alerts in every accent group (rule-of-three
+bound $\leq0.045\%$ overall), although the overall word error rate (WER) was $38.6\%$.
+On this corpus, recognition errors caused missed speech, not false alerts. Coverage is
+not uniform across accents, however: WER is $34.6\%$ for speakers of Dravidian first
+languages, $38.1\%$ for Indo-Aryan and $60.8\%$ for Tibeto-Burman (Bodo only, 402
+clips); Tamil is lowest at $30.9\%$. It is balanced by gender ($38.4\%$ and $38.7\%$).
+The fairness risk is therefore lower recall for Northeast-Indian accents, the most
+valuable target for improving the speech path.
 
 \subsection{System testing and on-device cost}
-300 automated tests run in CI (190 backend on SQLite \emph{and} Postgres~16; 110
-Android JVM), plus 7 research-integrity guards pinning the paper's headline survey
-numbers to the committed JSONs. A concurrency smoke of 288 mixed requests over 24 threads produced zero errors
-(p50 66~ms); the API was property-fuzzed, CVE-audited, and both signed APKs passed a
-MobSF~\cite{mobsf} static audit. On a Galaxy M52 (two 15-min Roblox sessions, per-minute
-sampling), the default monitoring path costs $\approx$$14\%$ of one core and
-$288$/$301$~MB mean/peak PSS with no thermal throttling --- one-fifteenth of the game's
-own $215\%$ --- whereas the dual Hindi+English STT toggle costs $51$--$72\%$ and
-$399$/$419$~MB, \emph{failing} our acceptance gate on two of three criteria; it
-therefore ships default-off. A consented single-family pilot ran 23 days in production
-(60 alerts across all eight types in the first 12 days; the fail-closed consent rotation
-exercised live).
+Continuous integration runs 300 automated tests: 190 backend tests, on SQLite and
+Postgres~16, and 110 Android JVM tests. Seven further research-integrity checks guard
+the survey analysis; one of them fails the build if the paper's headline survey numbers
+differ from the stored results. A concurrency test of 288 mixed requests over 24
+threads produced no errors (median response 66~ms). The API was fuzzed with
+property-based tests, its dependencies were audited for known vulnerabilities, and a
+MobSF~\cite{mobsf} static audit of both signed APKs found no exploitable high-severity
+issue. On a Galaxy M52, in one 15-minute Roblox session per mode, sampled every minute,
+the default monitoring path used $\approx$$14\%$ of one core (the game used $215\%$)
+and $288$/$301$~MB mean/peak memory, with no thermal throttling. The optional mode that
+runs Hindi and English recognisers together used $51$--$72\%$ and $399$/$419$~MB, above
+our limits (twice the default CPU; 400~MB), so it is off by default. A consented family
+pilot ran for 23 days in production and raised 60 alerts of all eight types in its
+first 12 days. A later change of consent version stopped ingestion pending re-consent,
+as designed.
 
 % =====================================================================
 \section{Ethics and Limitations}\label{sec:ethics}
-\textbf{Ethics statement.} The consented family pilot was an engineering pilot within
-the authors' own extended family and did not seek institutional review; no clinical
-conclusions are drawn from it. The IGDS9-SF survey was anonymous, adults ($18+$)
-only, collected no names, e-mail addresses or identifiers, displayed a consent
-statement before the first item, and was voluntary; the supervising faculty member
-was notified in writing (official institutional e-mail of 14~August~2026, copied to
-the other authors, disclosing the design and requesting direction should additional
-approval be required), sent while the form was open --- after the main wave, before
-close-out and before analysis of the final sample. That is documented faculty
-notification, \emph{not} an ethics-committee or IRB determination, and we do not
-describe it as one; any cohort involving minors is gated on institutional review,
-guardian consent and age-appropriate assent. Row-level responses are not released
-(consent covered research use, not redistribution); aggregate outputs are.
+\textbf{Ethics statement.} The family pilot was an engineering pilot, with consent,
+within the authors' own extended family. It did not seek institutional review, and no
+clinical conclusions are drawn from it. The IGDS9-SF survey was anonymous, voluntary
+and open only to adults ($18+$). It collected no names, e-mail addresses or
+identifiers, and it displayed a consent statement before the first item. The
+supervising faculty member was notified in writing, by official institutional e-mail on
+14~Aug.~2026, copied to the other authors. The e-mail disclosed the design and
+requested direction should additional approval be required. It was sent while the form
+was open: after the main wave, before close-out and before analysis of the final
+sample. That is documented faculty notification. It is not an ethics-committee
+determination, and we do not describe it as one. Any cohort involving minors will
+require institutional review, guardian consent and age-appropriate assent. Row-level
+responses are not released, because consent covered research use and not
+redistribution; aggregate outputs are released.
 
-The system is screening, not diagnosis, and every surface says so. It is scoped to
-minors by design: a guardian with duty of care is what makes screening the unwilling
-both possible and proportionate; an adult version is either a self-help journal or
-spyware. Consent fails closed; export and deletion share one scope; raw audio is never
-retained. We name three tensions rather than hide them. \emph{Sensing blind spots}:
-detection is foreground-package-based, so games inside a browser or a host app's
-webview are invisible; closing that gap requires screen capture or URL surveillance,
-which we refuse --- a disclosed boundary beats a privacy regression. \emph{The
-crisis asymmetry}: profanity alerts a parent, but a self-harm disclosure to the in-app
-companion does not; this is a deliberate refusal to hard-code a contested clinical
-judgement, and the tiered ``wellbeing check'' design is documented as a proposal
-pending clinical review. \emph{Evidence limits}: behavioural training labels are
-synthetic, so the $0.916$ is a separability figure that the survey does not upgrade;
-what the survey upgrades is the claim that the score \emph{means} something. Caseness
-accuracy is uncomputed, the cohort is adults, the design cross-sectional, and the
-voice model trained on acted adult speech. A per-child cohort linking guardian-reported
-IGDS9-SF to measured telemetry is the outstanding, ethics-gated instrument.
+The system is a screening tool, not a diagnostic one, and the parent dashboard says
+so. It is designed for minors: a guardian's duty of care is what makes it possible and
+proportionate to screen a person who has not asked to be screened. For adults the same
+design would be either a self-monitoring tool or spyware, so we do not offer it.
+Consent fails closed, export and deletion cover the same data, and raw audio is not
+retained. Three tensions remain. \emph{Sensing blind spots.} Games are detected from
+the foreground package, so games played inside a browser or another app's webview are
+invisible. Closing that gap would require screen capture or URL surveillance, which we
+rejected; the blind spot is disclosed to parents instead. \emph{The crisis asymmetry.}
+Profanity in chat alerts a parent, but a disclosure of self-harm to the child app's
+chatbot does not; the child is shown helplines instead. We chose not to hard-code a
+contested clinical judgement; a tiered ``wellbeing check'' awaits clinical review.
+\emph{Evidence limits.} The behaviour model's training labels are synthetic, so its
+$0.916$ accuracy measures separability, and the survey does not change that. What the
+survey adds is evidence that the score is related to the intended construct. Screening
+accuracy is unmeasured, the respondents were adults, the design was cross-sectional,
+and the voice model was trained on acted adult speech. A cohort of children that links
+guardian-reported IGDS9-SF scores to measured telemetry is the main outstanding study,
+and it requires ethics approval first.
 
 % =====================================================================
 \section{Conclusion}
-We built and deployed a multimodal gaming-addiction screening platform that moves
-beyond screen time to measured behaviour, code-mixed chat toxicity and voice, fused
-into a calibrated, explainable signal a parent can act on. Every model choice is
-backed by held-out evidence and ablations; the pipeline's output is then anchored
-outside its own training distribution against a clinical instrument, where the design
-premise --- pattern over volume --- survives contact with real labels while two of its
-components do not, and we publish both. The contribution is not a solved clinical
-instrument; it is a fully built, transparently measured screening pipeline in which every
-claim traces to a runnable script. The gap that remains is data, not architecture.
+We built and deployed a multimodal screening system for gaming risk. It goes beyond
+screen time: it measures behaviour, chat toxicity in English and Hindi, and voice
+emotion, and fuses them into one explained risk band for the parent. Model choices were
+tested on held-out data and by ablation. In a survey of adults, a secondary test
+supported the design premise that the pattern of play matters more than its volume; two
+components were not supported, and we report both. The system is not a validated
+clinical instrument. It is a complete, deployed screening pipeline whose reported
+results each trace to a runnable script. What is still missing is data from the target
+population, collected under ethics approval.
 
 \ifanon\else
-\section*{Acknowledgments}
+\section*{Acknowledgment}
 This work was carried out as PES University capstone project PW26\_SAS-03 under the
 guidance of Prof.\ Shridevi Sawant.
 \fi
